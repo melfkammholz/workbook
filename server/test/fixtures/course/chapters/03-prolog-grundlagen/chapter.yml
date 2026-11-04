@@ -1,0 +1,20 @@
+title: Prolog Grundlagen
+summary: Fakten, Regeln und Listen.
+items:
+  - section: Fakten und Anfragen
+  - id: prolog-familie
+    title: Eine kleine Familie
+    start-here: true
+    code:
+      language: prolog
+      file: code/familie.pl
+      check: code/familie_tests.pl
+
+  - section: Listen
+  - id: prolog-laenge
+    title: Die Länge einer Liste
+    after: [prolog-familie]
+    code:
+      language: prolog
+      file: code/laenge.pl
+      check: code/laenge_tests.pl

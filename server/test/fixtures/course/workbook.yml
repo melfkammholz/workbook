@@ -1,0 +1,10 @@
+title: Deklarative Programmierung
+language: de
+landing: landing.typ
+parts:
+  - title: Funktionale Programmierung
+    summary: Programmieren mit Ausdrücken und Typen, in Haskell.
+    chapters: [01-haskell-grundlagen, 02-typklassen]
+  - title: Logische Programmierung
+    summary: Programmieren mit Fakten und Regeln, in Prolog.
+    chapters: [03-prolog-grundlagen]

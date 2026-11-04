@@ -1,0 +1,17 @@
+{
+  "name": "workbook",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": ["shared", "server", "web"],
+  "scripts": {
+    "dev:server": "npm run dev -w server",
+    "dev:web": "npm run dev -w web",
+    "build": "npm run build -w web && npm run build -w server",
+    "start": "node server/dist/index.js",
+    "test": "npm run test -w server",
+    "typecheck": "npm run typecheck -w shared -w server -w web",
+    "lint:content": "node server/dist/cli.js lint"
+  },
+  "engines": { "node": ">=22.13" }
+}

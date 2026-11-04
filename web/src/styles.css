@@ -1,0 +1,232 @@
+@import '@fontsource-variable/schibsted-grotesk';
+@import '@fontsource-variable/fira-code';
+@import 'tailwindcss';
+
+/*
+ * The math font needs its OpenType MATH table: without it a brace or a root
+ * cannot grow with its content, and `cases` falls apart. Not every packaged math
+ * font has one (Fontsource's Libertinus Math does not). The @font-face from the
+ * package limits the font to Latin letters, which would send math italics to
+ * whatever is installed on the student's computer, so this one has no range.
+ */
+@font-face {
+  font-family: 'Workbook Math';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('@fontsource/stix-two-math/files/stix-two-math-latin-400-normal.woff2') format('woff2');
+}
+
+/* ───────────────────────── tokens ───────────────────────── */
+:root {
+  --paper: #f2f4f8;      /* app background */
+  --sheet: #fbfcfe;      /* panes */
+  --sunk: #e9edf4;       /* inset surfaces: code, inputs */
+  --ink: #1a2033;
+  --ink-2: #4a5470;
+  --ink-3: #7a849f;
+  --line: #dde2ec;
+  --line-strong: #c6cddb;
+  --accent: #5a3fd0;
+  --accent-ink: #ffffff;
+  --accent-soft: #e9e5fb;
+  --done: #1e8e6e;
+  --confidence-low: #c2570c;
+  --confidence-mid: #858ea5;
+  --confidence-high: #1f5fb8;
+  --done-soft: #dff3ec;
+  --review: #b87a0c;
+  --review-soft: #fbefd5;
+  --danger: #c2374a;
+  --danger-soft: #fbe3e7;
+  --warn: #a8700b;
+  --shadow: 0 8px 30px -8px rgb(26 32 51 / 0.25), 0 2px 6px -2px rgb(26 32 51 / 0.12);
+  color-scheme: light;
+}
+:root[data-theme='dark'] {
+  --paper: #0f121b;
+  --sheet: #151a26;
+  --sunk: #1b2130;
+  --ink: #e6e9f2;
+  --ink-2: #a7b0c8;
+  --ink-3: #727c97;
+  --line: #262d3f;
+  --line-strong: #353e55;
+  --accent: #9b86ff;
+  --accent-ink: #12102a;
+  --accent-soft: #261f52;
+  --done: #3cc4a0;
+  --confidence-low: #d27a1e;
+  --confidence-mid: #5e6780;
+  --confidence-high: #4f94ee;
+  --done-soft: #12332b;
+  --review: #e3a93a;
+  --review-soft: #3a2d10;
+  --danger: #ff7b8f;
+  --danger-soft: #3d1a22;
+  --warn: #e3b25a;
+  --shadow: 0 8px 30px -8px rgb(0 0 0 / 0.6), 0 2px 6px -2px rgb(0 0 0 / 0.4);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: 'Schibsted Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-math: 'Workbook Math', 'STIX Two Math', 'Cambria Math', 'Latin Modern Math', serif;
+  --font-mono: 'Fira Code Variable', ui-monospace, 'SF Mono', Menlo, monospace;
+  --color-paper: var(--paper);
+  --color-sheet: var(--sheet);
+  --color-sunk: var(--sunk);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-done: var(--done);
+  --color-confidence-low: var(--confidence-low);
+  --color-confidence-mid: var(--confidence-mid);
+  --color-confidence-high: var(--confidence-high);
+  --color-done-soft: var(--done-soft);
+  --color-review: var(--review);
+  --color-review-soft: var(--review-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn: var(--warn);
+}
+
+/* ───────────────────────── base ───────────────────────── */
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+@layer base {
+  button { font: inherit; color: inherit; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+  input:focus-visible, textarea:focus-visible { outline: none; }
+  * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+}
+::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* ───────────────────────── typeset task text ───────────────────────── */
+/* Exercise text is a page to read: the same typeface as the app, generous leading, measure capped. */
+.prose-task {
+  font-family: var(--font-sans);
+  font-size: 15.5px;
+  line-height: 1.65;
+  max-width: 68ch;
+  color: var(--ink);
+  hyphens: auto;
+}
+.prose-task > * + * { margin-top: 0.9em; }
+.prose-task p { margin: 0; }
+.prose-task p + p { margin-top: 0.9em; }
+/* Tailwind's reset removes list markers. */
+.prose-task ul, .prose-task ol { padding-left: 1.5em; margin-block: 0.7em; }
+.prose-task ul { list-style: disc; }
+.prose-task ol { list-style: decimal; }
+.prose-task ul ul { list-style: circle; }
+.prose-task ul ul ul { list-style: square; }
+.prose-task ol ol { list-style: lower-alpha; }
+.prose-task li::marker { color: var(--ink-3); }
+.prose-task li + li { margin-top: 0.3em; }
+.prose-task li > p + p { margin-top: 0.4em; }
+.prose-task li > ul, .prose-task li > ol { margin-block: 0.3em; }
+.prose-task a { color: var(--accent); text-decoration: underline; text-decoration-thickness: 0.06em; text-underline-offset: 0.18em; }
+.prose-task a.wb-xref { text-decoration-style: dotted; }
+.prose-task a.wb-xref-broken { color: var(--danger); text-decoration-style: wavy; }
+.prose-task h1, .prose-task h2, .prose-task h3 { font-family: var(--font-sans); line-height: 1.25; letter-spacing: -0.01em; margin-top: 1.4em; }
+.prose-task h1 { font-size: 1.5em; } .prose-task h2 { font-size: 1.25em; } .prose-task h3 { font-size: 1.08em; }
+.prose-task strong { font-weight: 650; }
+.prose-task code {
+  font-family: var(--font-mono); font-size: 0.84em; font-feature-settings: 'calt' 1, 'liga' 1;
+  background: var(--sunk); padding: 0.1em 0.38em; border-radius: 4px; hyphens: none;
+}
+.prose-task a code span { color: inherit; }
+.prose-task pre {
+  position: relative; margin-block: 1em; padding: 0.9em 1.1em; overflow-x: auto;
+  background: var(--sunk); border-radius: 6px; border: 1px solid var(--line); line-height: 1.5;
+}
+.prose-task pre code { background: none; padding: 0; font-size: 0.82em; display: block; white-space: pre; }
+.prose-task .wb-columns { column-gap: 1.2em; }
+.prose-task .wb-columns > pre { break-inside: avoid; margin-top: 0; }
+.prose-task .wb-colbreak { break-after: column; height: 0; }
+.prose-task math { font-family: var(--font-math); font-size: 1.08em; }
+.prose-task math[display='block'] { margin-block: 0.8em; overflow-x: auto; max-width: 100%; }
+/* Tailwind's reset also removes the default cell padding, which makes table rows collide. */
+.prose-task mtd { padding: 0.2em 0.4em; }
+.prose-task mtable.cases mtd { padding-block: 0.15em; }
+.prose-task mtable.cases mtd + mtd { padding-left: 0.8em; }
+.prose-task sup[role='doc-noteref'] a { text-decoration: none; padding: 0 0.1em; }
+.prose-task section[role='doc-endnotes'] { margin-top: 1.4em; padding-top: 0.6em; border-top: 1px solid var(--line); font-size: 0.85em; color: var(--ink-2); }
+.prose-task section[role='doc-endnotes'] ol { padding-left: 0; }
+.prose-task .wb-callout { border-left: 3px solid var(--accent); padding: 0.5em 1em; background: var(--accent-soft); border-radius: 0 6px 6px 0; }
+.prose-task .wb-callout-refs { border-color: var(--review); background: var(--review-soft); }
+.prose-task img { max-width: 100%; height: auto; border-radius: 4px; }
+.prose-task table { border-collapse: collapse; margin-block: 1em; }
+.prose-task th, .prose-task td { border: 1px solid var(--line); padding: 0.3em 0.7em; }
+
+/* Notes and asides use the same typesetting, a bit smaller. */
+.prose-note { font-size: 14.5px; max-width: none; }
+
+/* syntax colours shared by task code blocks and the editor */
+.tok-keyword { color: var(--tok-keyword); }
+.tok-type { color: var(--tok-type); }
+.tok-string { color: var(--tok-string); }
+.tok-number { color: var(--tok-number); }
+.tok-comment { color: var(--ink-3); font-style: italic; }
+.tok-def { color: var(--tok-def); }
+.tok-op { color: var(--tok-op); }
+:root { --tok-keyword: #8a2bb5; --tok-type: #0b7a8f; --tok-string: #b24a1c; --tok-number: #2f6fde; --tok-def: #1a2033; --tok-op: #6a4bd8; }
+:root[data-theme='dark'] { --tok-keyword: #cf9bff; --tok-type: #5fd3e6; --tok-string: #f0a27b; --tok-number: #7db0ff; --tok-def: #e6e9f2; --tok-op: #b3a3ff; }
+
+/* the only entrance motion: a task switching in */
+@keyframes settle { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.settle { animation: settle 180ms ease-out; }
+
+/* copy button inside code blocks */
+.prose-task pre .wb-copy {
+  position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 26px; height: 26px;
+  border-radius: 6px; border: 1px solid var(--line); background: var(--sheet); color: var(--ink-3);
+  opacity: 0; transition: opacity 120ms, color 120ms;
+}
+.prose-task pre:hover .wb-copy, .prose-task pre .wb-copy:focus-visible { opacity: 1; }
+.prose-task pre .wb-copy:hover { color: var(--ink); }
+@media (hover: none) { .prose-task pre .wb-copy { opacity: 1; } }
+
+/* pictures embedded by the server (shapes, cetz drawings) and horizontal rules */
+.prose-task svg { max-width: 100%; }
+/* A drawing on its own line: room around it, and it follows #align. Small inline shapes keep their place. */
+.prose-task svg[style*='display: block'] { margin-block: 1em; }
+.prose-task [style*='text-align: center'] svg[style*='display: block'] { margin-inline: auto; }
+.prose-task [style*='text-align: right'] svg[style*='display: block'] { margin-inline-start: auto; }
+.prose-task .wb-diagram { margin-block: 1em; overflow-x: auto; }
+.prose-task hr.wb-line { border: 0; border-top: 1px solid var(--line-strong); margin-block: 1em; }
+.prose-task .wb-grid { margin-block: 0.8em; }
+/* Pictures are drawn for white paper: approximate a dark version without touching their hues. */
+:root[data-theme='dark'] .prose-task svg { filter: invert(0.9) hue-rotate(180deg); }
+
+/* A small burst from the middle of the screen. Silent, and not for anyone who asked for reduced motion. */
+.wb-confetti { position: fixed; left: 50%; top: 40%; z-index: 45; pointer-events: none; }
+.wb-confetti span { position: absolute; width: 7px; height: 7px; border-radius: 2px; opacity: 0; animation: wb-confetti 1100ms cubic-bezier(0.16, 0.8, 0.3, 1) forwards; }
+@keyframes wb-confetti {
+  0% { transform: translate(0, 0) rotate(0); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: translate(var(--x), calc(var(--y) + 50px)) rotate(240deg); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .wb-confetti { display: none; } }
+
+/* A second signal next to colour, for "unsure" in the confidence bars. */
+.wb-stripes { background-image: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in srgb, var(--sheet) 60%, transparent) 3px 5px); }

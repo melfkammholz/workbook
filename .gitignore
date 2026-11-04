@@ -1,0 +1,9 @@
+node_modules
+dist
+.data
+
+# Notes for the authors, kept out of the repository
+CLAUDE.md
+TODO.md
+# Each author's own course folder, see the README
+compose.override.yaml

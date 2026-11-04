@@ -1,0 +1,7 @@
+title: Rekursion verstehen und anwenden
+description: Vom Worauf-achten über gegenseitige Rekursion bis zu effizienten Algorithmen.
+steps:
+  - recursion-care
+  - mutual-recursion
+  - binary-exponentiation
+  - gcd-pf

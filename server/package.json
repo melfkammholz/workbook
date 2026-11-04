@@ -1,0 +1,29 @@
+{
+  "name": "@wb/server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@fastify/static": "^10.1.10",
+    "@fastify/websocket": "^11.0.0",
+    "@wb/shared": "*",
+    "fastify": "^5.0.0",
+    "node-html-parser": "^9.0.6",
+    "yaml": "^2.6.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/ws": "^8.5.0",
+    "tsup": "^9.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}

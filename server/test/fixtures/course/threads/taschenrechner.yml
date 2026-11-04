@@ -1,0 +1,12 @@
+title: Ein kleiner Taschenrechner
+description: Vom Datentyp zum fertigen Rechner, alles in denselben Dateien.
+page: taschenrechner.typ
+finale: rechner-anzeigen
+language: haskell
+files:
+  - code/Expr.hs
+  - code/Pretty.hs
+steps:
+  - rechner-auswerten
+  - rechner-vereinfachen
+  - rechner-anzeigen

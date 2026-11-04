@@ -1,0 +1,55 @@
+title: Haskell Grundlagen
+summary: Ausdrücke, Typen, Rekursion – die Bausteine funktionaler Programme.
+defaults:
+  scratch: haskell
+items:
+  - page: vorwort
+    title: Vorwort
+
+  - section: Ausdrücke und Typen
+  - id: expressions-everything
+    start-here: true
+  - id: side-effects
+    start-here: true
+  - id: strong-typing
+  - id: loops
+    start-here: true
+  - id: conditionals
+  - id: typing-pros-cons
+  - id: imperative-variables
+    title: Imperative Variablen in funktionalen Programmiersprachen
+    start-here: true
+  - id: slot-machine
+    title: Einarmiger Bandit
+    level: 2
+    start-here: true
+    after: [imperative-variables]
+  - section: Rekursion
+  - id: recursion-care
+    tags: [rekursion]
+    start-here: true
+  - id: mutual-recursion
+    tags: [rekursion]
+    title: Gegenseitige Rekursion
+    after: [recursion-care]
+  - id: local-definitions
+  - id: binary-exponentiation
+    tags: [rekursion]
+    title: Binäre Exponentiation
+    start-here: true
+    after: [recursion-care]
+    code:
+      file: code/BinaryExponentiation.hs
+      check: code/BinaryExponentiationCheck.hs
+  - id: let-evaluation
+  - id: if-typecheck
+  - id: no-result
+  - id: gcd-pf
+    tags: [rekursion]
+    kind: challenge
+    title: Größter gemeinsamer Teiler & Primfaktorzerlegung
+    after: [recursion-care]
+    similar: [binary-exponentiation]
+    code:
+      file: code/Gcd.hs
+      check: code/GcdCheck.hs

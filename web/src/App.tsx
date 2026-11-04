@@ -1,0 +1,280 @@
+import { ChevronsUpDown, CircleHelp, ClipboardList, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, Route, Router, Switch, useLocation, useRoute } from 'wouter';
+import { useHashLocation } from 'wouter/use-hash-location';
+import { Celebration } from '@/components/Celebration';
+import { AddCourseForm, CourseDialog } from '@/components/CourseDialog';
+import { HelpDialog } from '@/components/HelpDialog';
+import { OutlinePanel } from '@/components/Outline';
+import { SearchDialog } from '@/components/SearchDialog';
+import { SettingsDialog } from '@/components/SettingsDialog';
+import { SetupDialog } from '@/components/SetupDialog';
+import { Empty, IconButton, Spinner, clsx } from '@/components/ui';
+import { useQueryClient } from '@tanstack/react-query';
+import { checkCourseUpdates, isExercise, keys, statusOf, useCourses, useOutline, useSettings, useState_ } from '@/lib/api';
+import { useFilters } from '@/lib/filters';
+import { useDocumentLang, useT } from '@/lib/i18n';
+import { applyTheme } from '@/lib/theme';
+import { useMediaQuery } from '@/lib/useActiveTime';
+import { AchievementsPage } from '@/pages/AchievementsPage';
+import { AdventurePage } from '@/pages/AdventurePage';
+import { ChapterPage } from '@/pages/ChapterPage';
+import { Dashboard } from '@/pages/Dashboard';
+import { LandingPage } from '@/pages/LandingPage';
+import { NotesPage } from '@/pages/NotesPage';
+import { ItemPage } from '@/pages/ItemPage';
+import { ReviewPage } from '@/pages/ReviewPage';
+
+export function App() {
+  return (
+    <Router hook={useHashLocation}>
+      <Shell />
+    </Router>
+  );
+}
+
+/** Which course is open decides everything else, so the first course comes before the rest of the app. */
+function Shell() {
+  const t = useT();
+  useDocumentLang();
+  const courses = useCourses();
+  const settings = useSettings().data;
+
+  useEffect(() => {
+    if (settings) applyTheme(settings.theme);
+  }, [settings?.theme]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Editors read this from CSS, so changing it needs no rebuilding of any of them.
+  useEffect(() => {
+    if (settings) document.documentElement.style.setProperty('--editor-font-size', `${settings.editorFontSize}px`);
+  }, [settings?.editorFontSize]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (courses.isPending) {
+    return (
+      <div className="grid h-full place-items-center">
+        <Spinner />
+      </div>
+    );
+  }
+  if (!courses.data) {
+    return (
+      <div className="grid h-full place-items-center">
+        <Empty title={t.serverGone}>{t.serverGoneBody}</Empty>
+      </div>
+    );
+  }
+  if (courses.data.activeId === null) return <NoCourse />;
+  // A fresh start per course: filters and open dialogs belong to the previous one.
+  return <CourseShell key={courses.data.activeId} />;
+}
+
+function NoCourse() {
+  const t = useT();
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="mx-auto max-w-lg px-6 pb-24 pt-16">
+        <h1 className="text-[1.75rem] font-semibold tracking-[-0.02em]">{t.noCourseTitle}</h1>
+        <p className="mb-6 mt-2 text-ink-2">{t.noCourseBody}</p>
+        <AddCourseForm autoFocus />
+      </div>
+      <SetupDialog />
+    </div>
+  );
+}
+
+function CourseShell() {
+  const t = useT();
+  const qc = useQueryClient();
+  const outline = useOutline();
+  const courses = useCourses().data;
+  const stateQuery = useState_();
+  const achievementsOn = !!useSettings().data?.showAchievements;
+  const state = useState_().data?.state;
+  const { filters, patch, reset } = useFilters();
+  const [, params] = useRoute('/item/:id');
+  const currentId = params?.id ?? null;
+  const wide = useMediaQuery('(min-width: 1024px)');
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('wb-outline-collapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [drawer, setDrawer] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [configuring, setConfiguring] = useState(false);
+  const [helping, setHelping] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const [location, navigate] = useLocation();
+
+  // The landing page opens once, on arriving at the home page of a new course. Links to anything else still work.
+  const showLanding = !!outline.data?.landing && state?.landingSeen === false && location === '/';
+  useEffect(() => {
+    if (showLanding) navigate('/welcome', { replace: true });
+  }, [showLanding, navigate]);
+
+  // Whatever the student does shows up in their state, so this is when something may have been earned.
+  useEffect(() => {
+    if (achievementsOn && stateQuery.dataUpdatedAt) void qc.invalidateQueries({ queryKey: keys.achievements });
+  }, [achievementsOn, stateQuery.dataUpdatedAt, qc]);
+
+  // On every start and every change of course. Failing quietly is fine: it only means no news.
+  useEffect(() => {
+    void checkCourseUpdates().then(
+      (data) => qc.setQueryData(keys.courses, data),
+      () => undefined,
+    );
+  }, [qc]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearching(true);
+      }
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, []);
+
+  useEffect(() => {
+    if (outline.data) document.title = outline.data.title;
+  }, [outline.data]);
+
+  const totals = useMemo(() => {
+    const ex = outline.data?.chapters.flatMap((c) => c.items).filter(isExercise) ?? [];
+    return { done: ex.filter((e) => statusOf(state, e.id) === 'done').length, total: ex.length };
+  }, [outline.data, state]);
+
+  if (outline.isPending) {
+    return (
+      <div className="grid h-full place-items-center">
+        <Spinner />
+      </div>
+    );
+  }
+  if (outline.isError || !outline.data) {
+    return (
+      <div className="grid h-full place-items-center">
+        <Empty title={t.serverGone}>{t.serverGoneBody}</Empty>
+      </div>
+    );
+  }
+  const o = outline.data;
+  const updates = courses?.courses.some((c) => c.update === 'available');
+  const showOutline = wide ? !collapsed : false;
+
+  const outlinePanel = (onNavigate?: () => void) => (
+    <OutlinePanel outline={o} state={state} currentId={currentId} filters={filters} patch={patch} reset={reset} {...(onNavigate ? { onNavigate } : {})} />
+  );
+
+  return (
+    <div className="flex h-full flex-col">
+      <header className="flex h-12 shrink-0 items-center gap-1 border-b border-line bg-sheet px-2">
+        {wide ? (
+          <IconButton
+            label={collapsed ? t.showOutline : t.hideOutline}
+            onClick={() => {
+              setCollapsed(!collapsed);
+              try {
+                localStorage.setItem('wb-outline-collapsed', collapsed ? '0' : '1');
+              } catch {
+                /* ignore */
+              }
+            }}
+          >
+            {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          </IconButton>
+        ) : (
+          <IconButton label={t.openOutline} onClick={() => setDrawer(true)}>
+            <Menu size={18} />
+          </IconButton>
+        )}
+        <Link href="/" className="ml-1 truncate rounded-md px-2 py-1 text-[15px] font-semibold tracking-tight hover:bg-sunk">
+          {o.title}
+        </Link>
+        <IconButton label={t.courses} className="shrink-0" onClick={() => setSwitching(true)}>
+          <ChevronsUpDown size={15} />
+        </IconButton>
+        {updates ? (
+          <button type="button" onClick={() => setSwitching(true)} className="hidden shrink-0 items-center gap-1.5 rounded-full bg-review-soft px-2.5 py-0.5 text-xs font-medium text-review hover:opacity-80 sm:inline-flex">
+            <span aria-hidden className="size-1.5 rounded-full bg-review" /> {t.updateAvailable}
+          </button>
+        ) : null}
+
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setSearching(true)}
+            className="hidden h-8 items-center gap-2 rounded-md border border-line bg-paper px-3 text-[13px] text-ink-3 hover:border-line-strong sm:inline-flex"
+          >
+            <Search size={14} /> {t.search}
+            <kbd className="ml-4 rounded border border-line bg-sheet px-1.5 font-sans text-[11px]">{/Mac|iPhone/.test(navigator.platform) ? '⌘' : 'Ctrl'} K</kbd>
+          </button>
+          <IconButton label={t.search} className="sm:hidden" onClick={() => setSearching(true)}>
+            <Search size={18} />
+          </IconButton>
+          <div className="mx-2 hidden items-center gap-2 text-[13px] text-ink-2 md:flex" title={t.exercisesDone}>
+            <span className="tabular-nums">
+              {totals.done}/{totals.total}
+            </span>
+            <span className="h-1.5 w-20 overflow-hidden rounded-full bg-sunk">
+              <span className="block h-full rounded-full bg-done transition-[width]" style={{ width: `${totals.total ? (totals.done / totals.total) * 100 : 0}%` }} />
+            </span>
+          </div>
+          <Link href="/review" className="inline-flex size-8 items-center justify-center rounded-md text-ink-2 hover:bg-sunk hover:text-ink" aria-label={t.review} title={t.review}>
+            <ClipboardList size={18} />
+          </Link>
+          <IconButton label={t.help} onClick={() => setHelping(true)}>
+            <CircleHelp size={18} />
+          </IconButton>
+          <IconButton label={t.settings} onClick={() => setConfiguring(true)}>
+            <SettingsIcon size={18} />
+          </IconButton>
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        {showOutline ? <aside className="w-[19rem] shrink-0 border-r border-line">{outlinePanel()}</aside> : null}
+        <main className="min-w-0 flex-1">
+          <Switch>
+            <Route path="/" component={Dashboard} />
+            <Route path="/item/:id">{(p) => <ItemPage id={p.id} />}</Route>
+            <Route path="/review" component={ReviewPage} />
+            <Route path="/welcome" component={LandingPage} />
+            <Route path="/achievements" component={AchievementsPage} />
+            <Route path="/notes" component={NotesPage} />
+            <Route path="/chapter/:id">{(p) => <ChapterPage key={p.id} id={p.id} />}</Route>
+            <Route path="/adventure/:id">{(p) => <AdventurePage key={p.id} id={p.id} />}</Route>
+            <Route>
+              <Empty title={t.pageNotFound}>{t.pageNotFoundBody}</Empty>
+            </Route>
+          </Switch>
+        </main>
+      </div>
+
+      {drawer && !wide ? (
+        <div className="fixed inset-0 z-30 flex" role="dialog" aria-label={t.outline}>
+          <div className="w-[min(22rem,88vw)] border-r border-line bg-sheet shadow-[var(--shadow)]">
+            <div className="flex items-center justify-between border-b border-line px-3 py-2">
+              <span className="font-semibold">{t.outline}</span>
+              <IconButton label={t.closeOutline} onClick={() => setDrawer(false)}>
+                <X size={18} />
+              </IconButton>
+            </div>
+            <div className={clsx('h-[calc(100%-3rem)]')}>{outlinePanel(() => setDrawer(false))}</div>
+          </div>
+          <button type="button" aria-label={t.closeOutline} className="flex-1 bg-ink/30" onClick={() => setDrawer(false)} />
+        </div>
+      ) : null}
+
+      <SearchDialog open={searching} onClose={() => setSearching(false)} />
+      {achievementsOn ? <Celebration /> : null}
+      <CourseDialog open={switching} onClose={() => setSwitching(false)} />
+      <SettingsDialog open={configuring} onClose={() => setConfiguring(false)} />
+      <HelpDialog open={helping} onClose={() => setHelping(false)} />
+      <SetupDialog />
+    </div>
+  );
+}

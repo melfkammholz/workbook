@@ -1,0 +1,5 @@
+title: Ableitungen berechnen
+description: Zwei Wege zur Ableitung – symbolisch und automatisch.
+steps:
+  - symbolic-differentiation
+  - automatic-differentiation

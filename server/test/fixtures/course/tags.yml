@@ -1,0 +1,15 @@
+# Topics say what an exercise is about, signals what it will be like to do it.
+# Differentiation is only the example these exercises use, not what the course teaches.
+diff: { label: Differenzieren, color: olive, review: false }
+rekursion: { label: Rekursion }
+typklassen: { label: Typklassen }
+deep-dive:
+  label: Deep Dive
+  color: purple
+  type: signal
+  description: Nur, wenn du schon gut dabei bist und Zeit investieren möchtest.
+level-up:
+  label: Level Up
+  color: teal
+  type: signal
+  description: Geht über die Vorlesung hinaus, kann aber beim Verstehen helfen.

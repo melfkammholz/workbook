@@ -1,0 +1,57 @@
+title: Typklassen
+summary: Verhalten für viele Typen gemeinsam beschreiben.
+intro: einfuehrung-kapitel.typ
+defaults:
+  scratch: haskell
+items:
+  - page: einfuehrung
+    title: Einführung in Typklassen
+  - id: symbolic-differentiation
+    kind: challenge
+    title: Symbolisches Differenzieren
+    tags: [diff, typklassen]
+    long: true
+    similar: [automatic-differentiation]
+  - id: automatic-differentiation
+    kind: challenge
+    title: Automatisches Differenzieren
+    level: 2
+    long: true
+    tags: [diff, typklassen, deep-dive]
+    after: [symbolic-differentiation]
+    code:
+      file: code/AutomaticDifferentiation.hs
+      check: code/AutomaticDifferentiationCheck.hs
+  - id: mergesort
+    kind: challenge
+    title: Mergesort
+    tags: [deep-dive]
+    code:
+      language: haskell
+  - id: mergesort-python
+    kind: challenge
+    title: Mergesort in Python
+    after: [mergesort]
+    code:
+      language: python
+  - section: Ein kleiner Taschenrechner
+  - id: rechner-auswerten
+    title: Ausdrücke auswerten
+    code:
+      shared: taschenrechner
+      check: code/RechnerAuswertenCheck.hs
+  - id: rechner-vereinfachen
+    title: Ausdrücke vereinfachen
+    after: [rechner-auswerten]
+    code:
+      shared: taschenrechner
+      check: code/RechnerVereinfachenCheck.hs
+  - id: rechner-anzeigen
+    title: Ausdrücke anzeigen
+    level: 2
+    after: [rechner-auswerten]
+    code:
+      shared: taschenrechner
+      check: code/RechnerAnzeigenCheck.hs
+  - checklist: selbstevaluation-typklassen
+    text: selbstevaluation.typ
