@@ -4,12 +4,13 @@
 #   open http://localhost:8080
 #
 # Add your course in the app, using the address of its repository.
-# Update the app:  git pull && docker compose up -d --build
+# Update the app:  docker compose pull && docker compose up -d
 #
-# Course authors: put the folder you are writing in into compose.override.yaml, see the README.
+# Course authors and developers: compose.override.yaml next to this file adds a
+# course folder or builds the image from source, see the README.
 services:
   workbook:
-    build: .
+    image: ghcr.io/melfkammholz/workbook:latest
     ports:
       # Only reachable from this computer.
       - "127.0.0.1:8080:8080"

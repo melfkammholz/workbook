@@ -42,27 +42,35 @@ The app speaks German and English.
 
 ### Set it up
 
-You need [Docker](https://docs.docker.com/get-docker/), which is Docker Desktop on macOS and Windows, and
-[git](https://git-scm.com/downloads).
+You need [Docker](https://docs.docker.com/get-docker/), which is Docker Desktop on macOS and Windows.
 
-```sh
-git clone https://github.com/melfkammholz/workbook.git
-cd workbook
-docker compose up -d
-```
+1. Make a folder for the workbook and save [`compose.yaml`](https://raw.githubusercontent.com/melfkammholz/workbook/main/compose.yaml)
+   in it. You can save it from your browser, or download it in a terminal:
 
-The first start builds the image, which includes GHC, SWI-Prolog and Typst. That takes a while and a few gigabytes of
-disk space. Later starts are quick.
+   ```sh
+   mkdir workbook && cd workbook
+   curl -fsSLO https://raw.githubusercontent.com/melfkammholz/workbook/main/compose.yaml
+   ```
+
+2. Start the workbook in that folder:
+
+   ```sh
+   docker compose up -d
+   ```
+
+   The first start downloads the image, which includes GHC, SWI-Prolog and Typst. That takes a while and a few
+   gigabytes of disk space. Later starts are quick.
 
 Open <http://localhost:8080> and paste the address of your course into the welcome dialog, for example
 `https://github.com/melfkammholz/workbook-deklprog`. The page is only reachable from your own computer.
 
 ### Day to day
 
-* **Start and stop:** `docker compose up -d` starts the workbook, and `docker compose down` stops it. Your work stays.
+* **Start and stop:** in the folder with `compose.yaml`, `docker compose up -d` starts the workbook, and
+  `docker compose down` stops it. Your work stays.
 * **Course updates:** the top bar tells you when your course has new or changed exercises. You decide when to apply an
   update, and your work stays, even for an exercise the update removes.
-* **App updates:** `git pull && docker compose up -d --build`.
+* **App updates:** `docker compose pull && docker compose up -d`.
 * **More courses:** the arrows next to the course title switch between courses and add more. Each course keeps its own
   answers, notes and progress.
 * **Your work** lives only in the Docker volume `workbook-data`, on your computer. There is no other copy, and nobody
@@ -127,6 +135,24 @@ The GHC tests need `QuickCheck` in a package environment, for example
 `cabal install --lib --package-env ./ghc-env QuickCheck` and then `GHC_ENVIRONMENT=$PWD/ghc-env`.
 `server/test/fixtures/course` is the small course the tests run on.
 
+To run your own build in Docker, add `build: .` to the service in `compose.override.yaml` and start it with
+`docker compose up -d --build`.
+
+### Publishing the image
+
+The workflow in `.github/workflows/docker.yml` publishes the image to the GitHub Container Registry when you push a
+version tag:
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+It builds for `amd64` and `arm64` (Apple Silicon), each natively on its own runner, and tags the image
+`ghcr.io/melfkammholz/workbook` as `1.0.0`, `1.0` and `latest`. Students get `latest`. The first build takes a while,
+because it installs GHC; later ones reuse the cache. You can also start the workflow by hand from the Actions tab,
+which publishes a tag named after the branch, such as `main`, and leaves `latest` alone.
+
 | Path | |
 | --- | --- |
 | `shared/` | Types shared by the server and the web app |
@@ -158,7 +184,6 @@ Environment variables: `PORT`, `HOST`, `CONTENT_DIR`, `DATA_DIR`, `WEB_DIR`, `TY
 Not built yet:
 
 * notes in Markdown with KaTeX (notes are written in Typst for now),
-* private course repositories,
-* a published Docker image, so students would not have to build it.
+* private course repositories.
 
 Messages from the compilers and test libraries are shown as they are, mostly in English.
