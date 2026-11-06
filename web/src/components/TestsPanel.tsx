@@ -1,18 +1,34 @@
-import { CircleAlert, CircleCheck, CircleDashed, CircleX, Play, TimerOff } from 'lucide-react';
+import { CircleAlert, CircleCheck, CircleDashed, CircleStop, CircleX, Play, TimerOff } from 'lucide-react';
 import type { CheckResult, CheckRun } from '@wb/shared';
 import { useT } from '@/lib/i18n';
 import { ExplainError } from './ExplainError';
-import { Button, Empty, Spinner, clsx } from './ui';
+import { Button, Empty, IconButton, Spinner, clsx } from './ui';
 
 /** The test harnesses (Workbook.Check, workbook_check.pl) start this message with these words. */
 const NOT_IMPLEMENTED = 'not implemented yet';
 
-export function TestsPanel({ run, running, error, onRun, firstRun, banner }: { run: CheckRun | null; running: boolean; error: string | null; onRun: () => void; firstRun: boolean; banner?: React.ReactNode }) {
+export function TestsPanel({
+  run,
+  running,
+  error,
+  onRun,
+  onStop,
+  firstRun,
+  banner,
+}: {
+  run: CheckRun | null;
+  running: boolean;
+  error: string | null;
+  onRun: () => void;
+  onStop: () => void;
+  firstRun: boolean;
+  banner?: React.ReactNode;
+}) {
   const t = useT();
   const results = run?.results ?? [];
   const passed = results.filter((r) => r.status === 'pass').length;
   const pending = results.filter((r) => r.message.startsWith(NOT_IMPLEMENTED)).length;
-  const allPass = run?.compiled && results.length > 0 && passed === results.length;
+  const allPass = run?.compiled && !run.stopped && results.length > 0 && passed === results.length;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-sheet">
@@ -23,7 +39,12 @@ export function TestsPanel({ run, running, error, onRun, firstRun, banner }: { r
               <Spinner /> {t.runningTests}
             </span>
           ) : run ? (
-            run.compiled && results.length > 0 ? (
+            run.stopped ? (
+              <span className="font-medium text-ink">
+                {t.testsStopped}
+                {results.length > 0 ? <span className="ml-2 font-normal text-ink-3">{t.nOfMTestsPass(passed, results.length)}</span> : null}
+              </span>
+            ) : run.compiled && results.length > 0 ? (
               <span className={clsx('font-medium', allPass ? 'text-done' : 'text-ink')}>
                 {allPass ? t.allTestsPass : t.nOfMTestsPass(passed, results.length)}
                 {pending > 0 && !allPass ? <span className="ml-2 font-normal text-ink-3">{t.nNotImplemented(pending)}</span> : null}
@@ -37,6 +58,9 @@ export function TestsPanel({ run, running, error, onRun, firstRun, banner }: { r
         </div>
         <div className="flex items-center gap-2">
           {allPass ? banner : null}
+          <IconButton label={t.stopTests} onClick={onStop} disabled={!running}>
+            <CircleStop size={16} />
+          </IconButton>
           <Button variant={allPass && banner ? 'secondary' : 'primary'} size="sm" onClick={onRun} disabled={running}>
             <Play size={13} /> {firstRun ? t.runTests : t.runAgain}
           </Button>

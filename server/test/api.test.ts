@@ -187,6 +187,20 @@ describe.skipIf(!haveGhc)('running code', () => {
     expect(r.status).toBe(400);
   });
 
+  it('stops a test run on request and does not count it', async () => {
+    const be = 'binary-exponentiation';
+    const code = await import('../src/content/loader.js').then((m) => m.loadContent(EXAMPLE_CONTENT).exercise(be)!.code!);
+    const looping = code.starter.replace('power x n = undefined', 'power x n = power x n');
+    const t0 = Date.now();
+    const pending = api('POST', `/api/work/${be}/check`, { files: { [code.studentPath]: looping } });
+    await new Promise((r) => setTimeout(r, 1_500));
+    expect((await api('POST', `/api/work/${be}/check/stop`)).status).toBe(200);
+    const run = (await pending).json as CheckRun;
+    expect(run.stopped).toBe(true);
+    expect(Date.now() - t0).toBeLessThan(10_000);
+    expect((await api('GET', '/api/state')).json.state.stats[be]?.checkRuns ?? 0).toBe(0);
+  });
+
   it('hands out the solution only on request and remembers that it did', async () => {
     expect((await api('GET', '/api/state')).json.state.stats[ad].solutionViewedAt).toBeNull();
     const r = await api('POST', `/api/work/${ad}/solution`);

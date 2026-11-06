@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Panel, usePanelRef } from 'react-resizable-panels';
 import type { CheckRun, ExerciseMeta, ItemDetail } from '@wb/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { fetchSample, fetchSolution, fetchVersions, keys, runChecks, saveAnswer, useSettings, type Work } from '@/lib/api';
+import { fetchSample, fetchSolution, fetchVersions, keys, runChecks, saveAnswer, stopChecks, useSettings, type Work } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { readPref, writePref } from '@/lib/shell';
 import { useDebouncedCallback } from '@/lib/useDebounced';
@@ -161,7 +161,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
       const r = await runChecks(meta.id, latest.current);
       setRun(r);
       onActivity();
-      const allPass = r.compiled && r.results.length > 0 && r.results.every((x) => x.status === 'pass');
+      const allPass = r.compiled && !r.stopped && r.results.length > 0 && r.results.every((x) => x.status === 'pass');
       onAllChecksPass(allPass);
       if (allPass && celebrating && !passedBefore.current) confetti();
       if (allPass) passedBefore.current = true;
@@ -424,7 +424,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
                       <ReplView repl={session} prompt={prompt} language={language ?? ''} />
                     )
                   ) : (
-                    <TestsPanel run={run} running={running} error={runError} onRun={() => void check()} firstRun={!run} banner={checkBanner} />
+                    <TestsPanel run={run} running={running} error={runError} onRun={() => void check()} onStop={() => void stopChecks(meta.id)} firstRun={!run} banner={checkBanner} />
                   )}
                 </div>
               </div>

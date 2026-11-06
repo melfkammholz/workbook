@@ -453,6 +453,8 @@ export interface CheckRun {
   stdout: string;
   /** Set when the runner itself failed (timeout, crash). */
   runnerError: string | null;
+  /** True when the student stopped the run before it finished. */
+  stopped?: boolean;
   durationMs: number;
 }
 

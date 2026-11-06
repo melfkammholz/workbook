@@ -126,6 +126,26 @@ describe.skipIf(!hasBinary(bin))('Prolog tests', () => {
     }
   });
 
+  it('stops a run when asked to, long before the time limit', async () => {
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), 1_000);
+    const t0 = Date.now();
+    const r = await runChecks({
+      runghcBin: 'runghc',
+      swiplBin: bin,
+      haskellLib: '',
+      prologLib: PROLOG_LIB,
+      workDir: fs.mkdtempSync(path.join(os.tmpdir(), 'wb-plrun-')),
+      code,
+      files: { [code.studentPath]: 'laenge(L, N) :- laenge(L, N).\n' },
+      timeoutMs: 60_000,
+      signal: stop.signal,
+    });
+    expect(Date.now() - t0).toBeLessThan(10_000);
+    expect(r.stopped).toBe(true);
+    expect(r.runnerError).toBeNull();
+  });
+
   it('calls an empty starter "not implemented" and not wrong', async () => {
     const r = await run(code.starter);
     expect(r.compiled).toBe(true);

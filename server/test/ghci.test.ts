@@ -159,6 +159,26 @@ describe.skipIf(!haveGhc)('runHaskellChecks (misc)', () => {
     expect(r.results.some((x) => x.status === 'timeout') || r.runnerError !== null).toBe(true);
   });
 
+  it('stops a run when asked to, long before the time limit', async () => {
+    const be = content.exercise('binary-exponentiation')!;
+    const looping = be.code!.starter.replace('power x n = undefined', 'power x n = power x n');
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), 1_500);
+    const t0 = Date.now();
+    const r = await runHaskellChecks({
+      runghcBin: 'runghc',
+      libDir: HASKELL_LIB,
+      workDir: tmp(),
+      code: be.code!,
+      files: { [be.code!.studentPath]: looping },
+      timeoutMs: 60_000,
+      signal: stop.signal,
+    });
+    expect(Date.now() - t0).toBeLessThan(10_000);
+    expect(r.stopped).toBe(true);
+    expect(r.runnerError).toBeNull();
+  });
+
   it('passes the gcd and binary exponentiation reference solutions', async () => {
     for (const id of ['binary-exponentiation', 'gcd-pf']) {
       const ex = content.exercise(id)!;

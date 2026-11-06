@@ -244,6 +244,7 @@ export const saveAnswer = (id: string, slot: string, content: string, reason: 'a
 export const saveNote = (id: string, format: NoteFormat, content: string) => api.put(`/api/work/${encodeURIComponent(id)}/note`, { format, content });
 export const fetchVersions = (id: string, slot: string) => api.get<AnswerVersion[]>(`/api/work/${encodeURIComponent(id)}/versions?slot=${encodeURIComponent(slot)}`);
 export const runChecks = (id: string, files: Record<string, string>) => api.post<CheckRun>(`/api/work/${encodeURIComponent(id)}/check`, { files });
+export const stopChecks = (id: string) => api.post<{ ok: boolean }>(`/api/work/${encodeURIComponent(id)}/check/stop`);
 export const fetchSolution = (id: string) => api.post<{ files: Record<string, string> }>(`/api/work/${encodeURIComponent(id)}/solution`);
 export const fetchSample = (id: string) => api.post<{ samples: string[]; css: string }>(`/api/work/${encodeURIComponent(id)}/sample`);
 export const recordHints = (id: string, count: number) => api.post(`/api/work/${encodeURIComponent(id)}/hints`, { count });

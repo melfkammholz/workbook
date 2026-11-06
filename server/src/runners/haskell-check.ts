@@ -22,6 +22,8 @@ export interface HaskellCheckOptions {
   files: Record<string, string>;
   /** Wall-clock limit for the whole run (compilation + all checks). */
   timeoutMs?: number;
+  /** Stops the run, e.g. when the student presses stop. */
+  signal?: AbortSignal;
 }
 
 const STATUSES = new Set<CheckStatus>(['pass', 'fail', 'error', 'timeout']);
@@ -73,12 +75,14 @@ export async function runHaskellChecks(o: HaskellCheckOptions): Promise<CheckRun
   fs.mkdirSync(dir, { recursive: true });
   try {
     syncFiles(dir, { ...o.code.support, ...o.files, [CHECK_FILE]: check });
-    const { stdout, stderr, timedOut, spawnError } = await runProcess(
+    const { stdout, stderr, timedOut, stopped, spawnError } = await runProcess(
       o.runghcBin,
       ['-i.', `-i${o.libDir}`, '-ferror-spans', '-fdiagnostics-color=never', '-Wno-x-partial', ...o.code.options, CHECK_FILE],
       dir,
       o.timeoutMs ?? 30_000,
+      o.signal,
     );
+    if (stopped) return stoppedRun(stdout, t0);
 
     const { results, stdout: plainOut } = parseMarkedResults(stdout);
 
@@ -113,8 +117,15 @@ export async function runHaskellChecks(o: HaskellCheckOptions): Promise<CheckRun
   }
 }
 
-export function runProcess(bin: string, args: string[], cwd: string, timeoutMs: number) {
-  return new Promise<{ stdout: string; stderr: string; timedOut: boolean; spawnError: string | null }>((resolve) => {
+/** What a run stopped by the student reports: the results that were already in, nothing about compiling. */
+export function stoppedRun(stdout: string, t0: number): CheckRun {
+  const { results, stdout: plain } = parseMarkedResults(stdout);
+  return { compiled: true, diagnostics: [], results, stdout: plain, runnerError: null, stopped: true, durationMs: Date.now() - t0 };
+}
+
+export function runProcess(bin: string, args: string[], cwd: string, timeoutMs: number, signal?: AbortSignal) {
+  return new Promise<{ stdout: string; stderr: string; timedOut: boolean; stopped: boolean; spawnError: string | null }>((resolve) => {
+    if (signal?.aborted) return resolve({ stdout: '', stderr: '', timedOut: false, stopped: true, spawnError: null });
     // Own process group, so the timeout also kills the ghc child runghc starts.
     const proc = spawn(bin, args, {
       cwd,
@@ -125,24 +136,34 @@ export function runProcess(bin: string, args: string[], cwd: string, timeoutMs: 
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let stopped = false;
     let spawnError: string | null = null;
     const cap = 512_000;
     proc.stdout.setEncoding('utf8').on('data', (d: string) => (stdout.length < cap ? (stdout += d) : undefined));
     proc.stderr.setEncoding('utf8').on('data', (d: string) => (stderr.length < cap ? (stderr += d) : undefined));
-    const timer = setTimeout(() => {
-      timedOut = true;
+    const kill = () => {
       try {
         process.kill(-proc.pid!, 'SIGKILL');
       } catch {
         proc.kill('SIGKILL');
       }
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      kill();
     }, timeoutMs);
+    const onAbort = () => {
+      stopped = true;
+      kill();
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
     proc.on('error', (e) => {
       spawnError = e.message;
     });
     proc.on('close', () => {
       clearTimeout(timer);
-      resolve({ stdout, stderr, timedOut, spawnError });
+      signal?.removeEventListener('abort', onAbort);
+      resolve({ stdout, stderr, timedOut, stopped, spawnError });
     });
   });
 }

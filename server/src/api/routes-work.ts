@@ -154,6 +154,14 @@ export function workRoutes(app: FastifyInstance, d: Deps): void {
     return { samples: rendered.samples, css: rendered.css };
   });
 
+  /** Test runs in progress, by exercise, so that the student can stop them. */
+  const running = new Map<string, Set<AbortController>>();
+
+  app.post<{ Params: { id: string } }>('/api/work/:id/check/stop', async (req) => {
+    for (const c of running.get(req.params.id) ?? []) c.abort();
+    return { ok: true };
+  });
+
   app.post<{ Params: { id: string } }>('/api/work/:id/check', async (req, reply) => {
     const b = parse(bodies.check, req.body, reply);
     if (!b) return;
@@ -167,18 +175,28 @@ export function workRoutes(app: FastifyInstance, d: Deps): void {
       files[file] = content;
     }
 
-    const run = await runChecks({
-      runghcBin: d.config.runghcBin,
-      swiplBin: d.config.swiplBin,
-      haskellLib: d.haskellLib,
-      prologLib: d.prologLib,
-      workDir: path.join(d.config.dataDir, 'runs'),
-      code: ex.code,
-      files,
-    });
+    const controller = new AbortController();
+    const runs = running.get(ex.meta.id) ?? new Set();
+    running.set(ex.meta.id, runs.add(controller));
+    let run;
+    try {
+      run = await runChecks({
+        runghcBin: d.config.runghcBin,
+        swiplBin: d.config.swiplBin,
+        haskellLib: d.haskellLib,
+        prologLib: d.prologLib,
+        workDir: path.join(d.config.dataDir, 'runs'),
+        code: ex.code,
+        files,
+        signal: controller.signal,
+      });
+    } finally {
+      runs.delete(controller);
+      if (runs.size === 0) running.delete(ex.meta.id);
+    }
     for (const [file, content] of Object.entries(files)) d.store.saveAnswer(d.content.current.owner(ex.meta.id, file), file, content, 'check');
     d.store.noteActivity(ex.meta.id);
-    if (run.compiled && !run.runnerError && run.results.length > 0)
+    if (run.compiled && !run.runnerError && !run.stopped && run.results.length > 0)
       d.store.recordCheckRun(ex.meta.id, run.results.filter((r) => r.status === 'pass').length, run.results.length);
     return run;
   });
