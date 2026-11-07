@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Link } from 'wouter';
 import type { EarnedEvent, ExerciseMeta, Outline } from '@wb/shared';
+import { Meadow } from './Meadow';
 import { clsx } from './ui';
 import { useT } from '@/lib/i18n';
 
@@ -55,7 +56,13 @@ export function AnimalCollection({ outline, earned }: { outline: Outline; earned
         <h2 className="text-[15px] font-semibold">{t.animals}</h2>
         <span className="text-[13px] tabular-nums text-ink-2">{t.animalsCount(all.filter((m) => m.collected).length, all.length)}</span>
       </div>
-      <p className="mt-0.5 text-[13.5px] text-ink-2">{t.animalsBody}</p>
+      <p className="mt-0.5 max-w-prose text-[13.5px] text-ink-2">{t.animalsBody}</p>
+      {earned.some((e) => e.event.kind === 'animal') ? (
+        <>
+          <Meadow outline={outline} earned={earned} />
+          <p className="mt-1.5 text-[12.5px] text-ink-3">{t.meadowHint}</p>
+        </>
+      ) : null}
       <ul className="mt-3 flex flex-wrap gap-2">
         {ordered.map((g) => {
           const have = count(g);
