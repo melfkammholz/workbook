@@ -101,7 +101,8 @@ export function createMeadow(o: MeadowOptions): Meadow {
     if (o.reducedMotion) { cam.x = goal.x; cam.y = goal.y; camGoal = null; dirty = true; } else camGoal = goal;
   }
   function resize() {
-    const w = holder.clientWidth, h = Math.round(clamp(w * 0.46, 270, 380));
+    // Shown larger, the meadow fills its box; otherwise its height follows its width.
+    const w = holder.clientWidth, h = 'fill' in holder.dataset ? holder.clientHeight : Math.round(clamp(w * 0.46, 270, 380));
     if (w === view.CW && h === view.CH) return;
     const centre = view.CW ? view.cam.x + viewW() / 2 : START_VIEW;
     view.CW = w; view.CH = h; view.dpr = window.devicePixelRatio || 1; view.base = h / H;

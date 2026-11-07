@@ -1,8 +1,10 @@
+import { Maximize2, Minimize2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import type { EarnedEvent, Outline } from '@wb/shared';
 import { createMeadow, type Meadow as Engine, type Selection } from './meadow/engine';
 import type { Friend, TraceId } from './meadow/types';
+import { clsx } from './ui';
 import { useT } from '@/lib/i18n';
 
 /** Which achievement leaves which trace in the meadow: habits, never speed. */
@@ -36,6 +38,21 @@ export function Meadow({ outline, earned }: { outline: Outline; earned: EarnedEv
   const [selection, setSelection] = useState<Selection | null>(null);
   const [zoom, setZoom] = useState({ in: true, out: false });
   const [caption, setCaption] = useState<string | null>(null);
+  const box = useRef<HTMLDivElement>(null);
+  /** Shown larger, over the page: the height it had in the page, to keep its place there. */
+  const [larger, setLarger] = useState<number | null>(null);
+  const isLarger = larger !== null;
+  const toggleLarger = () => setLarger(isLarger ? null : (box.current?.offsetHeight ?? 0));
+
+  useEffect(() => {
+    if (!isLarger) return;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    canvas.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLarger(null); };
+    document.addEventListener('keydown', onKey);
+    return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', onKey); };
+  }, [isLarger]);
 
   const { friends, total } = useMemo(() => meadowFriends(outline, earned), [outline, earned]);
   const traces = useMemo(() => {
@@ -69,58 +86,79 @@ export function Meadow({ outline, earned }: { outline: Outline; earned: EarnedEv
 
   const friend = selection?.kind === 'friend' ? friends.find((f) => f.id === selection.id) : undefined;
   return (
-    <div className="relative mt-3 overflow-hidden rounded-xl border border-line bg-sunk">
-      <canvas
-        ref={canvas}
-        tabIndex={0}
-        role="img"
-        aria-label={t.meadowLabel}
-        className="block w-full cursor-grab touch-pan-y focus-visible:outline-2 focus-visible:-outline-offset-3 focus-visible:outline-accent data-dragging:cursor-grabbing"
-      />
-      <div className="absolute right-2.5 top-2.5 flex flex-col overflow-hidden rounded-lg border border-line bg-sheet/90 shadow-[var(--shadow)]">
-        {(['in', 'out'] as const).map((dir) => (
-          <button
-            key={dir}
-            type="button"
-            aria-label={dir === 'in' ? t.zoomIn : t.zoomOut}
-            title={dir === 'in' ? t.zoomIn : t.zoomOut}
-            disabled={!zoom[dir]}
-            onClick={() => engine.current?.zoom(dir === 'in' ? 1.25 : 1 / 1.25)}
-            className="grid size-[30px] place-items-center text-[17px] leading-none text-ink hover:bg-accent-soft disabled:text-ink-3 disabled:hover:bg-transparent [&+&]:border-t [&+&]:border-line"
-          >
-            {dir === 'in' ? '+' : '−'}
-          </button>
-        ))}
-      </div>
-      {caption ? (
-        <div role="status" className="pointer-events-none absolute bottom-3 left-3 max-w-[calc(100%-16rem)] rounded-full bg-sheet/90 px-3 py-1 text-[13px] shadow-[var(--shadow)]">
-          {caption}
-        </div>
-      ) : null}
+    <>
+      {isLarger ? <div aria-hidden className="mt-3" style={{ height: larger }} /> : null}
+      {isLarger ? <div aria-hidden className="fixed inset-0 z-40 bg-ink/40" onClick={() => setLarger(null)} /> : null}
       <div
-        ref={popover}
-        hidden={!selection}
-        style={{ visibility: 'hidden' }}
-        className="absolute z-10 flex w-[12.5rem] max-w-[calc(100%-16px)] flex-col gap-px rounded-lg border border-line bg-sheet px-2.5 pb-2 pt-1.5 text-[12.5px] leading-snug shadow-[var(--shadow)]"
+        ref={box}
+        data-fill={isLarger ? '' : undefined}
+        role={isLarger ? 'dialog' : undefined}
+        aria-modal={isLarger || undefined}
+        aria-label={isLarger ? t.animals : undefined}
+        className={clsx('overflow-hidden rounded-xl border border-line bg-sunk', isLarger ? 'fixed inset-3 z-50 shadow-[var(--shadow)] sm:inset-6' : 'relative mt-3')}
       >
-        {selection?.kind === 'friend' ? (
-          <>
-            <strong className="text-[13.5px] font-semibold">
-              {selection.emoji} {selection.sprite === 'emoji' ? '' : t.meadowAnimals[selection.sprite]}
-              {selection.count > 1 ? `, ${t.friendOneOf(selection.count, t.meadowVariants[selection.variant])}` : ''}
-            </strong>
-            {friend ? <span className="text-ink-2">{t.friendJoined(friend.title, friend.chapter || null)}{selection.asleep ? ` ${t.friendAsleep}` : ''}</span> : null}
-            <Link href={`/item/${selection.id}`} className="mt-0.5 font-medium text-accent hover:underline">
-              {t.openExercise}
-            </Link>
-          </>
-        ) : selection?.kind === 'trace' ? (
-          <>
-            <strong className="text-[13.5px] font-semibold">{t.meadowTraces[selection.trace].name}</strong>
-            <span className="text-ink-2">{t.meadowTraces[selection.trace].why}</span>
-          </>
+        <canvas
+          ref={canvas}
+          tabIndex={0}
+          role="img"
+          aria-label={t.meadowLabel}
+          className="block w-full cursor-grab touch-pan-y focus-visible:outline-2 focus-visible:-outline-offset-3 focus-visible:outline-accent data-dragging:cursor-grabbing"
+        />
+        <div className="absolute right-2.5 top-2.5 flex flex-col overflow-hidden rounded-lg border border-line bg-sheet/90 shadow-[var(--shadow)]">
+          <button
+            type="button"
+            aria-label={isLarger ? t.meadowSmaller : t.meadowLarger}
+            title={isLarger ? t.meadowSmaller : t.meadowLarger}
+            aria-pressed={isLarger}
+            onClick={toggleLarger}
+            className="grid size-[30px] place-items-center text-ink hover:bg-accent-soft"
+          >
+            {isLarger ? <Minimize2 size={15} aria-hidden /> : <Maximize2 size={15} aria-hidden />}
+          </button>
+          {(['in', 'out'] as const).map((dir) => (
+            <button
+              key={dir}
+              type="button"
+              aria-label={dir === 'in' ? t.zoomIn : t.zoomOut}
+              title={dir === 'in' ? t.zoomIn : t.zoomOut}
+              disabled={!zoom[dir]}
+              onClick={() => engine.current?.zoom(dir === 'in' ? 1.25 : 1 / 1.25)}
+              className="grid size-[30px] place-items-center border-t border-line text-[17px] leading-none text-ink hover:bg-accent-soft disabled:text-ink-3 disabled:hover:bg-transparent"
+            >
+              {dir === 'in' ? '+' : '−'}
+            </button>
+          ))}
+        </div>
+        {caption ? (
+          <div role="status" className="pointer-events-none absolute bottom-3 left-3 max-w-[calc(100%-16rem)] rounded-full bg-sheet/90 px-3 py-1 text-[13px] shadow-[var(--shadow)]">
+            {caption}
+          </div>
         ) : null}
+        <div
+          ref={popover}
+          hidden={!selection}
+          style={{ visibility: 'hidden' }}
+          className="absolute z-10 flex w-[12.5rem] max-w-[calc(100%-16px)] flex-col gap-px rounded-lg border border-line bg-sheet px-2.5 pb-2 pt-1.5 text-[12.5px] leading-snug shadow-[var(--shadow)]"
+        >
+          {selection?.kind === 'friend' ? (
+            <>
+              <strong className="text-[13.5px] font-semibold">
+                {selection.emoji} {selection.sprite === 'emoji' ? '' : t.meadowAnimals[selection.sprite]}
+                {selection.count > 1 ? `, ${t.friendOneOf(selection.count, t.meadowVariants[selection.variant])}` : ''}
+              </strong>
+              {friend ? <span className="text-ink-2">{t.friendJoined(friend.title, friend.chapter || null)}{selection.asleep ? ` ${t.friendAsleep}` : ''}</span> : null}
+              <Link href={`/item/${selection.id}`} className="mt-0.5 font-medium text-accent hover:underline">
+                {t.openExercise}
+              </Link>
+            </>
+          ) : selection?.kind === 'trace' ? (
+            <>
+              <strong className="text-[13.5px] font-semibold">{t.meadowTraces[selection.trace].name}</strong>
+              <span className="text-ink-2">{t.meadowTraces[selection.trace].why}</span>
+            </>
+          ) : null}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
