@@ -9,17 +9,18 @@ export interface Filters {
   threads: string[];
   levels: (1 | 2 | 3)[];
   kinds: ExerciseKind[];
-  startHereOnly: boolean;
   hideLong: boolean;
 }
 
-export const NO_FILTERS: Filters = { q: '', statuses: [], tags: [], threads: [], levels: [], kinds: [], startHereOnly: false, hideLong: false };
+export const NO_FILTERS: Filters = { q: '', statuses: [], tags: [], threads: [], levels: [], kinds: [], hideLong: false };
 
 const KEY = 'wb-filters';
 
 export function load(): Filters {
   try {
-    return { ...NO_FILTERS, ...(JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Filters>) };
+    // Only known keys: an older version saved filters that are gone now (such as "recommended first", which the focus replaced).
+    const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Filters>;
+    return Object.fromEntries(Object.entries(NO_FILTERS).map(([k, v]) => [k, saved[k as keyof Filters] ?? v])) as unknown as Filters;
   } catch {
     return NO_FILTERS;
   }
@@ -41,7 +42,7 @@ export function useFilters() {
 
 /** Number of active structural filters (the text query is shown in its own box). */
 export function activeCount(f: Filters): number {
-  return f.statuses.length + f.tags.length + f.threads.length + f.levels.length + f.kinds.length + (f.startHereOnly ? 1 : 0) + (f.hideLong ? 1 : 0);
+  return f.statuses.length + f.tags.length + f.threads.length + f.levels.length + f.kinds.length + (f.hideLong ? 1 : 0);
 }
 
 export function matches(item: ItemMeta, status: Status, f: Filters, tags: TagInfo[] = [], threads: ThreadInfo[] = []): boolean {
@@ -55,7 +56,6 @@ export function matches(item: ItemMeta, status: Status, f: Filters, tags: TagInf
   if (f.threads.length && !threads.some((t) => f.threads.includes(t.id) && t.steps.some((step) => step.includes(item.id)))) return false;
   if (f.levels.length && !f.levels.includes(item.level)) return false;
   if (f.kinds.length && !f.kinds.includes(item.kind)) return false;
-  if (f.startHereOnly && !item.startHere) return false;
   if (f.hideLong && item.long) return false;
   return true;
 }

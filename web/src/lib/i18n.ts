@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import type { CourseErrorCode, Status, UiLanguage } from '@wb/shared';
+import type { CourseErrorCode, Focus, Status, UiLanguage } from '@wb/shared';
 import type { Sprite, TraceId, VariantLabel } from '@/components/meadow/types';
 import { useOutline, useSettings } from './api';
 
@@ -26,6 +26,24 @@ const en = {
   status: { todo: 'To do', in_progress: 'In progress', done: 'Done', review: 'Review later' } satisfies Record<Status, string>,
   statusHint: { todo: 'Not started', in_progress: 'Working on it', done: 'Finished for now', review: 'Come back to it later' } satisfies Record<Status, string>,
   confidence: { 1: 'Lost', 2: 'Shaky', 3: 'Okay', 4: 'Confident', 5: 'Could teach it' } as Record<1 | 2 | 3 | 4 | 5, string>,
+
+  // focus
+  focus: 'Focus',
+  courseMenu: 'Course menu',
+  focusName: { essentials: 'Essentials', thorough: 'Thorough', everything: 'Everything' } satisfies Record<Focus, string>,
+  focusIntro: 'Exercises outside your focus fold into a short line and stay one click away. You can change this any time in the course menu.',
+  focusAsk: 'How much do you want to see?',
+  /** What a focus shows, counted in the chapter that is open or in the whole course. `alone` when the course has nothing to leave out. */
+  focusShows: (focus: Focus, n: number, inChapter: boolean, alone: boolean) => {
+    const what = `${n} ${n === 1 ? 'exercise' : 'exercises'} ${inChapter ? 'in this chapter' : 'in this course'}`;
+    if (focus === 'essentials') return `${what}, marked as a good start`;
+    if (focus === 'thorough') return `${what}, everything but the extra material`;
+    return alone ? `All ${what}` : `All ${what}, extra material included`;
+  },
+  moreOutsideFocus: (n: number) => `${n} more`,
+  foldAway: 'Fold away',
+  outsideFocus: 'Outside your focus',
+  buildsOnOutsideFocus: (list: string) => `This builds on code from ${list}, which is outside your focus. That part stays unfinished until you write it there or look at its solution.`,
 
   // courses
   courses: 'Courses',
@@ -482,6 +500,8 @@ const en = {
   helpInterpreter: 'The interpreter always has your latest code loaded. Tests run when you ask for them, with Ctrl+Enter in the editor or the button in the Tests tab. Collapse the panel when you want more room for the editor, and drag its edge to resize it.',
   helpReviewTitle: 'Review',
   helpReview: 'The review page collects what you were unsure about: low confidence, open questions, exercises to come back to. Open an entry to see what you wrote at the time.',
+  helpFocusTitle: 'Focus',
+  helpFocus: 'Your focus decides how much of the course is in sight: the essentials, everything but the extra material, or everything. Exercises outside it fold into a short line in their section and open with a click. Your progress and plants count what is in your focus. Change it any time in the menu next to the course’s name.',
   helpTimerTitle: 'Timer',
   helpTimer: 'The timer counts only the time you are active on an exercise. After a while it asks whether you need help, so you do not stay stuck for long. It stops when you mark an exercise as done. You can pause or reset it on the exercise, and hide it or change the time in the settings.',
   helpAiTitle: 'AI review',
@@ -613,6 +633,23 @@ const de: Strings = {
   status: { todo: 'Offen', in_progress: 'In Arbeit', done: 'Erledigt', review: 'Später ansehen' },
   statusHint: { todo: 'Noch nicht begonnen', in_progress: 'Ich arbeite daran', done: 'Fürs Erste fertig', review: 'Komme später darauf zurück' },
   confidence: { 1: 'Verloren', 2: 'Wackelig', 3: 'Geht so', 4: 'Sicher', 5: 'Könnte es erklären' },
+
+  // focus
+  focus: 'Fokus',
+  courseMenu: 'Kursmenü',
+  focusName: { essentials: 'Das Wichtigste', thorough: 'Gründlich', everything: 'Alles' },
+  focusIntro: 'Aufgaben außerhalb deines Fokus werden zu einer kurzen Zeile zusammengefaltet und bleiben einen Klick entfernt. Du kannst das jederzeit im Kursmenü ändern.',
+  focusAsk: 'Wie viel möchtest du sehen?',
+  focusShows: (focus, n, inChapter, alone) => {
+    const what = `${n} ${n === 1 ? 'Aufgabe' : 'Aufgaben'} ${inChapter ? 'in diesem Kapitel' : 'in diesem Kurs'}`;
+    if (focus === 'essentials') return `${what}, als guter Einstieg markiert`;
+    if (focus === 'thorough') return `${what}, alles außer dem Zusatzmaterial`;
+    return alone ? `Alle ${what}` : `Alle ${what}, mit Zusatzmaterial`;
+  },
+  moreOutsideFocus: (n) => `${n} weitere`,
+  foldAway: 'Wieder einklappen',
+  outsideFocus: 'Außerhalb deines Fokus',
+  buildsOnOutsideFocus: (list) => `Das baut auf Code aus ${list} auf, das außerhalb deines Fokus liegt. Dieser Teil bleibt unfertig, bis du ihn dort schreibst oder dir die Lösung ansiehst.`,
 
   // courses
   courses: 'Kurse',
@@ -1039,6 +1076,8 @@ const de: Strings = {
   helpInterpreter: 'Der Interpreter hat immer deinen neuesten Code geladen. Tests laufen, wenn du sie startest, mit Strg+Enter im Editor oder über den Knopf im Reiter „Tests“. Klappe den Bereich ein, wenn du mehr Platz für den Editor brauchst, und ziehe an seinem Rand, um die Größe zu ändern.',
   helpReviewTitle: 'Rückblick',
   helpReview: 'Der Rückblick sammelt, wobei du unsicher warst: geringe Sicherheit, offene Fragen, Aufgaben zum Zurückkommen. Öffne einen Eintrag, um zu sehen, was du damals geschrieben hast.',
+  helpFocusTitle: 'Fokus',
+  helpFocus: 'Dein Fokus bestimmt, wie viel vom Kurs im Blick ist: das Wichtigste, alles außer dem Zusatzmaterial oder alles. Aufgaben außerhalb davon werden in ihrem Abschnitt zu einer kurzen Zeile zusammengefaltet und öffnen sich mit einem Klick. Fortschritt und Pflanzen zählen, was in deinem Fokus liegt. Ändern kannst du ihn jederzeit im Menü neben dem Kursnamen.',
   helpTimerTitle: 'Timer',
   helpTimer: 'Der Timer zählt nur die Zeit, in der du an einer Aufgabe aktiv bist. Nach einer Weile fragt er, ob du Hilfe brauchst, damit du nicht lange festhängst. Er hält an, wenn du eine Aufgabe als erledigt markierst. Du kannst ihn bei der Aufgabe pausieren oder zurücksetzen und in den Einstellungen ausblenden oder die Zeit ändern.',
   helpAiTitle: 'KI-Rückmeldung',

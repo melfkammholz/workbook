@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import type { ItemDetail } from '@wb/shared';
+import { FOCUSES, type Focus, type ItemDetail } from '@wb/shared';
 import type { Deps } from './deps.js';
 import { docKey } from '../content/loader.js';
 import { fold, snippetOf } from '../content/search.js';
@@ -38,6 +38,12 @@ export function contentRoutes(app: FastifyInstance, d: Deps): void {
   app.get('/api/landing', async (_req, reply) => serveDoc(docKey.landing, reply));
   app.post('/api/landing/seen', async () => {
     d.store.markLandingSeen();
+    return { ok: true };
+  });
+  app.put<{ Body: { focus?: unknown } }>('/api/focus', async (req, reply) => {
+    const focus = req.body?.focus;
+    if (!FOCUSES.includes(focus as Focus)) return reply.code(400).send({ error: `focus: one of ${FOCUSES.join(', ')}` });
+    d.store.setFocus(focus as Focus);
     return { ok: true };
   });
   app.get<{ Params: { id: string } }>('/api/chapters/:id/intro', async (req, reply) => serveDoc(docKey.chapter(req.params.id), reply));

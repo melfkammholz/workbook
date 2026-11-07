@@ -28,6 +28,8 @@ try {
   await page.waitForSelector('text=Willkommen in deinem Workbook');
   await page.click('[role=dialog] button:has-text("English")');
   await page.click('[role=dialog] button:has-text("Get started")');
+  // A new course asks how much of it to show.
+  await page.click('[role=dialog] [role=radio]:has-text("Thorough")');
   await page.waitForSelector('.cm-content');
   await page.waitForSelector('text=Ready', { timeout: 20_000 });
 

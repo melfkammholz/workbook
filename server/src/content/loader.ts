@@ -411,6 +411,7 @@ export function loadContent(dir: string): Content {
 
       exerciseNo++;
       const sh = e['start-here'];
+      if (sh !== false && e.extra) err(rel(chapterFile), `exercise "${e.id}" is both start-here and extra`, e.id);
       const scratch = e.scratch ?? defaults.scratch ?? null;
       const spec: CodeSpec | null = code
         ? {
@@ -436,6 +437,8 @@ export function loadContent(dir: string): Content {
         kind: e.kind ?? defaults.kind ?? 'test',
         level: e.level ?? defaults.level ?? 1,
         startHere: sh !== false,
+        // Both at once is an error (reported below); start-here wins, so the exercise stays in every focus.
+        extra: e.extra && sh === false,
         long: e.long ?? defaults.long ?? false,
         emoji: sh === false ? null : typeof sh === 'string' ? sh : emojiFor(e.id),
         tags: [...new Set([...(defaults.tags ?? []), ...e.tags])],
@@ -528,6 +531,13 @@ export function loadContent(dir: string): Content {
       if (dep?.meta.type === 'exercise' && !dep.meta.startHere)
         warn(ex.typstRel, `start-here exercise "${ex.meta.id}" comes after "${a}", which is not marked start-here`, ex.meta.id);
     }
+
+  // The focus "essentials" shows a chapter's start-here exercises: without any, it shows only the chapter's texts.
+  // A course that marks none at all does not offer that focus, so there is nothing to warn about.
+  if (exercises.some((e) => e.meta.startHere)) for (const chapter of chapters) {
+    const own = exercises.filter((e) => e.meta.chapterId === chapter.id);
+    if (own.length && !own.some((e) => e.meta.startHere)) warn(own[0]!.chapterRel + '/chapter.yml', `chapter "${chapter.id}" has no start-here exercise, so the focus "essentials" shows none of its exercises`);
+  }
 
   for (const t of threads)
     for (const step of t.steps)

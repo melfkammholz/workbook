@@ -1,9 +1,10 @@
-import { ChevronsUpDown, CircleHelp, ClipboardList, Menu, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon, X } from 'lucide-react';
+import { CircleHelp, ClipboardList, Menu, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Route, Router, Switch, useLocation, useRoute } from 'wouter';
 import { useHashLocation } from 'wouter/use-hash-location';
 import { Celebration } from '@/components/Celebration';
 import { AddCourseForm, CourseDialog } from '@/components/CourseDialog';
+import { CourseMenu, FocusQuestion } from '@/components/Focus';
 import { HelpDialog } from '@/components/HelpDialog';
 import { OutlinePanel } from '@/components/Outline';
 import { SearchDialog } from '@/components/SearchDialog';
@@ -11,8 +12,9 @@ import { SettingsDialog } from '@/components/SettingsDialog';
 import { SetupDialog } from '@/components/SetupDialog';
 import { Empty, IconButton, Spinner, clsx } from '@/components/ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { checkCourseUpdates, isExercise, keys, statusOf, useCourses, useOutline, useSettings, useState_ } from '@/lib/api';
+import { checkCourseUpdates, keys, statusOf, useCourses, useOutline, useSettings, useState_ } from '@/lib/api';
 import { useFilters } from '@/lib/filters';
+import { focusExercises } from '@/lib/focus';
 import { useDocumentLang, useT } from '@/lib/i18n';
 import { applyTheme } from '@/lib/theme';
 import { useMediaQuery } from '@/lib/useActiveTime';
@@ -142,8 +144,9 @@ function CourseShell() {
     if (outline.data) document.title = outline.data.title;
   }, [outline.data]);
 
+  // What is in the focus, so every focus can be finished.
   const totals = useMemo(() => {
-    const ex = outline.data?.chapters.flatMap((c) => c.items).filter(isExercise) ?? [];
+    const ex = focusExercises(outline.data?.chapters.flatMap((c) => c.items) ?? [], state);
     return { done: ex.filter((e) => statusOf(state, e.id) === 'done').length, total: ex.length };
   }, [outline.data, state]);
 
@@ -194,9 +197,7 @@ function CourseShell() {
         <Link href="/" className="ml-1 truncate rounded-md px-2 py-1 text-[15px] font-semibold tracking-tight hover:bg-sunk">
           {o.title}
         </Link>
-        <IconButton label={t.courses} className="shrink-0" onClick={() => setSwitching(true)}>
-          <ChevronsUpDown size={15} />
-        </IconButton>
+        <CourseMenu onCourses={() => setSwitching(true)} />
         {updates ? (
           <button type="button" onClick={() => setSwitching(true)} className="hidden shrink-0 items-center gap-1.5 rounded-full bg-review-soft px-2.5 py-0.5 text-xs font-medium text-review hover:opacity-80 sm:inline-flex">
             <span aria-hidden className="size-1.5 rounded-full bg-review" /> {t.updateAvailable}
@@ -287,6 +288,7 @@ function CourseShell() {
       <SettingsDialog open={configuring} onClose={() => setConfiguring(false)} />
       <HelpDialog open={helping} onClose={() => setHelping(false)} />
       <SetupDialog />
+      <FocusQuestion />
     </div>
   );
 }

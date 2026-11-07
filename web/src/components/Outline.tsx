@@ -3,7 +3,8 @@ import { ChevronDown, Clock, Compass, FileText, Flame, ListChecks, ListFilter, S
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useRoute } from 'wouter';
 import type { ChapterMeta, ExerciseKind, ItemMeta, Outline as OutlineT, PartMeta, Status, StudentState, ThreadInfo } from '@wb/shared';
-import { isExercise, statusOf } from '@/lib/api';
+import { statusOf } from '@/lib/api';
+import { focusExercises, foldItems } from '@/lib/focus';
 import { adventureOfSection, isChapterWide } from '@/lib/sections';
 import { useT } from '@/lib/i18n';
 import { activeCount, matches, type Filters } from '@/lib/filters';
@@ -111,7 +112,7 @@ function PartBlock({
   }, [containsCurrent]);
   useEffect(() => writeOpen(`part-${part.id}`, open), [part.id, open]);
 
-  const exercises = chapters.flatMap((v) => v.chapter.items).filter(isExercise);
+  const exercises = focusExercises(chapters.flatMap((v) => v.chapter.items), state);
   const done = exercises.filter((i) => statusOf(state, i.id) === 'done').length;
   const expanded = open || filtering;
   if (filtering && chapters.every((v) => v.items.length === 0)) return null;
@@ -157,10 +158,14 @@ function ChapterBlock({
   }, [containsCurrent]);
   useEffect(() => writeOpen(chapter.id, open), [chapter.id, open]);
 
-  const exercises = chapter.items.filter((i) => i.type === 'exercise');
+  // Counts what is in the focus. Review later is the student's own list, so it counts everything marked.
+  const exercises = focusExercises(chapter.items, state);
   const done = exercises.filter((i) => statusOf(state, i.id) === 'done').length;
-  const reviewing = exercises.filter((i) => statusOf(state, i.id) === 'review').length;
+  const reviewing = chapter.items.filter((i) => i.type === 'exercise' && statusOf(state, i.id) === 'review').length;
   const expanded = open || forceOpen;
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
+  const toggleFold = (key: string) => setOpened((o) => (o.has(key) ? new Set([...o].filter((k) => k !== key)) : new Set([...o, key])));
+  const entries = foldItems(chapter.id, items, state, opened, forceOpen);
   if (items.length === 0 && forceOpen) return null;
 
   return (
@@ -193,23 +198,56 @@ function ChapterBlock({
       </div>
       {expanded ? (
         <ol className="pb-1">
-          {items.map((item, i) => {
-            // A section's title goes above its first visible item, so a filtered list has no empty sections.
-            const section = item.sectionId !== (items[i - 1]?.sectionId ?? null) ? chapter.sections.find((s) => s.id === item.sectionId) : undefined;
+          {entries.map((entry, i) => {
+            const sectionId = entry.kind === 'item' ? entry.item.sectionId : entry.sectionId;
+            const before = entries[i - 1];
+            const previousSection = before ? (before.kind === 'item' ? before.item.sectionId : before.sectionId) : null;
+            // A section's title goes above its first visible entry, so a filtered list has no empty sections.
+            const section = sectionId !== previousSection ? chapter.sections.find((s) => s.id === sectionId) : undefined;
+            const next = entries[i + 1];
+            const endsThread = i === entries.length - 1 || (next?.kind === 'item' && isChapterWide(chapter, next.item));
+            const label = section ? <SectionLabel title={section.title} adventure={adventureOfSection(outline, chapter, section.id)} {...(onNavigate ? { onNavigate } : {})} /> : null;
+            if (entry.kind === 'fold')
+              return (
+                <Fragment key={entry.key}>
+                  {label}
+                  <FoldRow
+                    text={entry.open ? t.foldAway : t.moreOutsideFocus(entry.hidden.length)}
+                    open={entry.open}
+                    first={i === 0 && !section}
+                    last={endsThread}
+                    onClick={() => toggleFold(entry.key)}
+                  />
+                </Fragment>
+              );
+            const item = entry.item;
             // The checklist that ends the chapter stands off the thread, below a short rule, so it does not look like part of the last section.
-            const wide = isChapterWide(chapter, item);
-            const next = items[i + 1];
-            const endsThread = i === items.length - 1 || (!!next && isChapterWide(chapter, next));
             return (
               <Fragment key={item.id}>
-                {section ? <SectionLabel title={section.title} adventure={adventureOfSection(outline, chapter, section.id)} {...(onNavigate ? { onNavigate } : {})} /> : null}
-                <Row item={item} status={statusOf(state, item.id)} answered={Object.keys(state?.checklists[item.id] ?? {}).length > 0} current={item.id === currentId} first={i === 0 && !section} last={endsThread} wide={wide} onNavigate={onNavigate} />
+                {label}
+                <Row item={item} status={statusOf(state, item.id)} answered={Object.keys(state?.checklists[item.id] ?? {}).length > 0} current={item.id === currentId} first={i === 0 && !section} last={endsThread} wide={isChapterWide(chapter, item)} outside={entry.outside} onNavigate={onNavigate} />
               </Fragment>
             );
           })}
         </ol>
       ) : null}
     </section>
+  );
+}
+
+/** Exercises outside the focus, folded into one quiet line on the thread. */
+function FoldRow({ text, open, first, last, onClick }: { text: string; open: boolean; first: boolean; last: boolean; onClick: () => void }) {
+  return (
+    <li className="relative">
+      <span aria-hidden className={clsx('absolute left-[21px] w-px bg-line-strong', first ? 'top-1/2' : 'top-0', last ? 'bottom-1/2' : 'bottom-0')} />
+      <button type="button" onClick={onClick} aria-expanded={open} className="relative flex w-full items-center gap-2.5 py-[5px] pl-[14px] pr-3 text-left text-[12.5px] text-ink-3 hover:text-ink">
+        <span className="flex w-4 shrink-0 justify-center">
+          <span aria-hidden className="size-[5px] rounded-full bg-line-strong ring-[3px] ring-sheet" />
+        </span>
+        <span className="min-w-0 flex-1 truncate">{text}</span>
+        <ChevronDown size={13} className={clsx('shrink-0 transition-transform', open ? 'rotate-180' : '')} />
+      </button>
+    </li>
   );
 }
 
@@ -232,7 +270,7 @@ function SectionLabel({ title, adventure, onNavigate }: { title: string; adventu
   );
 }
 
-function Row({ item, status, answered, current, first, last, wide, onNavigate }: { item: ItemMeta; status: Status; answered: boolean; current: boolean; first: boolean; last: boolean; wide: boolean; onNavigate?: (() => void) | undefined }) {
+function Row({ item, status, answered, current, first, last, wide, outside, onNavigate }: { item: ItemMeta; status: Status; answered: boolean; current: boolean; first: boolean; last: boolean; wide: boolean; outside: boolean; onNavigate?: (() => void) | undefined }) {
   const t = useT();
   const ex = item.type === 'exercise' ? item : null;
   const done = status === 'done';
@@ -272,8 +310,9 @@ function Row({ item, status, answered, current, first, last, wide, onNavigate }:
             </span>
           )}
         </span>
-        <span className={clsx('min-w-0 flex-1', status === 'done' && !current && 'text-ink-3')}>
-          <span className="line-clamp-2">{item.title}</span>
+        <span className={clsx('min-w-0 flex-1', (status === 'done' || outside) && !current && 'text-ink-3')} title={outside ? t.outsideFocus : undefined}>
+          <span className={clsx('line-clamp-2', outside && 'italic')}>{item.title}</span>
+          {outside ? <span className="sr-only">, {t.outsideFocus}</span> : null}
         </span>
         {ex ? (
           <span className="flex shrink-0 items-center gap-1.5">
@@ -340,9 +379,6 @@ function FilterPopover({ outline, filters, patch, reset, count }: { outline: Out
             ))}
           </Group>
           <Group title={t.filterPace}>
-            <Toggle on={filters.startHereOnly} onClick={() => patch({ startHereOnly: !filters.startHereOnly })}>
-              {t.recommendedFirst}
-            </Toggle>
             <Toggle on={filters.hideLong} onClick={() => patch({ hideLong: !filters.hideLong })}>
               {t.hideLong}
             </Toggle>

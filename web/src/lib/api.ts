@@ -270,7 +270,7 @@ export const search = (q: string) => api.get<SearchResponse>(`/api/search?q=${en
 
 // ───────────────────────── helpers ─────────────────────────
 
-import type { ExerciseMeta, ItemMeta } from '@wb/shared';
+import { focusOf, inFocus, type ExerciseMeta, type ItemMeta } from '@wb/shared';
 
 export const isExercise = (i: ItemMeta | undefined): i is ExerciseMeta => i?.type === 'exercise';
 
@@ -293,20 +293,31 @@ export function threadProgress(thread: ThreadInfo, state: StudentState | undefin
   return { done, total: thread.steps.length };
 }
 
-/** The items around one, in the order of the course. */
-export function neighbours(outline: Outline, id: string): { previous: ItemMeta | undefined; next: ItemMeta | undefined } {
+/** Out of the focus and not worked on: folded away in the outline, and passed over when moving through the course. */
+function folded(item: ItemMeta, state: StudentState | undefined): boolean {
+  return isExercise(item) && !inFocus(item, focusOf(state)) && statusOf(state, item.id) === 'todo';
+}
+
+/** The items around one, in the order of the course, passing over what the focus folds away. */
+export function neighbours(outline: Outline, id: string, state: StudentState | undefined): { previous: ItemMeta | undefined; next: ItemMeta | undefined } {
   const flat = outline.chapters.flatMap((c) => c.items);
   const at = flat.findIndex((i) => i.id === id);
-  return { previous: at > 0 ? flat[at - 1] : undefined, next: at >= 0 ? flat[at + 1] : undefined };
+  if (at < 0) return { previous: undefined, next: undefined };
+  const shown = (i: ItemMeta) => !folded(i, state);
+  return { previous: flat.slice(0, at).findLast(shown), next: flat.slice(at + 1).find(shown) };
 }
 
 /**
  * Where to go after finishing an exercise: on along its adventure, else what the author
  * says builds on it, else the next unfinished exercise. Null when nothing is left.
+ * Only exercises in the focus, or ones already started.
  */
 export function whatsNext(outline: Outline, state: StudentState | undefined, id: string): ItemMeta | null {
   const { map, flat } = indexItems(outline);
-  const open = (itemId: string) => isExercise(map.get(itemId)) && statusOf(state, itemId) !== 'done' && itemId !== id;
+  const open = (itemId: string) => {
+    const item = map.get(itemId);
+    return isExercise(item) && !folded(item, state) && statusOf(state, itemId) !== 'done' && itemId !== id;
+  };
   for (const thread of outline.threads) {
     if (!thread.adventure || !thread.steps.some((s) => s.includes(id))) continue;
     const step = thread.steps.find((s) => !s.some((x) => x !== id && statusOf(state, x) === 'done') && s.some(open));

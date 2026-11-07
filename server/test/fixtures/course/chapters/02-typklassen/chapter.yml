@@ -9,6 +9,7 @@ items:
   - id: symbolic-differentiation
     kind: challenge
     title: Symbolisches Differenzieren
+    start-here: true
     tags: [diff, typklassen]
     long: true
     similar: [automatic-differentiation]
@@ -31,6 +32,7 @@ items:
   - id: mergesort-python
     kind: challenge
     title: Mergesort in Python
+    extra: true
     after: [mergesort]
     code:
       language: python

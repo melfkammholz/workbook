@@ -26,7 +26,8 @@ course is a git repository that you add in the app.
   an exercise as done. You decide that.
 * **Hints and reference solutions.** You open hints one by one, and the solution only when you ask for it.
 * **An overview of where you stand.** It shows a status per exercise (to do, in progress, done, review later), a filter
-  in the outline, and suggestions for what to do next. Exercises marked as recommended show where to start.
+  in the outline, and suggestions for what to do next. Exercises marked as recommended show where to start, and a focus
+  (essentials, thorough, everything) decides how much of the course is in sight.
 * **Self-evaluation and review.** When you finish an exercise, you can say how confident you are and what is still
   open. The **Review** page collects everything you were unsure about, together with your self-evaluations per chapter.
 * **Notes and history.** You can keep notes per exercise and see all of them on one page. Every answer has a version

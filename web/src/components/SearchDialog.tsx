@@ -1,7 +1,8 @@
 import { Search } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
-import { search, type SearchResponse } from '@/lib/api';
+import { indexItems, search, useOutline, useState_, type SearchResponse } from '@/lib/api';
+import { focusOf, itemInFocus } from '@/lib/focus';
 import { useT } from '@/lib/i18n';
 import { Dialog } from './ui';
 
@@ -11,6 +12,14 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   const [res, setRes] = useState<SearchResponse | null>(null);
   const [, nav] = useLocation();
   const seq = useRef(0);
+  // Search finds everything, and says what is outside the focus.
+  const outline = useOutline().data;
+  const focus = focusOf(useState_().data?.state);
+  const { map } = useMemo(() => indexItems(outline), [outline]);
+  const outside = (id: string) => {
+    const item = map.get(id);
+    return !!item && !itemInFocus(item, focus);
+  };
 
   useEffect(() => {
     if (!open) {
@@ -63,7 +72,10 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
               {res.items.map((i) => (
                 <li key={i.id}>
                   <button type="button" onClick={() => go(i.href)} className="w-full rounded-md px-2 py-2 text-left text-sm hover:bg-sunk">
-                    <span className="block font-medium">{i.title}</span>
+                    <span className="flex items-baseline gap-2">
+                      <span className="min-w-0 font-medium">{i.title}</span>
+                      {outside(i.id) ? <span className="ml-auto shrink-0 text-xs text-ink-3">{t.outsideFocus}</span> : null}
+                    </span>
                     {i.snippet ? <Snippet text={i.snippet} /> : null}
                   </button>
                 </li>

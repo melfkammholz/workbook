@@ -13,13 +13,14 @@ import { Store } from '../src/db/store.js';
 import { SessionPool } from '../src/runners/pool.js';
 import { EXAMPLE_CONTENT, HASKELL_LIB, PROLOG_LIB } from './helpers.js';
 
-const exercise = (id: string, startHere = false) => ({ type: 'exercise', id, title: id, startHere }) as never;
+const exercise = (id: string, startHere = false, extra = false) => ({ type: 'exercise', id, title: id, startHere, extra }) as never;
 const checklist = (id: string, questionCount: number) => ({ type: 'checklist', id, title: id, questionCount }) as never;
 const chapter = (items: never[]): ChapterMeta => ({ id: 'c', number: 1, title: 'Kapitel', summary: null, hasIntro: false, partId: null, sections: [], items });
 const state = (done: string[] = [], more: Partial<StudentState> = {}): StudentState => ({
   progress: Object.fromEntries(done.map((id) => [id, { status: 'done', updatedAt: 1, reviewDueAt: null, reviewCount: 0 }])),
   checklists: {},
   landingSeen: true,
+  focus: null,
   openQuestions: {},
   reflections: {},
   stats: {},
@@ -56,6 +57,38 @@ describe('chapterStage', () => {
     const c = chapter([exercise('a'), checklist('q', 2)]);
     expect(chapterStage(c, state([], { checklists: { q: { one: { confidence: 3, note: '', updatedAt: 1 } } } }))).toBe(1);
     expect(chapterStage(chapter([]), state())).toBe(0);
+  });
+});
+
+describe('chapterStage with a focus', () => {
+  const c = chapter([exercise('a', true), exercise('b'), exercise('c'), exercise('x', false, true)]);
+  const focus = (f: StudentState['focus'], done: string[]) => chapterStage(c, state(done, { focus: f }), true);
+
+  it('is grown when everything in the focus is done', () => {
+    expect(focus('essentials', ['a'])).toBe(3);
+    expect(focus('thorough', ['a'])).toBe(1);
+    expect(focus('thorough', ['a', 'b'])).toBe(2);
+    expect(focus('thorough', ['a', 'b', 'c'])).toBe(3);
+    expect(focus('everything', ['a', 'b', 'c'])).toBe(2);
+    expect(focus('everything', ['a', 'b', 'c', 'x'])).toBe(3);
+  });
+
+  it('keeps the older rule outside "essentials" in a course without extra material', () => {
+    expect(chapterStage(c, state(['a'], { focus: 'everything' }), false)).toBe(3);
+  });
+
+  it('grows with the checklist when nothing of the chapter is in the focus', () => {
+    const none = chapter([exercise('b'), checklist('q', 1)]);
+    const answered = { checklists: { q: { one: { confidence: 3 as const, note: '', updatedAt: 1 } } } };
+    expect(chapterStage(none, state([], { focus: 'essentials' }), false)).toBe(0);
+    expect(chapterStage(none, state([], { focus: 'essentials', ...answered }), false)).toBe(3);
+  });
+
+  it('leaves a chapter without anything to grow with out of the forest', () => {
+    const o = { chapters: [chapter([exercise('a', true)]), { ...chapter([exercise('b')]), id: 'd' }], threads: [] } as unknown as Outline;
+    const got = qualifiesFor({ outline: o, state: state(['a'], { focus: 'essentials' }), reflections: [], checklistRatings: [], noteCount: 0 });
+    expect(got.has('a/forest')).toBe(true);
+    expect(got.has('plant/d/1')).toBe(false);
   });
 });
 

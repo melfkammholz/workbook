@@ -117,6 +117,7 @@ items:
     long: true          # takes a while
     help-after: 45      # minutes of active work before asking if help is needed (default: the student's setting, 30)
     start-here: true    # recommended for a first pass (or an emoji: start-here: 🦔)
+    extra: false        # extra material, only for students who want everything (never with start-here)
     tags: [diff]
     after: [other-id]   # nice to have done first (never locks anything)
     similar: [another-id]
@@ -130,12 +131,36 @@ items:
 
 * **`start-here`** marks the exercises you want students to do first so the long
   list does not overwhelm them. Without an emoji, a stable animal is picked per exercise.
+* **`extra: true`** marks extra material: what goes beyond the course, for those who want all of it.
+  Together with `start-here` it decides what a student's **focus** shows (see below). An exercise is
+  never both; `lint` reports that as an error.
 * **Next up** links are computed: if B lists A under `after`, A shows B as "next up".
 * Text-only exercises need no `code`. Add `scratch: haskell` (here or in
   `defaults`) to give them an interpreter to experiment in.
 * Exercises and pages appear in the order of `items`. Sections do not change the numbering.
 * `intro: intro.typ` next to `title:` adds text to the chapter's start page, for example `#refs[…]` with references.
   Every chapter has a start page with its progress and contents, with or without this.
+
+### Focus: how much of the course a student sees
+
+When students open a course, they choose how much of it they want in sight, and they can change it any time
+in the course menu (next to the course's name). The course states the facts, the app decides what the choices do:
+
+| Focus | Shows |
+| --- | --- |
+| Essentials | the `start-here` exercises |
+| Thorough (the default) | everything except `extra` |
+| Everything | all exercises |
+
+Exercises outside a student's focus fold into one quiet line at the end of their section ("2 more")
+and open with a click. Nothing is renumbered, search finds everything, and
+exercises a student already worked on stay in place. Pages, checklists and chapter texts are always shown, and
+an adventure shows all of its steps (those outside the focus faded). A course without `start-here` does not offer
+Essentials; a course without `extra` offers no difference between Thorough and Everything, which `lint` mentions
+as a note. A chapter without any `start-here` exercise shows none of its exercises under Essentials, so `lint`
+warns about it once the course marks `start-here` anywhere.
+
+Signal tags such as Deep Dive stay labels for students; they do not decide the focus.
 
 ## The text of an exercise
 
@@ -413,8 +438,10 @@ number of test runs, hints opened and whether the solution was viewed, that is w
 **Review** page (the clipboard icon). It stays on their computer.
 
 Students can opt in to achievements, animal friends from the recommended exercises they finish, a plant per chapter and small celebrations. There is nothing to set up. A chapter's
-plant is 🌱 once started, 🌿 at half of its recommended exercises, and 🌳 with all of them done and its checklists
-answered. A chapter without recommended exercises counts half of all its exercises instead. Plants never depend on
-ratings. So marking exercises `start-here` also decides what a full plant takes.
+plant follows the student's focus, so every focus can feel finished: it is 🌱 once started, 🌿 at half of the
+exercises in the focus, and 🌳 with all of them done and its checklists answered (with nothing of a chapter in the
+focus, the answered checklists grow it). In a course without `extra`, Thorough and Everything keep the older rule:
+the recommended exercises, or half of all exercises in a chapter without recommended ones. Plants never depend on
+ratings. Animals always come from the `start-here` exercises, whatever the focus.
 
 Animals follow from an exercise's id unless you choose one with `start-here: 🦔`, so some may repeat, and students then see a count. `lint` lists repeats as a note, in case you want to change them.

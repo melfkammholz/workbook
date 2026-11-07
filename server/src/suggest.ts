@@ -1,4 +1,4 @@
-import type { ExerciseMeta, Outline, StudentState } from '@wb/shared';
+import { focusOf, inFocus, type ExerciseMeta, type Outline, type StudentState } from '@wb/shared';
 
 export type SuggestionReason = 'review-due' | 'continue' | 'next-up' | 'similar' | 'start-here' | 'ready';
 
@@ -13,8 +13,9 @@ export interface Suggestion {
  * Order of preference:
  *  1. exercises marked "review later" that are due again,
  *  2. exercises they started but did not finish,
- *  3. unfinished exercises, scored by: on the recommended path, prerequisites
- *     done, directly follows / is similar to the last finished exercise.
+ *  3. unfinished exercises in the student's focus, scored by: on the recommended path,
+ *     prerequisites done, directly follows / is similar to the last finished exercise.
+ * The first two are the student's own work, so they are suggested whatever the focus.
  */
 export function suggestNext(outline: Outline, state: StudentState, now: number, limit = 5): Suggestion[] {
   const exercises = outline.chapters.flatMap((c) => c.items).filter((i): i is ExerciseMeta => i.type === 'exercise');
@@ -43,8 +44,9 @@ export function suggestNext(outline: Outline, state: StudentState, now: number, 
     .filter((e) => status(e.id) === 'done')
     .sort((a, b) => state.progress[b.id]!.updatedAt - state.progress[a.id]!.updatedAt)[0];
 
+  const focus = focusOf(state);
   const scored = exercises
-    .filter((e) => (status(e.id) === 'todo' || status(e.id) === 'review') && !taken.has(e.id))
+    .filter((e) => (status(e.id) === 'todo' || status(e.id) === 'review') && !taken.has(e.id) && inFocus(e, focus))
     .map((e) => {
       const unmet = e.after.filter((a) => byId.has(a) && status(a) !== 'done').length;
       const follows = lastDone?.next.includes(e.id) ?? false;

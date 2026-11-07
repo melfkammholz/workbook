@@ -146,6 +146,38 @@ describe('outline structure', () => {
   });
 });
 
+describe('focus', () => {
+  const course = (a: string, b: string) =>
+    loadContent(
+      tmpContent({
+        'chapters/01-a/chapter.yml': `title: A\nitems:\n  - id: x\n${a}\n`,
+        'chapters/01-a/x.typ': 'X',
+        'chapters/02-b/chapter.yml': `title: B\nitems:\n  - id: y\n${b}\n`,
+        'chapters/02-b/y.typ': 'Y',
+      }),
+    ).outline;
+
+  it('reads extra material', () => {
+    const { chapters, problems } = course('    start-here: true', '    extra: true');
+    expect(chapters[1]!.items[0]).toMatchObject({ startHere: false, extra: true });
+    expect(chapters[0]!.items[0]).toMatchObject({ startHere: true, extra: false });
+    expect(problems.filter((p) => p.severity === 'error')).toEqual([]);
+  });
+
+  it('does not take an exercise as both start-here and extra', () => {
+    const { chapters, problems } = course('    start-here: true\n    extra: true', '    start-here: true');
+    expect(problems.map((p) => p.message).join()).toContain('both start-here and extra');
+    expect(chapters[0]!.items[0]).toMatchObject({ startHere: true, extra: false });
+  });
+
+  it('warns about a chapter with nothing for "essentials", once the course marks start-here at all', () => {
+    expect(course('    start-here: true', '    extra: false').problems.map((p) => p.message)).toEqual([
+      'chapter "b" has no start-here exercise, so the focus "essentials" shows none of its exercises',
+    ]);
+    expect(course('    extra: false', '    extra: false').problems).toEqual([]);
+  });
+});
+
 describe('tags', () => {
   it('tells topics from signals, and defaults to topic', () => {
     const { tags } = loadContent(EXAMPLE_CONTENT).outline;

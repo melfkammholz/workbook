@@ -100,5 +100,10 @@ if (repeats.length) {
   for (const [emoji, ids] of repeats) console.log(`  ${emoji} ${ids.join(', ')}`);
 }
 
+// Without extra material, "thorough" and "everything" show the same.
+const exercises = content.all().filter((i) => i.meta.type === 'exercise');
+if (exercises.length && !exercises.some((i) => i.meta.type === 'exercise' && i.meta.extra))
+  console.log('\nnote: no exercise is marked `extra: true`, so the focus "thorough" shows the same as "everything"');
+
 console.log(`\n${content.outline.chapters.length} chapters, ${errors} errors, ${warnings} warnings`);
 process.exit(errors > 0 ? 1 : 0);

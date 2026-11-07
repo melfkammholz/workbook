@@ -6,6 +6,7 @@ import { ProgressLine } from '@/components/ItemRows';
 import { Plant } from '@/components/Plant';
 import { Level, StatusMark, clsx } from '@/components/ui';
 import { indexItems, isExercise, statusOf, threadProgress, useOutline, useSettings, useState_ } from '@/lib/api';
+import { focusExercises } from '@/lib/focus';
 import { useT } from '@/lib/i18n';
 
 export function Dashboard() {
@@ -16,16 +17,18 @@ export function Dashboard() {
   const { map } = useMemo(() => indexItems(outline), [outline]);
   if (!outline) return null;
   const state = stateRes?.state;
-  const exercises = outline.chapters.flatMap((c) => c.items).filter(isExercise);
+  // Progress counts what is in the focus; what is worth another look is the student's own, whatever the focus.
+  const all = outline.chapters.flatMap((c) => c.items).filter(isExercise);
+  const exercises = focusExercises(all, state);
   const count = (s: Status) => exercises.filter((e) => statusOf(state, e.id) === s).length;
   const done = count('done');
   const first = outline.chapters.flatMap((c) => c.items)[0];
   const last = state?.lastOpenedId ? map.get(state.lastOpenedId) : undefined;
   const suggestions = stateRes?.suggestions ?? [];
-  const fresh = done === 0 && count('in_progress') === 0 && !last;
+  const fresh = !all.some((e) => statusOf(state, e.id) !== 'todo') && !last;
   const errors = outline.problems.filter((p) => p.severity === 'error');
   const weakChecklistAnswers = Object.values(state?.checklists ?? {}).flatMap((c) => Object.values(c)).filter((a) => a.confidence !== null && a.confidence <= 2).length;
-  const attention = exercises.filter((e) => state?.openQuestions[e.id] || statusOf(state, e.id) === 'review' || (state?.reflections[e.id]?.confidence ?? 5) <= 2).length + weakChecklistAnswers;
+  const attention = all.filter((e) => state?.openQuestions[e.id] || statusOf(state, e.id) === 'review' || (state?.reflections[e.id]?.confidence ?? 5) <= 2).length + weakChecklistAnswers;
   const adventures = outline.threads.filter((x) => x.adventure);
   const paths = outline.threads.filter((x) => !x.adventure);
 
@@ -214,7 +217,7 @@ function ChapterList({ chapters, state }: { chapters: ChapterMeta[]; state: Stud
   return (
     <ul className="mt-3 space-y-3">
       {chapters.map((c) => {
-        const ex = c.items.filter(isExercise);
+        const ex = focusExercises(c.items, state);
         const d = ex.filter((e) => statusOf(state, e.id) === 'done').length;
         return (
           <li key={c.id}>

@@ -2,6 +2,7 @@ import { ArrowLeft, ArrowRight, Clock, Compass, ExternalLink, Flag, Flame, Light
 import { useState } from 'react';
 import { Link } from 'wouter';
 import type { ExerciseMeta, ItemDetail, ItemMeta, Outline, StudentState } from '@wb/shared';
+import { focusOf, inFocus } from '@wb/shared';
 import { neighbours, statusOf, useCourses } from '@/lib/api';
 import { issueLink } from '@/lib/issues';
 import { useT } from '@/lib/i18n';
@@ -26,7 +27,7 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
   const tagsOf = (type: 'topic' | 'signal') => outline.tags.filter((tag) => tag.type === type && ex?.tags.includes(tag.id));
   const errors = rendered.diagnostics.filter((d) => d.severity === 'error');
   const adventures = outline.threads.filter((x) => x.adventure && x.steps.some((step) => step.includes(meta.id)));
-  const { previous, next } = neighbours(outline, meta.id);
+  const { previous, next } = neighbours(outline, meta.id, state);
   const courses = useCourses().data;
   const repository = courses?.courses.find((c) => c.id === courses.activeId)?.url ?? null;
   const report = issueLink(outline.issues, repository, t.issueTitle(meta.title), t.issueBody(meta.id, meta.title));
@@ -62,6 +63,7 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
                 <Sparkles size={12} /> {t.recommendedFirst}
               </Chip>
             ) : null}
+            {!inFocus(ex, focusOf(state)) ? <Chip>{t.outsideFocus}</Chip> : null}
             {adventures.map((a) => (
               <Link key={a.id} href={`/adventure/${a.id}`}>
                 <Chip tone="accent">
@@ -100,6 +102,7 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
       ) : null}
 
       {ex ? <Prerequisites ex={ex} byId={byId} state={state} /> : null}
+      {ex ? <SharedOutsideFocus ex={ex} byId={byId} state={state} /> : null}
 
       <Prose html={rendered.task} css={rendered.css} />
 
@@ -198,6 +201,31 @@ function Prerequisites({ ex, byId, state }: { ex: ExerciseMeta; byId: Map<string
           ))}
         </ul>
       ) : null}
+    </aside>
+  );
+}
+
+/**
+ * Shared files are one piece of work across exercises. If an earlier part belongs to an exercise outside the focus,
+ * this one would quietly build on something that is not there yet, so it says so.
+ */
+function SharedOutsideFocus({ ex, byId, state }: { ex: ExerciseMeta; byId: Map<string, ItemMeta>; state: StudentState | undefined }) {
+  const t = useT();
+  const shared = ex.code?.shared;
+  const focus = focusOf(state);
+  if (!shared || !inFocus(ex, focus)) return null;
+  const before = [...byId.values()].filter(
+    (i): i is ExerciseMeta => i.type === 'exercise' && i.index < ex.index && i.code?.shared === shared && i.code.edits.length > 0 && !inFocus(i, focus) && statusOf(state, i.id) !== 'done',
+  );
+  if (!before.length) return null;
+  return (
+    <aside className="mb-6 rounded-lg border border-line bg-sheet px-4 py-3 text-sm">
+      <p>{t.buildsOnOutsideFocus(before.map((e) => e.number).join(', '))}</p>
+      <ul className="mt-2 space-y-1">
+        {before.map((e) => (
+          <ItemLink key={e.id} item={e} state={state} />
+        ))}
+      </ul>
     </aside>
   );
 }

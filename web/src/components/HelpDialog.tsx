@@ -8,6 +8,7 @@ export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => vo
     [t.helpWorkingTitle, t.helpWorking],
     [t.helpInterpreterTitle, t.helpInterpreter],
     [t.helpReviewTitle, t.helpReview],
+    [t.helpFocusTitle, t.helpFocus],
     [t.helpTimerTitle, t.helpTimer],
     [t.helpAiTitle, t.helpAi],
   ];

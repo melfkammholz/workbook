@@ -268,6 +268,14 @@ describe.skipIf(!hasBinary(typstBin))('API: new course pages and shared work', (
     await closed;
   });
 
+  it('keeps the focus per course, unset until chosen', async () => {
+    const focus = async () => ((await api('GET', '/api/state')).json as { state: StudentState }).state.focus;
+    expect(await focus()).toBeNull();
+    expect((await api('PUT', '/api/focus', { focus: 'all' })).status).toBe(400);
+    expect((await api('PUT', '/api/focus', { focus: 'essentials' })).status).toBe(200);
+    expect(await focus()).toBe('essentials');
+  });
+
   it('serves the landing page once as new, and the other course texts', async () => {
     const outline = (await api('GET', '/api/outline')).json as Outline;
     expect(outline.landing).toBe(true);

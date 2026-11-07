@@ -1,4 +1,4 @@
-import type { AchievementEvent, ChapterMeta, ChecklistMeta, ExerciseMeta, Outline, Reflection, StudentState } from '@wb/shared';
+import { focusOf, inFocus, type AchievementEvent, type ChapterMeta, type ChecklistMeta, type ExerciseMeta, type Outline, type Reflection, type StudentState } from '@wb/shared';
 
 export interface ChecklistRating {
   checklistId: string;
@@ -27,24 +27,44 @@ const exercisesOf = (c: ChapterMeta) => c.items.filter((i): i is ExerciseMeta =>
 const checklistsOf = (c: ChapterMeta) => c.items.filter((i): i is ChecklistMeta => i.type === 'checklist');
 
 /**
+ * Which exercises a chapter's plant grows with, and how many of them have to be done.
+ * It follows the focus, so every focus can feel finished. A course without extra material keeps the
+ * older rule outside "essentials": the recommended ones, or else half of all of them.
+ */
+function plantGoal(chapter: ChapterMeta, state: StudentState, courseHasExtra: boolean): { counted: ExerciseMeta[]; target: number } {
+  const exercises = exercisesOf(chapter);
+  const focus = focusOf(state);
+  if (focus === 'essentials' || courseHasExtra) {
+    const counted = exercises.filter((e) => inFocus(e, focus));
+    return { counted, target: counted.length };
+  }
+  const recommended = exercises.filter((e) => e.startHere);
+  return recommended.length ? { counted: recommended, target: recommended.length } : { counted: exercises, target: Math.ceil(exercises.length / 2) };
+}
+
+/** A chapter has a plant when it has exercises, and something to grow it with in the student's focus. */
+function hasPlant(chapter: ChapterMeta, state: StudentState, courseHasExtra: boolean): boolean {
+  return exercisesOf(chapter).length > 0 && (plantGoal(chapter, state, courseHasExtra).target > 0 || checklistsOf(chapter).length > 0);
+}
+
+/**
  * How far a chapter's plant has grown: 0 nothing yet, 1 started, 2 halfway, 3 grown.
  * Depends on work done and questions answered, never on how high the ratings are:
  * nobody should have a reason to rate themselves higher than they feel.
+ * With nothing of the chapter in the focus, answering its checklists is what grows it.
  */
-export function chapterStage(chapter: ChapterMeta, state: StudentState): 0 | 1 | 2 | 3 {
+export function chapterStage(chapter: ChapterMeta, state: StudentState, courseHasExtra = false): 0 | 1 | 2 | 3 {
   const exercises = exercisesOf(chapter);
   const checklists = checklistsOf(chapter);
   const status = (id: string) => state.progress[id]?.status ?? 'todo';
   const answers = (id: string) => Object.keys(state.checklists[id] ?? {}).length;
 
-  // Not everything has to be done: the recommended ones, or else half of all of them.
-  const recommended = exercises.filter((e) => e.startHere);
-  const counted = recommended.length ? recommended : exercises;
-  const target = recommended.length ? recommended.length : Math.ceil(exercises.length / 2);
+  const { counted, target } = plantGoal(chapter, state, courseHasExtra);
   const done = counted.filter((e) => status(e.id) === 'done').length;
 
   const checklistsAnswered = checklists.every((c) => answers(c.id) >= c.questionCount);
   if (target > 0 && done >= target && checklistsAnswered) return 3;
+  if (target === 0 && exercises.length > 0 && checklists.length > 0 && checklistsAnswered) return 3;
   if (target > 0 && done >= Math.ceil(target / 2)) return 2;
   if (exercises.some((e) => status(e.id) !== 'todo') || checklists.some((c) => answers(c.id) > 0)) return 1;
   return 0;
@@ -82,14 +102,15 @@ export function qualifiesFor(input: AchievementInput): Map<string, AchievementEv
   const recommended = exercises.filter((e) => e.startHere);
   if (recommended.length > 0 && recommended.every((e) => status(e.id) === 'done')) add('all-animals');
 
-  const planted = outline.chapters.filter((c) => exercisesOf(c).length > 0);
-  if (planted.length > 0 && planted.every((c) => chapterStage(c, state) === 3)) add('forest');
+  const courseHasExtra = exercises.some((e) => e.extra);
+  const planted = outline.chapters.filter((c) => hasPlant(c, state, courseHasExtra));
+  if (planted.length > 0 && planted.every((c) => chapterStage(c, state, courseHasExtra) === 3)) add('forest');
 
   for (const e of recommended)
     if (e.emoji && status(e.id) === 'done') out.set(`animal/${e.id}`, { kind: 'animal', exerciseId: e.id, title: e.title, emoji: e.emoji });
 
   for (const chapter of outline.chapters) {
-    const stage = chapterStage(chapter, state);
+    const stage = chapterStage(chapter, state, courseHasExtra);
     for (let n = 1; n <= stage; n++) out.set(`plant/${chapter.id}/${n}`, { kind: 'plant', chapterId: chapter.id, chapter: chapter.title, stage: n as 1 | 2 | 3 });
   }
 

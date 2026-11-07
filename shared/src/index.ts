@@ -46,6 +46,8 @@ export interface ExerciseMeta extends ItemCommon {
   level: 1 | 2 | 3;
   /** Recommended first pass through the material. */
   startHere: boolean;
+  /** Extra material: only in the focus "everything". Never together with `startHere`. */
+  extra: boolean;
   /** Expected to take a while. */
   long: boolean;
   /** Emoji shown for `startHere` exercises (stable per exercise unless set explicitly). */
@@ -196,6 +198,26 @@ export interface ItemDetail {
   support: Record<string, string>;
 }
 
+// ───────────────────────── focus ─────────────────────────
+
+/**
+ * How much of a course the student wants to see. Named by what it shows, never by who the student is.
+ * `essentials`: the start-here exercises; `thorough`: everything but extra material; `everything`: all of it.
+ */
+export type Focus = 'essentials' | 'thorough' | 'everything';
+export const FOCUSES: readonly Focus[] = ['essentials', 'thorough', 'everything'];
+export const DEFAULT_FOCUS: Focus = 'thorough';
+
+/** Whether an exercise belongs to a focus. Pages and checklists are always shown and are not asked about. */
+export function inFocus(exercise: Pick<ExerciseMeta, 'startHere' | 'extra'>, focus: Focus): boolean {
+  if (focus === 'essentials') return exercise.startHere;
+  if (focus === 'thorough') return !exercise.extra;
+  return true;
+}
+
+/** The focus a student works with: theirs, or the default until they chose one. */
+export const focusOf = (state: Pick<StudentState, 'focus'> | undefined): Focus => state?.focus ?? DEFAULT_FOCUS;
+
 // ───────────────────────── student state ─────────────────────────
 
 export interface ProgressEntry {
@@ -247,6 +269,8 @@ export interface StudentState {
   checklists: Record<string, Record<string, ChecklistAnswer>>;
   /** The landing page was shown once, so it no longer opens by itself. */
   landingSeen: boolean;
+  /** How much of the course the student wants to see. Null until they were asked. */
+  focus: Focus | null;
   openQuestions: Record<string, OpenQuestion>;
   /** Latest reflection per exercise. */
   reflections: Record<string, Reflection>;

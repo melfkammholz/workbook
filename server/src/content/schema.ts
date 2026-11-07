@@ -34,6 +34,8 @@ const exerciseFields = {
   level: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
   /** `true`, or an emoji to use instead of the generated one. */
   'start-here': z.union([z.boolean(), z.string()]).default(false),
+  /** Extra material: shown when the student wants to see everything. */
+  extra: z.boolean().default(false),
   long: z.boolean().optional(),
   tags: z.array(z.string()).default([]),
   /** Recommended to have done these first (guidance only, nothing is locked). */

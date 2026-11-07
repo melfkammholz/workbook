@@ -1,7 +1,7 @@
 import { Flag } from 'lucide-react';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
-import type { ItemMeta, StudentState, ThreadInfo } from '@wb/shared';
+import { focusOf, inFocus, type ItemMeta, type StudentState, type ThreadInfo } from '@wb/shared';
 import { statusOf } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { StatusMark, clsx } from './ui';
@@ -118,14 +118,16 @@ export function AdventureMap({ thread, byId, state }: { thread: ThreadInfo; byId
         const here = stop.step === current;
         const finale = thread.finale === stop.id;
         const emoji = item.type === 'exercise' && item.startHere ? item.emoji : null;
+        // Cutting steps would break the story, so they stay, faded but reachable.
+        const outside = item.type === 'exercise' && !inFocus(item, focusOf(state));
         return (
           <li key={stop.id} className="absolute" style={{ left: stop.x - labelWidth / 2, top: stop.y - NODE / 2, width: labelWidth }}>
             <Link
               href={`/item/${stop.id}`}
               aria-current={here ? 'step' : undefined}
               title={item.title}
-              aria-label={`${item.title}: ${finale ? `${t.finale}, ` : ''}${here ? `${t.youAreHere}, ` : ''}${t.status[status]}`}
-              className="group flex flex-col items-center text-center focus:outline-none"
+              aria-label={`${item.title}: ${finale ? `${t.finale}, ` : ''}${here ? `${t.youAreHere}, ` : ''}${t.status[status]}${outside ? `, ${t.outsideFocus}` : ''}`}
+              className={clsx('group flex flex-col items-center text-center focus:outline-none', outside && !here && 'opacity-55 hover:opacity-100 focus-visible:opacity-100')}
             >
               <span
                 className={clsx(

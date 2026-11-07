@@ -138,7 +138,7 @@ describe('Store', () => {
     store.resetWork();
 
     const state = store.getState();
-    expect(state).toMatchObject({ progress: {}, checklists: {}, openQuestions: {}, reflections: {}, stats: {}, lastOpenedId: null, landingSeen: false });
+    expect(state).toMatchObject({ progress: {}, checklists: {}, openQuestions: {}, reflections: {}, stats: {}, lastOpenedId: null, landingSeen: false, focus: null });
     expect(store.getAnswers('x')).toEqual({});
     expect(store.listVersions('x', 'text')).toEqual([]);
     expect(store.getNote('x')).toBeNull();

@@ -73,14 +73,14 @@ function Loaded({ id }: { id: string }) {
     const onKey = (e: KeyboardEvent) => {
       if (!e.altKey || e.ctrlKey || e.metaKey || (e.code !== 'Comma' && e.code !== 'Period')) return;
       if (document.querySelector('[role=dialog]')) return;
-      const target = neighbours(outline, id)[e.code === 'Comma' ? 'previous' : 'next'];
+      const target = neighbours(outline, id, qc.getQueryData<{ state: NonNullable<typeof state> }>(keys.state)?.state)[e.code === 'Comma' ? 'previous' : 'next'];
       if (!target) return;
       e.preventDefault();
       navigate(`/item/${target.id}`);
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
-  }, [id, outline, navigate]);
+  }, [id, outline, navigate, qc]);
 
   const { session, reset: resetSession, paused, togglePaused } = useActiveTime(id, stateUnknown || status === 'done');
 
@@ -141,7 +141,7 @@ function Loaded({ id }: { id: string }) {
   const revealed = hints ?? w?.stats.hintsRevealed ?? 0;
   const lastReflection = w?.reflections[w.reflections.length - 1];
 
-  const around = neighbours(outline, id);
+  const around = neighbours(outline, id, state);
   const upNext = status === 'done' ? whatsNext(outline, state, id) : null;
 
   const revealHint = (n: number) => {

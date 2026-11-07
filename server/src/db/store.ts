@@ -7,6 +7,7 @@ import {
   type AnswerVersion,
   type ChecklistAnswer,
   type EarnedEvent,
+  type Focus,
   type HowSolved,
   type NoteDoc,
   type NoteFormat,
@@ -118,6 +119,7 @@ export class Store {
       progress,
       checklists,
       landingSeen: this.getSettingRaw<boolean>('landingSeen', false),
+      focus: this.getSettingRaw<Focus | null>('focus', null),
       openQuestions: this.allOpenQuestions(),
       reflections,
       stats,
@@ -355,6 +357,11 @@ export class Store {
 
   markLandingSeen(): void {
     this.setSetting('landingSeen', true);
+  }
+
+  /** Per course, like everything in this store: a student may want all of one course and the essentials of another. */
+  setFocus(focus: Focus): void {
+    this.setSetting('focus', focus);
   }
 
   // ───────────────────────── stats ─────────────────────────
