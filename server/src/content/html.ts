@@ -62,6 +62,16 @@ export function splitDocument(html: string): SplitHtml {
   return { task: body.innerHTML.trim(), remarks, hints, samples, questions, css };
 }
 
+/**
+ * Pictures of a student's text (a fallback page, a card side) take the theme's text colour:
+ * Typst's black becomes `currentColor`. Other colours are the student's and stay.
+ */
+function themePictures(root: HTMLElement): void {
+  for (const svg of root.querySelectorAll('.wb-as-picture > svg, [data-side] > svg')) {
+    svg.set_content(svg.innerHTML.replace(/\b(fill|stroke)="#000000"/g, '$1="currentColor"'));
+  }
+}
+
 /** Body HTML only, for student notes. */
 export function bodyOf(html: string): { html: string; css: string } {
   const doc = parse(html, { comment: false });
@@ -71,6 +81,7 @@ export function bodyOf(html: string): { html: string; css: string } {
     .join('\n');
   const body = doc.querySelector('body') ?? doc;
   sanitize(body);
+  themePictures(body);
   return { html: body.innerHTML.trim(), css };
 }
 

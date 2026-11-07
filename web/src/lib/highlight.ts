@@ -24,6 +24,7 @@ import { toml } from '@codemirror/legacy-modes/mode/toml';
 import { html, xml } from '@codemirror/legacy-modes/mode/xml';
 import { yaml } from '@codemirror/legacy-modes/mode/yaml';
 import { highlightTree, tagHighlighter, tags as t } from '@lezer/highlight';
+import { typstParser } from './typst';
 
 /** Maps token types to the same `.tok-*` classes the editor uses, so code in the task text matches code in the editor. */
 export const classHighlighter = tagHighlighter([
@@ -34,6 +35,11 @@ export const classHighlighter = tagHighlighter([
   { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], class: 'tok-comment' },
   { tag: [t.definition(t.variableName), t.function(t.variableName), t.standard(t.variableName), t.propertyName, t.attributeName, t.labelName], class: 'tok-def' },
   { tag: [t.operator, t.punctuation], class: 'tok-op' },
+  { tag: t.heading, class: 'tok-heading' },
+  { tag: t.strong, class: 'tok-strong' },
+  { tag: t.emphasis, class: 'tok-emph' },
+  { tag: [t.link, t.url], class: 'tok-link' },
+  { tag: t.escape, class: 'tok-op' },
 ]);
 
 /** A small Prolog tokenizer: enough for readable highlighting of facts, rules and queries. */
@@ -78,6 +84,7 @@ const prolog: StreamParser<{ block: boolean }> = {
 };
 
 const parsers = {
+  typst: typstParser,
   haskell,
   prolog,
   python,
@@ -155,6 +162,7 @@ const ALIASES: Record<string, string> = {
   commonlisp: 'lisp',
   cl: 'lisp',
   erl: 'erlang',
+  typ: 'typst',
   jl: 'julia',
 };
 

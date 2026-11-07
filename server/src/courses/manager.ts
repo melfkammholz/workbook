@@ -7,6 +7,7 @@ import { loadContent, type Content } from '../content/loader.js';
 import { ContentService } from '../content/service.js';
 import { TypstRenderer } from '../content/typst.js';
 import { Store } from '../db/store.js';
+import { Flashcards } from '../flashcards/service.js';
 import * as git from './git.js';
 
 export class CourseError extends Error {
@@ -20,6 +21,22 @@ interface CourseRecord {
   id: string;
   url: string;
   title: string;
+}
+
+/** What a flashcard's `from:` points at. */
+export interface ExerciseRef {
+  title: string;
+  courseTitle: string;
+  language: string | null;
+  /** Only when that course is open. */
+  href: string | null;
+  /** The course's stable id. */
+  course: string;
+  chapterId: string | null;
+  tags: string[];
+  /** All tags of the course, so a card can name one by its label too. */
+  courseTags: { id: string; label: string }[];
+  exams: { title: string | null; date: string }[];
 }
 
 export interface OpenCourse {
@@ -67,6 +84,9 @@ interface Options {
 export class CourseManager {
   /** Settings and the list of courses. */
   readonly global: Store;
+  /** The student's decks. They belong to no course. */
+  readonly flashcards: Flashcards;
+  private deckRenderer: TypstRenderer | null = null;
   private readonly open = new Map<string, OpenCourse>();
   private readonly updates = new Map<string, CourseUpdate>();
   private readonly hasMount: boolean;
@@ -78,6 +98,28 @@ export class CourseManager {
     const known = this.ids();
     const saved = this.global.getValue<string | null>(ACTIVE_KEY, null);
     this.activeId = saved && known.includes(saved) ? saved : (known[0] ?? null);
+    this.flashcards = new Flashcards(this.global, () => this.decksRenderer(), {
+      find: (ref) => {
+        const found = this.findExercise(ref);
+        return found ? { ref, ...found } : null;
+      },
+      courses: () => this.ids().map((id) => ({ id: this.openCourse(id).content.current.outline.id, title: this.openCourse(id).content.current.outline.title })),
+      language: () => {
+        const ui = this.global.getSettings().uiLanguage;
+        return ui !== 'auto' ? ui : (this.active?.content.current.outline.language ?? 'en');
+      },
+    });
+  }
+
+  /** Decks are compiled in a root of their own, with no course content to reach. */
+  private decksRenderer(): TypstRenderer {
+    if (!this.deckRenderer) {
+      const dataDir = path.join(this.o.config.dataDir, 'flashcards');
+      const contentDir = path.join(dataDir, 'no-content');
+      fs.mkdirSync(contentDir, { recursive: true });
+      this.deckRenderer = new TypstRenderer({ bin: this.o.config.typstBin, contentDir, dataDir, assetsDir: this.o.typstAssets, language: 'en' });
+    }
+    return this.deckRenderer;
   }
 
   get active(): OpenCourse | null {
@@ -167,6 +209,18 @@ export class CourseManager {
     return this.list();
   }
 
+  /**
+   * Starts over: the work in every course, all flashcards, and the settings. The courses
+   * themselves stay downloaded.
+   */
+  resetAll(): CoursesResponse {
+    for (const id of this.ids()) this.openCourse(id).store.resetWork();
+    this.flashcards.reset();
+    this.global.resetSettings();
+    this.o.onSwitch?.();
+    return this.list();
+  }
+
   /** Deletes the copy and the work done in it. */
   async remove(id: string): Promise<CoursesResponse> {
     if (id === MOUNTED) throw new CourseError('mounted');
@@ -182,6 +236,41 @@ export class CourseManager {
     this.updates.delete(id);
     fs.rmSync(this.home(id), { recursive: true, force: true });
     return this.list();
+  }
+
+  /**
+   * What a flashcard's `from: "course/exercise"` points at, in any of this student's
+   * courses. Courses are named by their stable `id`, so a deck works across machines.
+   */
+  findExercise(ref: string): ExerciseRef | null {
+    const slash = ref.indexOf('/');
+    if (slash <= 0) return null;
+    const course = ref.slice(0, slash);
+    const itemId = ref.slice(slash + 1);
+    for (const id of this.ids()) {
+      const c = this.openCourse(id).content.current;
+      if (c.outline.id !== course) continue;
+      const item = c.get(itemId);
+      if (!item) continue;
+      return {
+        title: item.meta.title,
+        courseTitle: c.outline.title,
+        language: item.codeLanguage,
+        href: id === this.activeId ? `#/item/${itemId}` : null,
+        course,
+        chapterId: item.meta.chapterId,
+        tags: 'tags' in item.meta ? item.meta.tags : [],
+        courseTags: c.outline.tags.map((t) => ({ id: t.id, label: t.label })),
+        exams: c.outline.exams,
+      };
+    }
+    return null;
+  }
+
+  /** How a card made in the open course names the exercise it came from. */
+  exerciseRef(itemId: string): string | null {
+    const course = this.active;
+    return course ? `${course.content.current.outline.id}/${itemId}` : null;
   }
 
   close(): void {

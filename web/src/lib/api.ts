@@ -49,6 +49,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 export const api = {
   get: <T>(url: string) => request<T>('GET', url),
   put: <T>(url: string, body: unknown) => request<T>('PUT', url, body),
+  patch: <T>(url: string, body: unknown) => request<T>('PATCH', url, body),
   delete: <T>(url: string) => request<T>('DELETE', url),
   post: <T>(url: string, body?: unknown) => request<T>('POST', url, body ?? {}),
 };
@@ -75,6 +76,8 @@ export interface Work {
 export interface NotePreview {
   html: string;
   css: string;
+  /** Laid out as a page and shown as a picture: HTML export would have lost part of it. */
+  asPicture?: boolean;
   diagnostics: TypstDiagnostic[];
 }
 export interface SearchResponse {
@@ -265,7 +268,7 @@ export interface PromptRequest {
   lang: 'de' | 'en';
 }
 export const fetchAiPrompt = (id: string, body: PromptRequest) => api.post<{ text: string }>(`/api/work/${encodeURIComponent(id)}/ai/prompt`, body);
-export const previewNote = (source: string) => api.post<NotePreview>('/api/preview/note', { source });
+export const previewNote = (source: string, width?: number) => api.post<NotePreview>('/api/preview/note', width ? { source, width } : { source });
 export const search = (q: string) => api.get<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}`);
 
 // ───────────────────────── helpers ─────────────────────────

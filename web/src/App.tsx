@@ -1,11 +1,10 @@
-import { CircleHelp, ClipboardList, Menu, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon, X } from 'lucide-react';
+import { ArrowLeft, CircleHelp, ClipboardList, Layers, Menu, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Route, Router, Switch, useLocation, useRoute } from 'wouter';
 import { useHashLocation } from 'wouter/use-hash-location';
 import { Celebration } from '@/components/Celebration';
 import { AddCourseForm, CourseDialog } from '@/components/CourseDialog';
 import { CourseMenu, FocusQuestion } from '@/components/Focus';
-import { HelpDialog } from '@/components/HelpDialog';
 import { OutlinePanel } from '@/components/Outline';
 import { SearchDialog } from '@/components/SearchDialog';
 import { SettingsDialog } from '@/components/SettingsDialog';
@@ -13,6 +12,7 @@ import { SetupDialog } from '@/components/SetupDialog';
 import { Empty, IconButton, Spinner, clsx } from '@/components/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { checkCourseUpdates, keys, statusOf, useCourses, useOutline, useSettings, useState_ } from '@/lib/api';
+import { useFlashcards } from '@/lib/flashcards';
 import { useFilters } from '@/lib/filters';
 import { focusExercises } from '@/lib/focus';
 import { useDocumentLang, useT } from '@/lib/i18n';
@@ -22,6 +22,12 @@ import { AchievementsPage } from '@/pages/AchievementsPage';
 import { AdventurePage } from '@/pages/AdventurePage';
 import { ChapterPage } from '@/pages/ChapterPage';
 import { Dashboard } from '@/pages/Dashboard';
+import { DeckPage } from '@/pages/DeckPage';
+import { FlashcardReview } from '@/pages/FlashcardReview';
+import { FlashcardsPage } from '@/pages/FlashcardsPage';
+import { HelpPage } from '@/pages/HelpPage';
+import { StrugglingPage } from '@/pages/StrugglingPage';
+import { typstContext } from '@/lib/typst';
 import { LandingPage } from '@/pages/LandingPage';
 import { NotesPage } from '@/pages/NotesPage';
 import { ItemPage } from '@/pages/ItemPage';
@@ -45,6 +51,10 @@ function Shell() {
   useEffect(() => {
     if (settings) applyTheme(settings.theme);
   }, [settings?.theme]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (settings) document.documentElement.dataset.colors = settings.safeColors ? 'safe' : 'default';
+  }, [settings?.safeColors]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Editors read this from CSS, so changing it needs no rebuilding of any of them.
   useEffect(() => {
@@ -70,14 +80,64 @@ function Shell() {
   return <CourseShell key={courses.data.activeId} />;
 }
 
+/** Flashcards belong to no course, so they have their own routes in both shells. */
+function flashcardRoutes() {
+  return [
+    <Route key="list" path="/flashcards" component={FlashcardsPage} />,
+    <Route key="deck" path="/flashcards/deck/:id">
+      {(p) => <DeckPage key={p.id} id={p.id} />}
+    </Route>,
+    <Route key="card" path="/flashcards/deck/:id/card/:card">
+      {(p) => <DeckPage key={`${p.id}/${p.card}`} id={p.id} card={p.card} />}
+    </Route>,
+    <Route key="review" path="/flashcards/review/:decks">
+      {(p) => <FlashcardReview key={p.decks} deckIds={p.decks.split(',')} />}
+    </Route>,
+    <Route key="look" path="/flashcards/look">
+      {() => <StrugglingPage deckId={null} />}
+    </Route>,
+    <Route key="look-deck" path="/flashcards/look/:deck">
+      {(p) => <StrugglingPage key={p.deck} deckId={p.deck} />}
+    </Route>,
+    <Route key="help" path="/help">
+      {() => <HelpPage />}
+    </Route>,
+    <Route key="help-section" path="/help/:section">
+      {(p) => <HelpPage section={p.section} />}
+    </Route>,
+  ];
+}
+
 function NoCourse() {
   const t = useT();
+  const [location] = useLocation();
+  const flashcardsOn = !!useSettings().data?.showFlashcards;
+  if (location.startsWith('/flashcards') || location.startsWith('/help')) {
+    return (
+      <div className="flex h-full flex-col">
+        <header className="flex h-12 shrink-0 items-center gap-1 border-b border-line bg-sheet px-2">
+          <Link href="/" className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-ink-2 hover:bg-sunk hover:text-ink">
+            <ArrowLeft size={16} /> {t.noCourseTitle}
+          </Link>
+        </header>
+        <main className="min-h-0 flex-1">
+          <Switch>{flashcardRoutes()}</Switch>
+        </main>
+      </div>
+    );
+  }
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-lg px-6 pb-24 pt-16">
         <h1 className="text-[1.75rem] font-semibold tracking-[-0.02em]">{t.noCourseTitle}</h1>
         <p className="mb-6 mt-2 text-ink-2">{t.noCourseBody}</p>
         <AddCourseForm autoFocus />
+        <p className={clsx('mt-10 text-sm text-ink-2', !flashcardsOn && 'hidden')}>
+          {t.flashcardsWithoutCourse}{' '}
+          <Link href="/flashcards" className="font-medium text-accent hover:underline">
+            {t.flashcards}
+          </Link>
+        </p>
       </div>
       <SetupDialog />
     </div>
@@ -91,6 +151,7 @@ function CourseShell() {
   const courses = useCourses().data;
   const stateQuery = useState_();
   const achievementsOn = !!useSettings().data?.showAchievements;
+  const flashcardsOn = !!useSettings().data?.showFlashcards;
   const state = useState_().data?.state;
   const { filters, patch, reset } = useFilters();
   const [, params] = useRoute('/item/:id');
@@ -106,7 +167,6 @@ function CourseShell() {
   const [drawer, setDrawer] = useState(false);
   const [searching, setSearching] = useState(false);
   const [configuring, setConfiguring] = useState(false);
-  const [helping, setHelping] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [location, navigate] = useLocation();
 
@@ -142,6 +202,15 @@ function CourseShell() {
 
   useEffect(() => {
     if (outline.data) document.title = outline.data.title;
+  }, [outline.data]);
+
+  // What the Typst editors offer: this course's exercises and tags.
+  useEffect(() => {
+    const o = outline.data;
+    typstContext.course = o?.id ?? null;
+    typstContext.exercises = o ? o.chapters.flatMap((c) => c.items.map((i) => ({ id: i.id, title: i.title }))) : [];
+    // Topics only: signals say what an exercise is like, not what a card is about.
+    typstContext.tags = o ? o.tags.filter((tag) => tag.type === 'topic').map((tag) => ({ id: tag.id, label: tag.label })) : [];
   }, [outline.data]);
 
   // What is in the focus, so every focus can be finished.
@@ -236,12 +305,19 @@ function CourseShell() {
               <PawPrint size={18} />
             </Link>
           ) : null}
+          {flashcardsOn ? <FlashcardsLink active={location.startsWith('/flashcards')} /> : null}
           <Link href="/review" className="inline-flex size-8 items-center justify-center rounded-md text-ink-2 hover:bg-sunk hover:text-ink" aria-label={t.review} title={t.review}>
             <ClipboardList size={18} />
           </Link>
-          <IconButton label={t.help} onClick={() => setHelping(true)}>
+          <Link
+            href="/help"
+            className={clsx('inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk hover:text-ink', location.startsWith('/help') ? 'bg-sunk text-ink' : 'text-ink-2')}
+            aria-label={t.help}
+            aria-current={location.startsWith('/help') ? 'page' : undefined}
+            title={t.help}
+          >
             <CircleHelp size={18} />
-          </IconButton>
+          </Link>
           <IconButton label={t.settings} onClick={() => setConfiguring(true)}>
             <SettingsIcon size={18} />
           </IconButton>
@@ -258,6 +334,7 @@ function CourseShell() {
             <Route path="/welcome" component={LandingPage} />
             <Route path="/achievements" component={AchievementsPage} />
             <Route path="/notes" component={NotesPage} />
+            {flashcardRoutes()}
             <Route path="/chapter/:id">{(p) => <ChapterPage key={p.id} id={p.id} />}</Route>
             <Route path="/adventure/:id">{(p) => <AdventurePage key={p.id} id={p.id} />}</Route>
             <Route>
@@ -286,9 +363,27 @@ function CourseShell() {
       {achievementsOn ? <Celebration /> : null}
       <CourseDialog open={switching} onClose={() => setSwitching(false)} />
       <SettingsDialog open={configuring} onClose={() => setConfiguring(false)} />
-      <HelpDialog open={helping} onClose={() => setHelping(false)} />
       <SetupDialog />
       <FocusQuestion />
     </div>
+  );
+}
+
+/** A dot when cards wait. Only a dot: a number of cards owed would read as a debt. */
+function FlashcardsLink({ active }: { active: boolean }) {
+  const t = useT();
+  const decks = useFlashcards().data?.decks;
+  const waiting = decks?.some((d) => d.due > 0) ?? false;
+  return (
+    <Link
+      href="/flashcards"
+      className={clsx('relative inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk hover:text-ink', active ? 'bg-sunk text-ink' : 'text-ink-2')}
+      aria-label={t.flashcards}
+      aria-current={active ? 'page' : undefined}
+      title={t.flashcards}
+    >
+      <Layers size={18} />
+      {waiting ? <span aria-hidden className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-accent" /> : null}
+    </Link>
   );
 }

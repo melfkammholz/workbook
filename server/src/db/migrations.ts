@@ -2,7 +2,12 @@
  * Schema migrations, applied in order. `PRAGMA user_version` records how many
  * have run. Never edit a released migration: append a new one.
  */
-export const MIGRATIONS: string[] = [
+import type { DatabaseSync } from 'node:sqlite';
+
+/** SQL, or a function for a step that has to look at the database first. */
+export type Migration = string | ((db: DatabaseSync) => void);
+
+export const MIGRATIONS: Migration[] = [
   /* 1: initial schema */ `
   CREATE TABLE progress (
     exercise_id   TEXT PRIMARY KEY,
@@ -130,4 +135,52 @@ export const MIGRATIONS: string[] = [
     created_at   INTEGER NOT NULL
   );
   `,
+  /* 6: flashcards. Used in the main database only: decks belong to the student, not to a course. */ `
+  CREATE TABLE decks (
+    id         TEXT PRIMARY KEY,
+    title      TEXT NOT NULL,
+    source     TEXT NOT NULL,            -- Typst; the text is the deck
+    settings   TEXT NOT NULL DEFAULT '{}', -- JSON
+    position   INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  -- One row per card id, direction or gap ("k3f9", "k3f9:back", "k3f9:2"). Not tied to a deck, so cards can move.
+  CREATE TABLE card_schedule (
+    key          TEXT PRIMARY KEY,
+    card         TEXT NOT NULL,          -- JSON, the FSRS state
+    due          INTEGER NOT NULL,
+    buried_until INTEGER,
+    updated_at   INTEGER NOT NULL
+  );
+
+  CREATE TABLE card_reviews (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    key         TEXT NOT NULL,
+    deck_id     TEXT NOT NULL,
+    rating      INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 4),
+    was_new     INTEGER NOT NULL,
+    state       INTEGER NOT NULL,        -- FSRS state after the review
+    stability   REAL NOT NULL,
+    difficulty  REAL NOT NULL,
+    due         INTEGER NOT NULL,
+    reviewed_at INTEGER NOT NULL
+  );
+  CREATE INDEX card_reviews_lookup ON card_reviews (key, id);
+  CREATE INDEX card_reviews_day ON card_reviews (reviewed_at);
+  `,
+  /*
+   * 7: the deck "Make a card" adds to, and cards kept as they are after being forgotten often.
+   * Development builds of migration 6 already had one or both, so this looks before it adds.
+   */
+  (db) => {
+    const columns = (db.prepare('PRAGMA table_info(decks)').all() as { name: string }[]).map((c) => c.name);
+    if (!columns.includes('used_at')) {
+      db.exec('ALTER TABLE decks ADD COLUMN used_at INTEGER NOT NULL DEFAULT 0'); // last time a card was added
+      db.exec('UPDATE decks SET used_at = updated_at');
+    }
+    // "Keep as is" for a card that kept being forgotten: it is offered again only after the next lapse.
+    db.exec('CREATE TABLE IF NOT EXISTS card_kept (card_id TEXT PRIMARY KEY, kept_at INTEGER NOT NULL)');
+  },
 ];

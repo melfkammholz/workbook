@@ -4,8 +4,9 @@ import { Group, Panel } from 'react-resizable-panels';
 import { useLocation } from 'wouter';
 import type { HowSolved, Status } from '@wb/shared';
 import { ConfirmDialog } from '@/components/Dialogs';
-import { ContinueBanner, ExerciseBar, HelpPrompt } from '@/components/ExerciseBar';
+import { CardInvitation, ContinueBanner, ExerciseBar, HelpPrompt } from '@/components/ExerciseBar';
 import { ExerciseView } from '@/components/ExerciseView';
+import { MakeCardDialog } from '@/components/MakeCardDialog';
 import { ReflectionDialog, type ReflectionInput, type ReflectionMode } from '@/components/ReflectionDialog';
 import { TaskColumn } from '@/components/TaskColumn';
 import { Button, Empty, ResizeHandle, Spinner, clsx } from '@/components/ui';
@@ -52,6 +53,11 @@ function Loaded({ id }: { id: string }) {
   const [hints, setHints] = useState<number | null>(null);
   const [confirmTimer, setConfirmTimer] = useState(false);
   const [timerResets, setTimerResets] = useState(0);
+  const [makingCard, setMakingCard] = useState(false);
+  const flashcardsOn = !!settings?.showFlashcards;
+  // A quiet invitation after finishing or after rating oneself low. Never more than once per visit.
+  const [invite, setInvite] = useState<'done' | 'low' | null>(null);
+  const invited = useRef(false);
 
   const meta = detail.meta;
   const ex = meta.type === 'exercise' ? meta : null;
@@ -171,6 +177,10 @@ function Loaded({ id }: { id: string }) {
     // What is unclear stays open until the student says otherwise, whichever way it was asked.
     if (comment !== (w.openQuestion?.content ?? '')) writes.push(saveOpenQuestion(id, comment));
     await Promise.all(writes);
+    if (flashcardsOn && !invited.current && confidence !== null && (confidence <= 2 || !review)) {
+      invited.current = true;
+      setInvite(confidence <= 2 ? 'low' : 'done');
+    }
     void qc.invalidateQueries({ queryKey: keys.work(id) });
     void qc.invalidateQueries({ queryKey: keys.state });
     void qc.invalidateQueries({ queryKey: keys.mine });
@@ -190,11 +200,22 @@ function Loaded({ id }: { id: string }) {
       onTogglePause={togglePaused}
       previous={around.previous}
       next={around.next}
+      onMakeCard={flashcardsOn ? () => setMakingCard(true) : undefined}
     />
   );
 
   const hintsLeft = revealed < detail.rendered.hints.length;
-  const prompt =
+  const invitation = invite ? (
+    <CardInvitation
+      kind={invite}
+      onMake={() => {
+        setInvite(null);
+        setMakingCard(true);
+      }}
+      onDismiss={() => setInvite(null)}
+    />
+  ) : null;
+  const banner =
     status === 'done' ? (
       upNext ? <ContinueBanner next={upNext} /> : null
     ) : (
@@ -225,6 +246,7 @@ function Loaded({ id }: { id: string }) {
       initialComment={w.openQuestion?.content ?? ''}
       onSubmit={(input) => void submitReflection(input)}
     />
+    {flashcardsOn ? <MakeCardDialog open={makingCard} onClose={() => setMakingCard(false)} exerciseId={id} /> : null}
     <ConfirmDialog open={confirmTimer} onClose={() => setConfirmTimer(false)} title={t.confirmResetTimer} confirmLabel={t.resetTimerButton} onConfirm={restartTimer}>
       {t.resetTimerBody}
     </ConfirmDialog>
@@ -254,7 +276,8 @@ function Loaded({ id }: { id: string }) {
     return (
       <div className="flex h-full min-h-0 flex-col">
         {bar}
-        {prompt}
+        {banner}
+        {invitation}
         <div role="tablist" className="flex border-b border-line bg-sheet">
           {(['task', 'work'] as const).map((p) => (
             <button key={p} role="tab" aria-selected={pane === p} onClick={() => setPane(p)} className={clsx('flex-1 py-2.5 text-sm font-medium', pane === p ? 'border-b-2 border-accent text-ink' : 'text-ink-3')}>
@@ -271,7 +294,8 @@ function Loaded({ id }: { id: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {bar}
-      {prompt}
+      {banner}
+      {invitation}
       <div className="min-h-0 flex-1">
         <Group orientation="horizontal" className="h-full">
           <Panel defaultSize="46" minSize="28">

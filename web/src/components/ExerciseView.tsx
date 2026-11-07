@@ -90,6 +90,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
 
   const qc = useQueryClient();
   const celebrating = !!useSettings().data?.showAchievements;
+  const aiOn = !!useSettings().data?.showAi;
   // Only the first time the tests of this exercise all pass.
   const passedBefore = useRef(work.stats.checkPasses > 0);
   const repl = useRepl(meta.id, runnable);
@@ -278,7 +279,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
     <div className="flex h-full min-h-0 flex-col bg-sheet">
       <div className="flex items-center justify-between border-b border-line pl-2 pr-3">
         <div role="tablist" aria-label={t.workspace} className="flex">
-          {(['answer', 'notes', 'ai'] as TopTab[]).map((name) => (
+          {(['answer', 'notes', ...(aiOn ? ['ai'] : [])] as TopTab[]).map((name) => (
             <button
               key={name}
               role="tab"
@@ -386,7 +387,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
       <div className="min-h-0 flex-1">
         {tab === 'notes' ? (
           <NotesPanel id={meta.id} initial={work.note?.content ?? ''} />
-        ) : tab === 'ai' ? (
+        ) : tab === 'ai' && aiOn ? (
           <AiPanel id={meta.id} answer={answerForAi} tests={run?.compiled ? run.results.map(({ name, status, message }) => ({ name, status, message })) : null} />
         ) : runnable ? (
           <Group orientation="vertical" className="h-full">
@@ -525,7 +526,7 @@ function Problems({ diagnostics, multi }: { diagnostics: NonNullable<ReturnType<
   );
 }
 
-function MoreMenu({ items }: { items: { icon: typeof Clock; label: string; onClick: () => void }[] }) {
+export function MoreMenu({ items }: { items: { icon: typeof Clock; label: string; onClick: () => void }[] }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   return (

@@ -6,6 +6,7 @@ import type { Diagnostic, TypeInfo } from '@wb/shared';
 import { useEffect, useRef } from 'react';
 import { useSettings } from '@/lib/api';
 import { baseExtensions, type EditorVariant } from '@/lib/editor';
+import { typstCompletions } from '@/lib/typst';
 import { useT } from '@/lib/i18n';
 
 interface Props {
@@ -23,6 +24,8 @@ interface Props {
   onSubmit?: () => void;
   label: string;
   variant?: EditorVariant;
+  /** The CodeMirror view, for changes that must keep the cursor where it is. Null when it goes. */
+  onView?: (view: EditorView | null) => void;
 }
 
 /** The name or operator at a column, if there is one. */
@@ -35,7 +38,7 @@ function tokenAt(text: string, column: number): { from: number; to: number } | n
 }
 
 /** Thin wrapper around a CodeMirror view. `value` is the source of truth: when it differs from the document the document is replaced. */
-export function CodeEditor({ value, onChange, language, diagnostics, readOnly, lineNumbers, wrap, placeholder, onSubmit, label, variant, typeOf }: Props) {
+export function CodeEditor({ value, onChange, language, diagnostics, readOnly, lineNumbers, wrap, placeholder, onSubmit, label, variant, typeOf, onView }: Props) {
   const t = useT();
   const vimKeys = useSettings().data?.editorKeys === 'vim' && !readOnly;
   const host = useRef<HTMLDivElement>(null);
@@ -46,6 +49,10 @@ export function CodeEditor({ value, onChange, language, diagnostics, readOnly, l
   onSubmitRef.current = onSubmit;
   const typeOfRef = useRef(typeOf);
   typeOfRef.current = typeOf;
+  const onViewRef = useRef(onView);
+  onViewRef.current = onView;
+  const labelsRef = useRef(t.completion);
+  labelsRef.current = t.completion;
   const hoogleRef = useRef('');
   hoogleRef.current = t.lookUpInHoogle;
 
@@ -57,7 +64,14 @@ export function CodeEditor({ value, onChange, language, diagnostics, readOnly, l
         extensions: [
           // First, so that it sees every key before the normal bindings do.
           vimKeys ? vim({ status: true }) : [],
-          baseExtensions({ language, lineNumbers, wrap, ...(variant ? { variant } : {}), ...(placeholder ? { placeholder } : {}) }),
+          baseExtensions({
+            language,
+            lineNumbers,
+            wrap,
+            ...(variant ? { variant } : {}),
+            ...(placeholder ? { placeholder } : {}),
+            ...(language === 'typst' ? { completions: typstCompletions(() => labelsRef.current) } : {}),
+          }),
           Prec.highest(
             keymap.of([
               {
@@ -111,9 +125,11 @@ export function CodeEditor({ value, onChange, language, diagnostics, readOnly, l
       }),
     });
     view.current = v;
+    onViewRef.current?.(v);
     return () => {
       v.destroy();
       view.current = null;
+      onViewRef.current?.(null);
     };
     // The view is created once per mount; props that change later are applied below.
     // eslint-disable-next-line react-hooks/exhaustive-deps

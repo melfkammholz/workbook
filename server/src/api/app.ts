@@ -6,6 +6,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { aiRoutes } from './routes-ai.js';
 import { contentRoutes } from './routes-content.js';
 import { courseRoutes } from './routes-courses.js';
+import { flashcardRoutes } from './routes-flashcards.js';
 import type { Deps } from './deps.js';
 import { replSocket } from './repl-socket.js';
 import { workRoutes } from './routes-work.js';
@@ -36,8 +37,8 @@ export async function buildApp(d: Deps): Promise<FastifyInstance> {
     }
   });
 
-  // Before the first course is added, only what it takes to add one works.
-  const WITHOUT_COURSE = ['/api/courses', '/api/settings', '/api/info'];
+  // Before the first course is added, only what it takes to add one works, and flashcards, which belong to no course.
+  const WITHOUT_COURSE = ['/api/courses', '/api/settings', '/api/info', '/api/flashcards', '/api/reset-all'];
   app.addHook('onRequest', async (req, reply) => {
     if (d.courses.active || !(req.url.startsWith('/api/') || req.url.startsWith('/ws/'))) return;
     if (!WITHOUT_COURSE.some((p) => req.url.startsWith(p))) return reply.code(409).send({ error: 'no course yet' });
@@ -47,6 +48,7 @@ export async function buildApp(d: Deps): Promise<FastifyInstance> {
   workRoutes(app, d);
   aiRoutes(app, d);
   courseRoutes(app, d);
+  flashcardRoutes(app, d);
   replSocket(app, d);
 
   const web = d.config.webDir;

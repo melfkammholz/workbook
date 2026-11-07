@@ -4,7 +4,7 @@ import type { Settings, UiLanguage } from '@wb/shared';
 import { api, keys, useSaveSettings, useSettings } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { applyTheme } from '@/lib/theme';
-import { Dialog, Segmented } from './ui';
+import { Button, Dialog, Segmented } from './ui';
 
 const inputClass = 'h-9 w-full rounded-md border border-line bg-paper px-3 text-sm placeholder:text-ink-3 focus:border-accent focus:outline-none';
 
@@ -44,6 +44,55 @@ function Toggle({ checked, onChange, title, body }: { checked: boolean; onChange
   );
 }
 
+/** Deletes everything the student did, everywhere. Asks once more, in place, with what it means. */
+function StartOver() {
+  const t = useT();
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  return (
+    <section className="mt-6 space-y-2 border-t border-line pt-5">
+      <h3 className="text-sm font-semibold">{t.resetAllTitle}</h3>
+      <p className="text-[13px] text-ink-2">{t.resetAllBody}</p>
+      {asking ? (
+        <div className="rounded-md border border-danger/40 bg-danger-soft px-3 py-2.5 text-sm">
+          <p className="text-danger">{t.resetAllConfirm}</p>
+          <div className="mt-2 flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setAsking(false)}>
+              {t.cancel}
+            </Button>
+            <Button
+              size="sm"
+              disabled={busy}
+              className="border-danger text-danger"
+              onClick={async () => {
+                setBusy(true);
+                setFailed(false);
+                try {
+                  await api.post('/api/reset-all', { confirm: 'reset' });
+                  // Everything the app holds is out of date; a fresh start is simplest.
+                  location.hash = '#/';
+                  location.reload();
+                } catch {
+                  setFailed(true);
+                  setBusy(false);
+                }
+              }}
+            >
+              {t.resetAllButton}
+            </Button>
+          </div>
+          {failed ? <p className="mt-2 text-danger">{t.couldNotSave}</p> : null}
+        </div>
+      ) : (
+        <Button size="sm" onClick={() => setAsking(true)}>
+          {t.resetAllButton}
+        </Button>
+      )}
+    </section>
+  );
+}
+
 export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT();
   const settings = useSettings().data;
@@ -72,6 +121,8 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
             }}
           />
         </fieldset>
+
+        <Toggle checked={settings.safeColors} onChange={(v) => set({ safeColors: v })} title={t.safeColors} body={t.safeColorsBody} />
 
         <fieldset>
           <legend className="mb-1 text-sm font-medium">{t.language}</legend>
@@ -111,9 +162,13 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
       </section>
 
       <section className="mt-6 space-y-3 border-t border-line pt-5">
-        <h3 className="text-sm font-semibold">{t.achievements}</h3>
+        <h3 className="text-sm font-semibold">{t.optionalFeatures}</h3>
         <Toggle checked={settings.showAchievements} onChange={(v) => set({ showAchievements: v })} title={t.showAchievements} body={t.showAchievementsBody} />
+        <Toggle checked={settings.showFlashcards} onChange={(v) => set({ showFlashcards: v })} title={t.showFlashcards} body={t.showFlashcardsBody} />
+        <Toggle checked={settings.showAi} onChange={(v) => set({ showAi: v })} title={t.showAi} body={t.showAiBody} />
       </section>
+
+      <StartOver />
 
       {info.data?.typst === 'unavailable' ? <p className="mt-6 border-t border-line pt-4 text-xs text-ink-3">{t.typstMissing}</p> : null}
     </Dialog>

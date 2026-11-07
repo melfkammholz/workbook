@@ -32,6 +32,12 @@ export function courseRoutes(app: FastifyInstance, d: Deps): void {
 
   app.post<{ Params: { id: string } }>('/api/courses/:id/activate', async (req, reply) => answer(reply, async () => d.courses.activate(req.params.id)));
   app.post<{ Params: { id: string } }>('/api/courses/:id/update', async (req, reply) => answer(reply, () => d.courses.update(req.params.id)));
+  /** Everything the student did, in every course, and all flashcards and settings. Asks for the word, so no stray request does it. */
+  app.post('/api/reset-all', async (req, reply) => {
+    if ((req.body as { confirm?: unknown } | undefined)?.confirm !== 'reset') return reply.code(400).send({ error: 'confirm with "reset"' });
+    return d.courses.resetAll();
+  });
+
   app.post<{ Params: { id: string } }>('/api/courses/:id/reset', async (req, reply) => answer(reply, async () => d.courses.reset(req.params.id)));
   app.delete<{ Params: { id: string } }>('/api/courses/:id', async (req, reply) => answer(reply, () => d.courses.remove(req.params.id)));
 }

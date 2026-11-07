@@ -13,7 +13,7 @@ const SEGMENTS = [
 
 /**
  * Where it feels solid and where it does not. Shakiest first, because that is what to work on.
- * Orange and blue rather than red and green, and stripes on "unsure", so nobody has to tell them apart by hue.
+ * Red to green by default; with the colour vision setting orange and blue, and stripes on "unsure".
  */
 export function ConfidenceOverview({ outline, data }: { outline: Outline; data: ReviewData }) {
   const t = useT();
@@ -29,7 +29,7 @@ export function ConfidenceOverview({ outline, data }: { outline: Outline; data: 
           const rated = r.low + r.okay + r.high;
           const summary = `${r.label}: ${names.low} ${r.low}, ${names.okay} ${r.okay}, ${names.high} ${r.high}`;
           return (
-            <li key={r.key} className="grid items-center gap-x-3 gap-y-1 sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)_auto]">
+            <li key={r.key} className="grid items-center gap-x-3 gap-y-1 sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)_9rem]">
               {r.href ? (
                 <Link href={r.href} className="truncate text-sm hover:underline">
                   {r.label}
@@ -42,7 +42,7 @@ export function ConfidenceOverview({ outline, data }: { outline: Outline; data: 
                   r[name] > 0 ? <span key={name} title={`${names[name]}: ${r[name]}`} className={clsx('rounded-sm', color)} style={{ flexGrow: r[name], flexBasis: 0 }} /> : null,
                 )}
               </div>
-              <span className="text-xs tabular-nums text-ink-3">{r.total ? t.ratedOf(rated, r.total) : t.ratedCount(rated)}</span>
+              <span className="text-xs tabular-nums text-ink-3 sm:text-right">{r.total ? t.ratedOf(rated, r.total) : t.ratedCount(rated)}</span>
             </li>
           );
         })}

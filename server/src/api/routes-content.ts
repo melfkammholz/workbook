@@ -49,10 +49,12 @@ export function contentRoutes(app: FastifyInstance, d: Deps): void {
   app.get<{ Params: { id: string } }>('/api/chapters/:id/intro', async (req, reply) => serveDoc(docKey.chapter(req.params.id), reply));
   app.get<{ Params: { id: string } }>('/api/threads/:id/page', async (req, reply) => serveDoc(docKey.thread(req.params.id), reply));
 
-  app.post<{ Body: { source?: string } }>('/api/preview/note', async (req, reply) => {
+  app.post<{ Body: { source?: string; width?: number } }>('/api/preview/note', async (req, reply) => {
     const source = req.body?.source;
     if (typeof source !== 'string' || source.length > 200_000) return reply.code(400).send({ error: 'source required' });
-    return d.renderer.renderNote(source);
+    // The width of the preview, in pt: a picture fallback is laid out at it.
+    const width = req.body?.width;
+    return d.renderer.renderNote(source, typeof width === 'number' && width >= 100 && width <= 2000 ? width : undefined);
   });
 
   app.get<{ Querystring: { q?: string } }>('/api/search', async (req) => {

@@ -119,10 +119,16 @@ function PartBlock({
 
   return (
     <section className="border-b border-line">
-      <button type="button" onClick={() => setOpen(!open)} aria-expanded={expanded} className="flex w-full items-center gap-2 bg-paper/60 px-3 py-2 text-left hover:bg-paper">
-        <ChevronDown size={15} className={clsx('shrink-0 text-ink-3 transition-transform', !expanded && '-rotate-90')} />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink-2">{part.title}</span>
-        <span className="shrink-0 text-xs tabular-nums text-ink-3">
+      {/* The top level, so it reads as one: a band of its own, and it stays in view while its chapters scroll by. */}
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={expanded}
+        className="sticky top-0 z-10 flex w-full items-center gap-2 border-b border-line bg-sunk px-3 py-2.5 text-left hover:bg-line/60"
+      >
+        <ChevronDown size={16} className={clsx('shrink-0 text-ink-2 transition-transform', !expanded && '-rotate-90')} />
+        <span className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-tight text-ink">{part.title}</span>
+        <span className="shrink-0 text-xs font-medium tabular-nums text-ink-2">
           {done}/{exercises.length}
         </span>
       </button>

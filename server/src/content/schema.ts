@@ -98,7 +98,13 @@ export const chapterSchema = z
 export const workbookSchema = z
   .object({
     title: z.string().default('Workbook'),
+    /** Stable name of the course, used where something outside it points in, like a flashcard's `from:`. Defaults to the title, made into an id. */
+    id: id.optional(),
     language: z.string().default('en'),
+    /** Exam dates, e.g. one per examination period. Flashcard decks offer them as the date to be ready by. */
+    exams: z
+      .array(z.object({ title: z.string().optional(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'a date like 2027-02-12') }).strict())
+      .default([]),
     /** Typst file that introduces the course, relative to this file. */
     landing: z.string().optional(),
     /** Where students report problems. Defaults to the issues of the repository the course came from. */

@@ -57,7 +57,9 @@ export class Store {
     const current = Number((this.db.prepare('PRAGMA user_version').get() as Row).user_version);
     for (let v = current; v < MIGRATIONS.length; v++) {
       this.tx(() => {
-        this.db.exec(MIGRATIONS[v]!);
+        const step = MIGRATIONS[v]!;
+        if (typeof step === 'string') this.db.exec(step);
+        else step(this.db);
         this.db.exec(`PRAGMA user_version = ${v + 1}`);
       });
     }
@@ -90,6 +92,16 @@ export class Store {
   }
   private run(sql: string, ...params: SQLInputValue[]): void {
     this.db.prepare(sql).run(...params);
+  }
+
+  /** For the flashcards, which keep their own tables in the main database. */
+  get sql() {
+    return {
+      all: (q: string, ...params: SQLInputValue[]) => this.all(q, ...params),
+      get: (q: string, ...params: SQLInputValue[]) => this.get(q, ...params),
+      run: (q: string, ...params: SQLInputValue[]) => this.run(q, ...params),
+      tx: <T>(fn: () => T) => this.tx(fn),
+    };
   }
 
   // ───────────────────────── state ─────────────────────────
@@ -441,6 +453,11 @@ export class Store {
         this.run(`DELETE FROM ${table}`);
       this.run("DELETE FROM settings WHERE key NOT IN ('settings', 'courses', 'activeCourse')");
     });
+  }
+
+  /** Back to the defaults, as on the first start. */
+  resetSettings(): void {
+    this.run("DELETE FROM settings WHERE key = 'settings'");
   }
 
   /** A named value outside the student's settings, e.g. the list of courses. */

@@ -1,0 +1,465 @@
+import crypto from 'node:crypto';
+import type { CardKind, DeckWarning, TextEdit } from '@wb/shared';
+
+/**
+ * A deck is Typst text, and that text is the deck. This finds the cards in it
+ * without compiling: `#flashcard(...)[front][back]` and `#cloze(...)[… {{gap}} …]`.
+ *
+ * The scanner knows just enough Typst to find where a call ends: escapes, comments,
+ * raw text, math, strings in code, and nested brackets. Cards made by code (a loop
+ * that calls `flashcard`) are not seen here; they render, but cannot be scheduled.
+ */
+
+export interface Span {
+  from: number;
+  to: number;
+}
+
+export interface CardCall {
+  kind: CardKind;
+  /** Index of the `#`. */
+  start: number;
+  /** Index just after the function name. */
+  nameEnd: number;
+  /** Indices of `(` and `)`, if the call has arguments. */
+  args: Span | null;
+  id: string | null;
+  /** Where the id's text is, without the quotes. */
+  idSpan: Span | null;
+  from: string | null;
+  /** Its own tags, besides those of its exercise. */
+  tags: string[];
+  /** Content blocks, without their brackets. */
+  bodies: Span[];
+  end: number;
+  /** 1-based. */
+  line: number;
+  column: number;
+}
+
+const IDENT = /[\p{L}\p{N}_-]/u;
+const IDENT_START = /[\p{L}_]/u;
+
+class Scanner {
+  readonly cards: CardCall[] = [];
+  constructor(private readonly s: string) {}
+
+  /** Markup up to the `]` that closes it (or the end). Returns the index of that `]`. */
+  markup(i: number, nested: boolean): number {
+    const s = this.s;
+    let depth = 0;
+    while (i < s.length) {
+      const c = s[i]!;
+      if (c === '\\') {
+        i += 2;
+      } else if (c === '/' && s[i + 1] === '/' && !/https?:$/.test(s.slice(Math.max(0, i - 6), i))) {
+        i = this.lineEnd(i);
+      } else if (c === '/' && s[i + 1] === '*') {
+        i = this.blockCommentEnd(i);
+      } else if (c === '`') {
+        i = this.rawEnd(i);
+      } else if (c === '$') {
+        i = this.mathEnd(i);
+      } else if (c === '#') {
+        i = this.hash(i);
+      } else if (c === '[') {
+        depth++;
+        i++;
+      } else if (c === ']') {
+        if (depth === 0 && nested) return i;
+        depth = Math.max(0, depth - 1);
+        i++;
+      } else {
+        i++;
+      }
+    }
+    return i;
+  }
+
+  /** Code up to the closer that matches the opener at `i`. Returns the index after it. */
+  code(i: number): number {
+    const s = this.s;
+    const close = s[i] === '(' ? ')' : '}';
+    i++;
+    while (i < s.length) {
+      const c = s[i]!;
+      if (c === close) return i + 1;
+      if (c === '"') i = this.stringEnd(i);
+      else if (c === '/' && s[i + 1] === '/') i = this.lineEnd(i);
+      else if (c === '/' && s[i + 1] === '*') i = this.blockCommentEnd(i);
+      else if (c === '(' || c === '{') i = this.code(i);
+      else if (c === '[') i = Math.min(this.markup(i + 1, true) + 1, s.length);
+      else if (c === '`') i = this.rawEnd(i);
+      else i++;
+    }
+    return i;
+  }
+
+  /** A `#` in markup: an expression, possibly a card. Returns where markup goes on. */
+  private hash(i: number): number {
+    const s = this.s;
+    const start = i;
+    i++;
+    if (s[i] === '(' || s[i] === '{') return this.code(i);
+    if (s[i] === '"') return this.stringEnd(i);
+    if (!IDENT_START.test(s[i] ?? '')) return i;
+    while (i < s.length && (IDENT.test(s[i]!) || (s[i] === '.' && IDENT_START.test(s[i + 1] ?? '')))) i++;
+    const name = s.slice(start + 1, i);
+    const nameEnd = i;
+    let args: Span | null = null;
+    const bodies: Span[] = [];
+    // Arguments and trailing content blocks must follow without a space.
+    while (s[i] === '(' || s[i] === '[') {
+      if (s[i] === '(') {
+        const end = this.code(i);
+        if (!bodies.length && !args) args = { from: i, to: end - 1 };
+        i = end;
+      } else {
+        const close = this.markup(i + 1, true);
+        bodies.push({ from: i + 1, to: close });
+        i = Math.min(close + 1, s.length);
+      }
+    }
+    if ((name === 'flashcard' || name === 'cloze') && (args || bodies.length)) {
+      const argText = args ? s.slice(args.from + 1, args.to) : '';
+      const idMatch = /(?:^|[\s,])id\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(argText);
+      const fromMatch = /(?:^|[\s,])from\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(argText);
+      const both = /(?:^|[\s,])both\s*:\s*true\b/.test(argText);
+      // `tags: ("a", "b")`, or a single `tags: "a"`.
+      const tagMatch = /(?:^|[\s,])tags\s*:\s*(\([^)]*\)|"(?:[^"\\]|\\.)*")/.exec(argText);
+      const tags = tagMatch ? [...tagMatch[1]!.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]!).filter(Boolean) : [];
+      let idSpan: Span | null = null;
+      if (idMatch && args) {
+        const at = args.from + 1 + idMatch.index + idMatch[0].length - 1 - idMatch[1]!.length;
+        idSpan = { from: at, to: at + idMatch[1]!.length };
+      }
+      const pos = this.position(start);
+      this.cards.push({
+        kind: name === 'cloze' ? 'cloze' : both ? 'both' : 'basic',
+        start,
+        nameEnd,
+        args,
+        id: idMatch ? idMatch[1]! : null,
+        idSpan,
+        from: fromMatch ? fromMatch[1]! : null,
+        tags,
+        bodies,
+        end: i,
+        ...pos,
+      });
+    }
+    return i;
+  }
+
+  private stringEnd(i: number): number {
+    const s = this.s;
+    i++;
+    while (i < s.length && s[i] !== '"') i += s[i] === '\\' ? 2 : 1;
+    return i + 1;
+  }
+
+  private lineEnd(i: number): number {
+    const n = this.s.indexOf('\n', i);
+    return n < 0 ? this.s.length : n;
+  }
+
+  private blockCommentEnd(i: number): number {
+    const n = this.s.indexOf('*/', i + 2);
+    return n < 0 ? this.s.length : n + 2;
+  }
+
+  private rawEnd(i: number): number {
+    const s = this.s;
+    let n = 0;
+    while (s[i + n] === '`') n++;
+    if (n === 2) return i + 2; // empty raw
+    const fence = '`'.repeat(n);
+    const close = s.indexOf(fence, i + n);
+    return close < 0 ? s.length : close + n;
+  }
+
+  private mathEnd(i: number): number {
+    const s = this.s;
+    i++;
+    while (i < s.length && s[i] !== '$') i += s[i] === '\\' ? 2 : 1;
+    return i + 1;
+  }
+
+  private lineStarts: number[] | null = null;
+  position(at: number): { line: number; column: number } {
+    if (!this.lineStarts) {
+      this.lineStarts = [0];
+      for (let i = 0; i < this.s.length; i++) if (this.s[i] === '\n') this.lineStarts.push(i + 1);
+    }
+    let lo = 0;
+    let hi = this.lineStarts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (this.lineStarts[mid]! <= at) lo = mid;
+      else hi = mid - 1;
+    }
+    return { line: lo + 1, column: at - this.lineStarts[lo]! + 1 };
+  }
+}
+
+export function scanCards(source: string): CardCall[] {
+  const sc = new Scanner(source);
+  sc.markup(0, false);
+  return sc.cards;
+}
+
+// ───────────────────────── gaps ─────────────────────────
+
+const GAP = /\{\{([\s\S]*?)\}\}/g;
+
+/**
+ * The gaps of a cloze, in order. Math is skipped: there braces are Typst's own.
+ * Returns the spans of the whole `{{…}}`.
+ */
+export function gapsIn(source: string, body: Span): Span[] {
+  const text = source.slice(body.from, body.to);
+  const out: Span[] = [];
+  // Outside math only: split at unescaped `$`.
+  let inMath = false;
+  let segStart = 0;
+  const flush = (end: number) => {
+    if (inMath) return;
+    const seg = text.slice(segStart, end);
+    for (const m of seg.matchAll(GAP)) out.push({ from: body.from + segStart + m.index, to: body.from + segStart + m.index + m[0].length });
+  };
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '\\') i++;
+    else if (text[i] === '$') {
+      flush(i);
+      inMath = !inMath;
+      segStart = i + 1;
+    }
+  }
+  flush(text.length);
+  return out;
+}
+
+/** Marks for the browser: a gap opens with U+E100 + its number and closes with U+E0FF. Typst passes both through untouched, also in code. */
+export const GAP_CLOSE = '\uE0FF';
+export const gapOpen = (n: number) => String.fromCharCode(0xe100 + Math.min(n, 254));
+
+// ───────────────────────── review units ─────────────────────────
+
+export interface Unit {
+  /** What the schedule belongs to: the card id, plus `:back` or `:<gap>`. */
+  key: string;
+  cardId: string;
+  /** For `both`: which way round. For cloze: which gap is hidden. */
+  side: 'front' | 'back' | null;
+  gap: number | null;
+}
+
+/** One schedule per direction and per gap. */
+export function unitsOf(source: string, card: CardCall): Unit[] {
+  if (!card.id) return [];
+  const id = card.id;
+  if (card.kind === 'basic') return [{ key: id, cardId: id, side: 'front', gap: null }];
+  if (card.kind === 'both')
+    return [
+      { key: id, cardId: id, side: 'front', gap: null },
+      { key: `${id}:back`, cardId: id, side: 'back', gap: null },
+    ];
+  const body = card.bodies[0];
+  const n = body ? gapsIn(source, body).length : 0;
+  return Array.from({ length: n }, (_, i) => ({ key: `${id}:${i + 1}`, cardId: id, side: null, gap: i + 1 }));
+}
+
+// ───────────────────────── ids ─────────────────────────
+
+export function applyEdits(source: string, edits: TextEdit[]): string {
+  let out = source;
+  for (const e of [...edits].sort((a, b) => b.from - a.from)) out = out.slice(0, e.from) + e.insert + out.slice(e.to);
+  return out;
+}
+
+const ID_CHARS = 'abcdefghijkmnpqrstuvwxyz23456789'; // no l, o, 0, 1: easy to tell apart
+
+export function newCardId(taken: (id: string) => boolean): string {
+  for (let length = 4; ; length++) {
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const bytes = crypto.randomBytes(length);
+      const id = Array.from(bytes, (b) => ID_CHARS[b % ID_CHARS.length]).join('');
+      if (!taken(id)) return id;
+    }
+  }
+}
+
+export const VALID_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
+
+/**
+ * Gives every card without an id (or with one used before it, or elsewhere) a new one.
+ * Only insertions and replacements of the id itself, so the editor can apply them
+ * without moving the cursor.
+ */
+export function assignIds(source: string, inOtherDeck: (id: string) => boolean, usedBefore: (id: string) => boolean = () => false): { source: string; edits: TextEdit[] } {
+  const cards = scanCards(source);
+  const seen = new Set<string>();
+  const fresh = new Set<string>();
+  // A new id is one never seen anywhere: not even a deleted card's history may come back with it.
+  const taken = (id: string) => seen.has(id) || fresh.has(id) || inOtherDeck(id) || usedBefore(id) || cards.some((c) => c.id === id);
+  const edits: TextEdit[] = [];
+  for (const c of cards) {
+    if (c.id && VALID_ID.test(c.id) && !seen.has(c.id) && !inOtherDeck(c.id)) {
+      seen.add(c.id);
+      continue;
+    }
+    const id = newCardId(taken);
+    fresh.add(id);
+    if (c.idSpan) edits.push({ from: c.idSpan.from, to: c.idSpan.to, insert: id });
+    else if (c.args) {
+      const empty = source.slice(c.args.from + 1, c.args.to).trim() === '';
+      edits.push({ from: c.args.from + 1, to: c.args.from + 1, insert: empty ? `id: "${id}"` : `id: "${id}", ` });
+    } else edits.push({ from: c.nameEnd, to: c.nameEnd, insert: `(id: "${id}")` });
+  }
+  return { source: applyEdits(source, edits), edits };
+}
+
+// ───────────────────────── compiling ─────────────────────────
+
+/**
+ * What is compiled: the deck as written, with each card told the language of the
+ * exercise it came from, and cloze gaps turned into marks. Lines stay where they
+ * are, so Typst's messages point at the right line.
+ */
+export function toTypst(source: string, languageOf: (from: string) => string | null): string {
+  const edits: TextEdit[] = [];
+  for (const c of scanCards(source)) {
+    const lang = c.from ? languageOf(c.from) : null;
+    if (lang && c.args) edits.push({ from: c.args.from + 1, to: c.args.from + 1, insert: `_lang: "${lang}", ` });
+    if (c.kind === 'cloze' && c.bodies[0]) {
+      gapsIn(source, c.bodies[0]).forEach((g, i) => {
+        edits.push({ from: g.from, to: g.from + 2, insert: gapOpen(i + 1) });
+        edits.push({ from: g.to - 2, to: g.to, insert: GAP_CLOSE });
+      });
+    }
+  }
+  return applyEdits(source, edits);
+}
+
+// ───────────────────────── warnings ─────────────────────────
+
+export function deckWarnings(source: string, knows: (from: string) => boolean): DeckWarning[] {
+  const out: DeckWarning[] = [];
+  for (const c of scanCards(source)) {
+    const at = { line: c.line, column: c.column };
+    const argText = c.args ? source.slice(c.args.from + 1, c.args.to) : '';
+    // Content given inside the parentheses is not looked at.
+    const positional = /(^|,)\s*\[/.test(argText);
+    if (!positional) {
+      const blank = (b: Span | undefined) => !b || source.slice(b.from, b.to).trim() === '';
+      if (c.kind !== 'cloze') {
+        if (blank(c.bodies[0])) out.push({ code: 'empty-front', ...at });
+        if (blank(c.bodies[1])) out.push({ code: 'no-back', ...at });
+      } else if (!c.bodies[0] || gapsIn(source, c.bodies[0]).length === 0) out.push({ code: 'no-gap', ...at });
+    }
+    if (c.from !== null && !knows(c.from)) out.push({ code: 'unknown-from', ...at, detail: c.from });
+  }
+  return out;
+}
+
+/** Appends a card on a line of its own, keeping one blank line before it. */
+export function appendCard(source: string, card: string): string {
+  const trimmed = source.replace(/\s+$/, '');
+  return trimmed ? `${trimmed}\n\n${card}\n` : `${card}\n`;
+}
+
+const indent = (text: string) =>
+  text
+    .trim()
+    .split('\n')
+    .map((l) => (l.trim() ? `  ${l}` : ''))
+    .join('\n');
+
+/**
+ * The text of a card, written as a student would: front and back on lines of their own,
+ *
+ *     #flashcard[
+ *       front
+ *     ][
+ *       back
+ *     ]
+ */
+export function cardText(kind: CardKind, front: string, back: string, from: string | null, id: string | null = null, tags: string[] = []): string {
+  const args: string[] = [];
+  if (id) args.push(`id: ${JSON.stringify(id)}`);
+  if (from) args.push(`from: ${JSON.stringify(from)}`);
+  if (kind === 'both') args.push('both: true');
+  // A one-element array needs its trailing comma in Typst.
+  if (tags.length) args.push(`tags: (${tags.map((t) => JSON.stringify(t)).join(', ')}${tags.length === 1 ? ',' : ''})`);
+  const head = `#${kind === 'cloze' ? 'cloze' : 'flashcard'}${args.length ? `(${args.join(', ')})` : ''}`;
+  return kind === 'cloze' ? `${head}[\n${indent(front)}\n]` : `${head}[\n${indent(front)}\n][\n${indent(back)}\n]`;
+}
+
+/** What is written inside a content block, without the layout `cardText` adds. */
+export function dedent(text: string): string {
+  const lines = text.replace(/^[ \t]*\n/, '').replace(/\n[ \t]*$/, '').split('\n');
+  const widths = lines.filter((l) => l.trim()).map((l) => /^[ \t]*/.exec(l)![0].length);
+  const cut = widths.length ? Math.min(...widths) : 0;
+  return lines
+    .map((l) => l.slice(Math.min(cut, /^[ \t]*/.exec(l)![0].length)))
+    .join('\n')
+    .trim();
+}
+
+export interface CardFields {
+  id: string | null;
+  kind: CardKind;
+  from: string | null;
+  tags: string[];
+  front: string;
+  back: string;
+  line: number;
+}
+
+export function fieldsOf(source: string, c: CardCall): CardFields {
+  const body = (i: number) => (c.bodies[i] ? dedent(source.slice(c.bodies[i]!.from, c.bodies[i]!.to)) : '');
+  return { id: c.id, kind: c.kind, from: c.from, tags: c.tags, front: body(0), back: c.kind === 'cloze' ? '' : body(1), line: c.line };
+}
+
+/** Rewrites one card, keeping its id and where it came from. Anything else in its arguments is written anew. */
+export function replaceCard(source: string, id: string, kind: CardKind, front: string, back: string, tags: string[]): string | null {
+  const c = scanCards(source).find((x) => x.id === id);
+  if (!c) return null;
+  return source.slice(0, c.start) + cardText(kind, front, back, c.from, c.id, tags) + source.slice(c.end);
+}
+
+/** Removes a card and the blank line it leaves. */
+export function removeCard(source: string, id: string): string | null {
+  const c = scanCards(source).find((x) => x.id === id);
+  if (!c) return null;
+  const before = source.slice(0, c.start).replace(/\s+$/, '');
+  const after = source.slice(c.end).replace(/^\s+/, '');
+  if (!before) return after;
+  if (!after) return `${before}\n`;
+  return `${before}\n\n${after}`;
+}
+
+/** Swaps a card with the one before or after it. Text between them stays where it is. */
+export function moveCard(source: string, id: string, direction: -1 | 1): string | null {
+  const cards = scanCards(source);
+  const i = cards.findIndex((x) => x.id === id);
+  const j = i + direction;
+  if (i < 0 || j < 0 || j >= cards.length) return null;
+  const [a, b] = i < j ? [cards[i]!, cards[j]!] : [cards[j]!, cards[i]!];
+  const text = (c: CardCall) => source.slice(c.start, c.end);
+  return source.slice(0, a.start) + text(b) + source.slice(a.end, b.start) + text(a) + source.slice(b.end);
+}
+
+/** Puts a card right after another one, e.g. the second half of a split. */
+export function insertAfter(source: string, id: string, card: string): string | null {
+  const c = scanCards(source).find((x) => x.id === id);
+  if (!c) return null;
+  return `${source.slice(0, c.end)}\n\n${card}${source.slice(c.end)}`;
+}
+
+/** Whether a piece of a card closes all its brackets, so appending it cannot break the deck. */
+export function balanced(text: string): boolean {
+  const probe = `#flashcard[${text}]`;
+  const [card] = scanCards(probe);
+  return !!card && card.bodies.length === 1 && card.bodies[0]!.to === probe.length - 1;
+}

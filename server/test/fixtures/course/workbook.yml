@@ -1,5 +1,10 @@
 title: Deklarative Programmierung
 language: de
+exams:
+  - title: Erster Prüfungszeitraum
+    date: 2099-02-12
+  - title: Zweiter Prüfungszeitraum
+    date: 2099-04-01
 landing: landing.typ
 parts:
   - title: Funktionale Programmierung

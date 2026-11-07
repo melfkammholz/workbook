@@ -160,6 +160,32 @@ describe.skipIf(!have)('TypstRenderer', () => {
     expect(out.task).toBe('');
   });
 
+  it('leaves ordinary text as text', async () => {
+    const plain = await r.renderNote('Just *text* and $x^2$.');
+    expect(plain.asPicture).toBeUndefined();
+  });
+
+  it('lays out as a page what HTML export would lose, the way typst-preview shows it', async () => {
+    const out = await r.renderNote('Before\n\n#grid(columns: 2, grid.header[A][B], [1], [2])');
+    expect(out.asPicture).toBe(true);
+    expect(out.html).toMatch(/^<div class="wb-as-picture"><svg/);
+    expect(out.diagnostics).toEqual([]);
+    // It looks like the app: the theme's text colour instead of black, and the app's font (no warning about a missing one).
+    expect(out.html).toContain('fill="currentColor"');
+    expect(out.html).not.toContain('fill="#000000"');
+
+    // Laid out at the width it is shown at, not scaled: the page is as wide as asked.
+    const wide = await r.renderNote('#grid(columns: 2, grid.header[A][B], [1], [2])', 400);
+    expect(wide.html).toMatch(/viewBox="0 0 400 /);
+  });
+
+  it('draws the sides of a deck\'s cards as pictures when part of it would be lost, and keeps clozes as text', async () => {
+    const out = await r.renderDeck('#flashcard(id: "a")[#grid(columns: 2, grid.header[A][B], [1], [2])][back]\n#cloze(id: "b")[x \u{E101}gap\u{E0FF}]');
+    expect(out.asPicture).toBe(true);
+    expect(out.html).toMatch(/data-side="front"><svg/);
+    expect(out.html).toMatch(/data-side="text">x \u{E101}gap\u{E0FF}/u);
+  });
+
   it('strips scripts and event handlers from student notes', async () => {
     const out = await r.renderNote('Hello #html.elem("script")[alert(1)] #html.elem("img", attrs: (src: "x", onerror: "alert(2)"))[]');
     expect(out.html).not.toContain('<script');

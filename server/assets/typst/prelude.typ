@@ -58,6 +58,29 @@
 
 #let _columns-of(c) = if type(c) == int { c } else if type(c) == array { c.len() } else { 1 }
 
+/// Pictures in students' text look like the app around them: its fonts (shipped
+/// with the app), and black, which the server turns into the theme's text colour.
+#let _app-look(body) = {
+  set text(font: ("Schibsted Grotesk", "Libertinus Serif"), size: 10.5pt)
+  show raw: set text(font: ("Fira Code", "DejaVu Sans Mono"))
+  show math.equation: set text(font: ("STIX Two Math", "New Computer Modern Math"))
+  body
+}
+
+/// A student's whole text as one picture, laid out as on a page. The fallback for
+/// text that HTML export cannot express, e.g. what a package draws.
+/// A picture laid out on a page as wide as the place it is shown in, so it is never
+/// scaled: the browser sends that width (`--input wb-width=<pt>`), and asks again on resize.
+/// Measuring the content instead is not reliable: packages with flexible columns measure too narrow.
+#let _page-width(default) = {
+  let w = sys.inputs.at("wb-width", default: none)
+  if w == none { default } else { float(w) * 1pt }
+}
+
+#let _picture(default, body) = html.frame(block(width: _page-width(default), _app-look(body)))
+
+#let _as-picture(body) = html.elem("div", attrs: (class: "wb-as-picture"), _picture(12cm, body))
+
 /// Draw anything (shapes, `cetz` canvases, ...) as an SVG picture. Inside the
 /// picture the normal Typst layout applies, so every drawing package works.
 #let diagram(body) = html.elem("div", attrs: (class: "wb-diagram"), html.frame(body))

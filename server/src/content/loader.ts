@@ -20,7 +20,7 @@ import type {
   ThreadInfo,
 } from '@wb/shared';
 import { preprocess, PreprocessError, solutionBlocks, usesTemplateConditionals, type SolutionBlock } from './cpp.js';
-import { deriveTitle, emojiFor } from './ids.js';
+import { deriveTitle, emojiFor, slugify } from './ids.js';
 import { plainText } from './search.js';
 import {
   chapterSchema,
@@ -564,6 +564,8 @@ export function loadContent(dir: string): Content {
 
   const outline: Outline = {
     title: wb.title,
+    id: wb.id ?? slugify(wb.title),
+    exams: wb.exams.map((e) => ({ title: e.title ?? null, date: e.date })),
     language: wb.language,
     landing: docs.has(docKey.landing),
     issues: wb.issues ?? null,

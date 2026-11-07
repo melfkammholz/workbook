@@ -37,3 +37,18 @@ export function deriveTitle(typstSource: string, max = 64): string {
   const cut = s.slice(0, max);
   return cut.slice(0, Math.max(cut.lastIndexOf(' '), 20)).trimEnd() + '…';
 }
+
+/** "Deklarative Programmierung" → "deklarative-programmierung". Umlauts become their usual spelling. */
+export function slugify(title: string): string {
+  const s = title
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return s || 'course';
+}

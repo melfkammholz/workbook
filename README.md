@@ -32,6 +32,8 @@ course is a git repository that you add in the app.
   open. The **Review** page collects everything you were unsure about, together with your self-evaluations per chapter.
 * **Notes and history.** You can keep notes per exercise and see all of them on one page. Every answer has a version
   history.
+* **Flashcards you write yourself.** Decks of cards in your own words, reviewed with spaced repetition (FSRS). A card
+  can be made right from an exercise, and decks belong to you, not to a course. See [Flashcards](#flashcards).
 * **Adventures.** These are longer stories that lead through several exercises, some with code that grows from one
   exercise to the next.
 * **Feedback from your own AI chat.** You can copy a prompt with the task, your answer and the test results into the
@@ -39,7 +41,9 @@ course is a git repository that you add in the app.
 * **Optional extras.** If you turn them on, there are achievements, animal friends, a plant per chapter and small
   celebrations. They reward work done, never speed.
 
-The app speaks German and English.
+The app speaks German and English. Everything about how it works is on its help page (the question mark in the top
+bar). For color vision deficiency, a setting switches to orange and blue with patterns wherever a color carries
+meaning.
 
 ### Set it up
 
@@ -82,10 +86,48 @@ repositories can be added for now.
 
 ### Feedback from an AI chat
 
-The *AI review* tab of an exercise copies a prompt with the task, your current answer and the latest test results.
+This is optional: turn on *Prompts for an AI chat* in the settings. The *AI review* tab of an exercise copies a prompt with the task, your current answer and the latest test results.
 Paste it into the AI chat you already use, such as Claude or ChatGPT. The workbook needs no account or key for this,
 and sends nothing itself. The prompt never contains hints, author notes or the reference solution. You can change it in
 the same tab, using the placeholders `{title}`, `{task}`, `{language}`, `{answer}` and `{tests}`.
+
+### Flashcards
+
+Flashcards are optional: turn them on in the settings. How to write good cards is on the help page. The cards icon in the top bar then opens your decks. Decks are
+yours, not a course's: they work across courses and before any course is added, and a deck can belong to courses so
+it is listed with them. *Make a card*, at the top of an exercise's workspace, writes a card with a preview, and the card
+remembers the exercise, its tags and its language for code.
+
+A deck shows as cards you can edit, move and delete one by one. Under *Text*, the same deck is one Typst text, and that
+text is the deck:
+
+```typst
+#flashcard[
+  What does `map` do?
+][
+  It applies a function to every element of a list.
+]
+
+#flashcard(both: true, tags: ("side-effects",))[
+  Side effect
+][
+  A change to the world beyond the result.
+]
+
+#cloze[
+  `length (_:xs) = {{1 + length xs}}`
+]
+```
+
+`both: true` asks a card both ways round, and each `{{…}}` gap of a cloze is asked on its own. When the deck is saved,
+each new card gets an id (`#flashcard(id: "k3f9")[…]`). Leave it there: the schedule belongs to it, so you can reword,
+reorder or move a card to another deck and keep what you have learned. Typing `#` offers new cards and more.
+
+Ratings are Again, Hard, Good and Easy. A session is one deck, or a few picked together. Each deck sets how sure you
+want to be, how many new cards a day may come, how many cards make it "big", and optionally the date to be ready by
+(the course's examination periods are suggested). Reviewing early or late does no harm, and *Not today* puts a card
+off without a rating. Cards you keep forgetting are offered to be rewritten, split, dropped or kept as they are. How
+well you know a deck shows as solid, shaky and new, and on a course's Review page beside your self-evaluations.
 
 ## For course authors
 

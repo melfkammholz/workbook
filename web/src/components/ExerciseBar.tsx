@@ -1,4 +1,4 @@
-import { ArrowRight, Bookmark, Check, ChevronLeft, ChevronRight, LifeBuoy, Pause, Play, RotateCcw, Timer, X } from 'lucide-react';
+import { ArrowRight, Bookmark, Check, ChevronLeft, ChevronRight, Layers, LifeBuoy, Pause, Play, RotateCcw, Timer, X } from 'lucide-react';
 import { Link } from 'wouter';
 import { useState } from 'react';
 import type { ItemMeta, Status } from '@wb/shared';
@@ -24,6 +24,7 @@ export function ExerciseBar({
   onTogglePause,
   previous,
   next,
+  onMakeCard,
 }: {
   status: Status;
   onStatus: (s: Status) => void;
@@ -38,6 +39,8 @@ export function ExerciseBar({
   onTogglePause: () => void;
   previous: ItemMeta | undefined;
   next: ItemMeta | undefined;
+  /** Flashcards are on: a card can be worth making at any moment, so it is always at hand. */
+  onMakeCard?: (() => void) | undefined;
 }) {
   const t = useT();
   const label = finished ? t.timerFinished : paused ? t.timerPaused : t.timeOnExercise;
@@ -65,6 +68,14 @@ export function ExerciseBar({
         <IconButton label={t.resetTimer} className="size-7" onClick={onResetTimer}>
           <RotateCcw size={13} />
         </IconButton>
+      ) : null}
+      {onMakeCard ? (
+        <>
+          {showTimer ? <span aria-hidden className="mx-1 h-4 w-px bg-line" /> : null}
+          <button type="button" onClick={onMakeCard} title={t.makeCard} className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[13px] text-ink-3 hover:bg-sunk hover:text-ink">
+            <Layers size={14} /> <span className="hidden sm:inline">{t.makeCard}</span>
+          </button>
+        </>
       ) : null}
       <div className="ml-auto flex items-center gap-2">
         {confidenceLabel ? (
@@ -109,6 +120,23 @@ export function ContinueBanner({ next }: { next: ItemMeta }) {
       <Link href={`/item/${next.id}`} className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 text-[13px] font-medium text-accent-ink hover:brightness-110">
         {t.continueButton} <ArrowRight size={14} />
       </Link>
+    </div>
+  );
+}
+
+/** After finishing, or after rating oneself low: a card is offered, never written for the student. */
+export function CardInvitation({ kind, onMake, onDismiss }: { kind: 'done' | 'low'; onMake: () => void; onDismiss: () => void }) {
+  const t = useT();
+  return (
+    <div className="settle flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line bg-paper px-4 py-2 text-sm" role="status">
+      <Layers size={16} className="shrink-0 text-ink-3" aria-hidden />
+      <span className="min-w-0 flex-1 basis-48 text-ink-2">{kind === 'low' ? t.inviteLow : t.inviteDone}</span>
+      <Button size="sm" onClick={onMake}>
+        {t.makeCard}
+      </Button>
+      <Button size="sm" variant="ghost" onClick={onDismiss}>
+        {t.notNow}
+      </Button>
     </div>
   );
 }

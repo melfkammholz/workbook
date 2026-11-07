@@ -5,7 +5,7 @@ import { fetchAiPrompt, useSaveSettings, useSettings, type PromptRequest } from 
 import { useLang, useT } from '@/lib/i18n';
 import { Button } from './ui';
 
-const CHATS: [string, string][] = [
+export const CHATS: [string, string][] = [
   ['Claude', 'https://claude.ai/new'],
   ['ChatGPT', 'https://chatgpt.com/'],
 ];

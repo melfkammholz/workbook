@@ -21,7 +21,16 @@ export interface RenderedNote {
   html: string;
   css: string;
   diagnostics: TypstDiagnostic[];
+  /** Shown as a picture, because HTML export lost part of it. */
+  asPicture?: boolean;
 }
+
+/** Bump when the processing of Typst's output changes, so cached renders are made again. */
+const RENDER_VERSION = '2';
+
+/** Typst's warning when HTML export drops something, e.g. what a package lays out. */
+const LOST_IN_HTML = /was ignored during HTML export/;
+const lostSomething = (d: TypstDiagnostic[]) => d.some((x) => x.severity === 'warning' && LOST_IN_HTML.test(x.message)) && !d.some((x) => x.severity === 'error');
 
 // With `--diagnostic-format short`: path:line:col: error: message
 const SHORT = /^(?<file>.+?):(?<line>\d+):(?<col>\d+): (?<sev>error|warning): (?<msg>.*)$/;
@@ -61,7 +70,7 @@ export class TypstRenderer {
     fs.mkdirSync(path.join(this.root, '_workbook'), { recursive: true });
     fs.mkdirSync(path.join(this.root, '_tmp'), { recursive: true });
     fs.mkdirSync(this.cacheDir, { recursive: true });
-    fs.copyFileSync(path.join(o.assetsDir, 'prelude.typ'), path.join(this.root, '_workbook', 'prelude.typ'));
+    for (const f of fs.readdirSync(o.assetsDir)) if (f.endsWith('.typ')) fs.copyFileSync(path.join(o.assetsDir, f), path.join(this.root, '_workbook', f));
     const link = path.join(this.root, 'content');
     try {
       fs.rmSync(link, { force: true });
@@ -113,12 +122,47 @@ export class TypstRenderer {
   }
 
   /** Renders a student's note. Never cached: it is previewed while typing. */
-  async renderNote(source: string): Promise<RenderedNote> {
+  /** `width`: where it is shown, in pt, so a picture fallback is laid out at that width instead of being scaled. */
+  async renderNote(source: string, width?: number): Promise<RenderedNote> {
     const header = this.header().join('\n') + '\n';
-    const run = await this.compile(header + source, header.split('\n').length - 1);
+    let run = await this.compile(header + source, header.split('\n').length - 1);
+    let asPicture = false;
+    // Lost in HTML export: laid out as a page instead, the way typst-preview shows it.
+    if (lostSomething(run.diagnostics)) {
+      const pictured = [...this.header(), '#show: _as-picture'].join('\n') + '\n';
+      const again = await this.compile(pictured + source, pictured.split('\n').length - 1, width ? { 'wb-width': String(Math.round(width)) } : {});
+      if (again.html !== null) {
+        run = again;
+        asPicture = true;
+      }
+    }
     if (run.html === null) return { html: '', css: '', diagnostics: run.diagnostics };
     const body = bodyOf(run.html);
-    return { ...body, html: this.fillXrefs(body.html), diagnostics: run.diagnostics };
+    return { ...body, html: this.fillXrefs(body.html), diagnostics: run.diagnostics, ...(asPicture ? { asPicture } : {}) };
+  }
+
+  /** Renders a flashcard deck. Cached like exercises: a review session renders the same deck again and again. */
+  async renderDeck(source: string): Promise<RenderedNote> {
+    const header = [...this.header(), '#import "/_workbook/flashcards.typ": flashcard, cloze'].join('\n') + '\n';
+    const key = await this.cacheKey(`deck\n${header}${source}`);
+    const cached = this.readCache<RenderedNote>(key);
+    if (cached && typeof cached.html === 'string') return { ...cached, html: this.fillXrefs(cached.html) };
+    let run = await this.compile(header + source, header.split('\n').length - 1);
+    let asPicture = false;
+    // Lost in HTML export: card sides are laid out as pages. A cloze stays text, or its gaps could not be hidden.
+    if (lostSomething(run.diagnostics)) {
+      const pictured = [...this.header(), '#import "/_workbook/flashcards.typ": _flashcard-framed as flashcard, cloze'].join('\n') + '\n';
+      const again = await this.compile(pictured + source, pictured.split('\n').length - 1);
+      if (again.html !== null) {
+        run = again;
+        asPicture = true;
+      }
+    }
+    if (run.html === null) return { html: '', css: '', diagnostics: run.diagnostics };
+    const body = bodyOf(run.html);
+    const out = { ...body, diagnostics: run.diagnostics, ...(asPicture ? { asPicture } : {}) };
+    this.writeCache(key, out);
+    return { ...out, html: this.fillXrefs(out.html) };
   }
 
   // ───────────── internals ─────────────
@@ -139,7 +183,9 @@ export class TypstRenderer {
   }
 
   private async cacheKey(source: string): Promise<string> {
-    const prelude = fs.readFileSync(path.join(this.root, '_workbook', 'prelude.typ'), 'utf8');
+    const helper = (name: string) => (fs.existsSync(path.join(this.root, '_workbook', name)) ? fs.readFileSync(path.join(this.root, '_workbook', name), 'utf8') : '');
+    // Everything that shapes the output: the helpers, and how the HTML is processed afterwards.
+    const prelude = `${RENDER_VERSION}\0${helper('prelude.typ')}\0${helper('flashcards.typ')}`;
     const authorPrelude = path.join(this.o.contentDir, 'prelude.typ');
     const author = fs.existsSync(authorPrelude) ? fs.readFileSync(authorPrelude, 'utf8') : '';
     return crypto
@@ -154,15 +200,15 @@ export class TypstRenderer {
       .digest('hex');
   }
 
-  private readCache(key: string): RenderedItem | null {
+  private readCache<T = RenderedItem>(key: string): T | null {
     try {
-      return JSON.parse(fs.readFileSync(path.join(this.cacheDir, key + '.json'), 'utf8')) as RenderedItem;
+      return JSON.parse(fs.readFileSync(path.join(this.cacheDir, key + '.json'), 'utf8')) as T;
     } catch {
       return null;
     }
   }
 
-  private writeCache(key: string, r: RenderedItem): void {
+  private writeCache(key: string, r: { diagnostics: TypstDiagnostic[] }): void {
     // Compile errors are not cached: fixing a package or the prelude should show up immediately.
     if (r.diagnostics.some((d) => d.severity === 'error')) return;
     fs.writeFileSync(path.join(this.cacheDir, key + '.json'), JSON.stringify(r));
@@ -182,7 +228,7 @@ export class TypstRenderer {
     else this.queue--;
   }
 
-  private async compile(source: string, headerLines: number): Promise<{ html: string | null; diagnostics: TypstDiagnostic[] }> {
+  private async compile(source: string, headerLines: number, inputs: Record<string, string> = {}): Promise<{ html: string | null; diagnostics: TypstDiagnostic[] }> {
     await this.acquire();
     const id = crypto.randomBytes(6).toString('hex');
     const input = path.join(this.root, '_tmp', `${id}.typ`);
@@ -192,7 +238,23 @@ export class TypstRenderer {
       const { stderr, code, error } = await new Promise<{ stderr: string; code: number | null; error: string | null }>((resolve) => {
         const proc = spawn(
           this.o.bin,
-          ['compile', '--root', this.root, '--features', 'html', '--format', 'html', '--diagnostic-format', 'short', input, output],
+          // The app's own fonts, so pictures look like the text around them.
+          [
+            'compile',
+            '--root',
+            this.root,
+            '--font-path',
+            path.join(this.o.assetsDir, 'fonts'),
+            ...Object.entries(inputs).flatMap(([k, v]) => ['--input', `${k}=${v}`]),
+            '--features',
+            'html',
+            '--format',
+            'html',
+            '--diagnostic-format',
+            'short',
+            input,
+            output,
+          ],
           {
             stdio: ['ignore', 'ignore', 'pipe'],
             env: {

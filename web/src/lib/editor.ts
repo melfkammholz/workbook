@@ -1,4 +1,4 @@
-import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete';
+import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, type CompletionSource } from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { bracketMatching, indentOnInput, syntaxHighlighting } from '@codemirror/language';
 import { lintGutter } from '@codemirror/lint';
@@ -49,7 +49,7 @@ const variants: Record<EditorVariant, Extension> = {
   }),
 };
 
-export function baseExtensions(opts: { language?: string | null; lineNumbers?: boolean; placeholder?: string; wrap?: boolean; variant?: EditorVariant }): Extension[] {
+export function baseExtensions(opts: { language?: string | null; lineNumbers?: boolean; placeholder?: string; wrap?: boolean; variant?: EditorVariant; completions?: CompletionSource }): Extension[] {
   const lang = opts.language ? languageFor(opts.language) : null;
   return [
     common,
@@ -60,7 +60,8 @@ export function baseExtensions(opts: { language?: string | null; lineNumbers?: b
     indentOnInput(),
     bracketMatching(),
     closeBrackets(),
-    autocompletion({ activateOnTyping: false }),
+    // Typst offers its snippets while typing; code only on request.
+    autocompletion(opts.completions ? { activateOnTyping: true, override: [opts.completions] } : { activateOnTyping: false }),
     highlightActiveLine(),
     highlightSelectionMatches(),
     syntaxHighlighting(classHighlighter),

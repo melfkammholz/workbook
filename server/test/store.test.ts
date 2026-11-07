@@ -217,3 +217,27 @@ describe('Store', () => {
     expect(store.getState().openQuestions.a).toBeUndefined();
   });
 });
+
+describe('migration 7', () => {
+  // Development builds of migration 6 came in three shapes. Each must reach the current schema.
+  const variants = {
+    'first version': '',
+    'with used_at': 'ALTER TABLE decks ADD COLUMN used_at INTEGER NOT NULL DEFAULT 0;',
+    'with used_at and card_kept': 'ALTER TABLE decks ADD COLUMN used_at INTEGER NOT NULL DEFAULT 0; CREATE TABLE card_kept (card_id TEXT PRIMARY KEY, kept_at INTEGER NOT NULL);',
+  };
+  for (const [name, extra] of Object.entries(variants)) {
+    it(`upgrades a database from the ${name} of migration 6`, () => {
+      const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'wb-mig-')), 'workbook.db');
+      const db = new DatabaseSync(file);
+      for (const step of MIGRATIONS.slice(0, 6)) db.exec(step as string);
+      db.exec(extra);
+      db.exec('PRAGMA user_version = 6');
+      db.close();
+      const store = new Store(file);
+      expect(store.sql.get('PRAGMA user_version')).toMatchObject({ user_version: MIGRATIONS.length });
+      expect((store.sql.all('PRAGMA table_info(decks)') as { name: string }[]).map((c) => c.name)).toContain('used_at');
+      expect(store.sql.all("SELECT name FROM sqlite_master WHERE name = 'card_kept'")).toHaveLength(1);
+      store.close();
+    });
+  }
+});

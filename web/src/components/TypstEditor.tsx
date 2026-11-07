@@ -1,6 +1,8 @@
 import { Columns2, PanelTop, Square } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Group, Panel } from 'react-resizable-panels';
+import type { EditorView } from '@codemirror/view';
+import type { Diagnostic } from '@wb/shared';
 import { previewNote, type NotePreview } from '@/lib/api';
 import type { EditorVariant } from '@/lib/editor';
 import { useT } from '@/lib/i18n';
@@ -27,6 +29,11 @@ export function TypstEditor({
   placeholder,
   variant,
   status,
+  render = previewNote,
+  diagnostics,
+  onView,
+  previewHeader,
+  previewClassName = 'prose-note',
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -35,6 +42,14 @@ export function TypstEditor({
   variant: EditorVariant;
   /** Shown next to the layout buttons, e.g. "Saved". */
   status?: string;
+  /** How the text is rendered. Notes by default. */
+  render?: (source: string, width?: number) => Promise<NotePreview>;
+  /** Marks in the text, besides Typst's errors (which show in the preview). */
+  diagnostics?: Diagnostic[];
+  onView?: (view: EditorView | null) => void;
+  /** Before the preview, e.g. a summary of warnings. */
+  previewHeader?: ReactNode;
+  previewClassName?: string;
 }) {
   const t = useT();
   const [layout, setLayoutState] = useState<Layout>(() => readPref(KEY, LAYOUTS, 'stacked'));
@@ -53,13 +68,37 @@ export function TypstEditor({
 
   // Rendering takes the server a few milliseconds, so every change goes out at once.
   // Only one request is on its way at a time; what is typed meanwhile waits, and only the newest text.
+  // The preview's width in Typst points. A picture fallback is laid out at it, so it is never scaled;
+  // Typst's pictures are sized in em at 11pt, the preview's text is the em here.
+  const paneRef = useRef<HTMLDivElement | null>(null);
+  const width = useRef<number | undefined>(undefined);
+  const [widthStep, setWidthStep] = useState(0);
+  useEffect(() => {
+    const el = paneRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const style = getComputedStyle(el);
+      const inner = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const em = parseFloat(getComputedStyle(el.querySelector('.prose-task') ?? el).fontSize) || 14.5;
+      // In steps of 20pt: dragging a divider should not ask for a new picture at every pixel.
+      const pt = Math.max(100, Math.floor(((inner * 11) / em) / 20) * 20);
+      if (pt !== width.current) {
+        width.current = pt;
+        setWidthStep(pt);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+    // The pane is a new element whenever the layout changes.
+  }, [effective]);
+
   const inFlight = useRef(false);
   const waiting = useRef<string | null>(null);
   const generation = useRef(0);
   const send = (v: string) => {
     inFlight.current = true;
     const mine = generation.current;
-    previewNote(v)
+    render(v, width.current)
       .then(
         (p) => {
           if (mine !== generation.current) return;
@@ -92,6 +131,14 @@ export function TypstEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
+  // A picture is laid out at the preview's width: a new width needs a new picture. Text reflows by itself.
+  useEffect(() => {
+    if (!preview?.asPicture || !value.trim()) return;
+    if (inFlight.current) waiting.current = value;
+    else send(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [widthStep]);
+
   // An answer that arrives after the editor is gone has nowhere to go.
   useEffect(
     () => () => {
@@ -109,9 +156,11 @@ export function TypstEditor({
     return () => clearTimeout(timer);
   }, [errors, preview]);
 
-  const editor = <CodeEditor variant={variant} value={value} onChange={onChange} label={label} wrap lineNumbers={false} placeholder={placeholder} />;
+  const editor = (
+    <CodeEditor variant={variant} language="typst" value={value} onChange={onChange} label={label} wrap lineNumbers={false} placeholder={placeholder} {...(diagnostics ? { diagnostics } : {})} {...(onView ? { onView } : {})} />
+  );
   const pane = (
-    <div className="h-full min-h-0 overflow-y-auto bg-paper/40 p-4" aria-label={t.preview}>
+    <div ref={paneRef} className="h-full min-h-0 overflow-y-auto bg-paper/40 p-4" aria-label={t.preview}>
       {showErrors && errors.length ? (
         <ul className="mb-3 rounded-md bg-danger-soft px-3 py-2 text-[13px] text-danger">
           {errors.map((e, i) => (
@@ -122,8 +171,9 @@ export function TypstEditor({
           ))}
         </ul>
       ) : null}
+      {previewHeader}
       {preview ? (
-        <Prose html={preview.html} css={preview.css} className={clsx('prose-note transition-opacity', showErrors && errors.length > 0 && 'opacity-60')} />
+        <Prose html={preview.html} css={preview.css} className={clsx(previewClassName, 'transition-opacity', showErrors && errors.length > 0 && 'opacity-60')} />
       ) : !errors.length ? (
         <p className="text-sm text-ink-3">{value.trim() ? t.rendering : t.previewHere}</p>
       ) : null}

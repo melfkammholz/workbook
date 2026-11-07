@@ -31,9 +31,9 @@
   --accent-ink: #ffffff;
   --accent-soft: #e9e5fb;
   --done: #1e8e6e;
-  --confidence-low: #c2570c;
-  --confidence-mid: #858ea5;
-  --confidence-high: #1f5fb8;
+  --confidence-low: #d64550;
+  --confidence-mid: #e0a22e;
+  --confidence-high: #2e9e6b;
   --done-soft: #dff3ec;
   --review: #b87a0c;
   --review-soft: #fbefd5;
@@ -56,9 +56,9 @@
   --accent-ink: #12102a;
   --accent-soft: #261f52;
   --done: #3cc4a0;
-  --confidence-low: #d27a1e;
-  --confidence-mid: #5e6780;
-  --confidence-high: #4f94ee;
+  --confidence-low: #ee6f7a;
+  --confidence-mid: #e5b450;
+  --confidence-high: #4cc38a;
   --done-soft: #12332b;
   --review: #e3a93a;
   --review-soft: #3a2d10;
@@ -228,5 +228,44 @@ body {
 }
 @media (prefers-reduced-motion: reduce) { .wb-confetti { display: none; } }
 
-/* A second signal next to colour, for "unsure" in the confidence bars. */
-.wb-stripes { background-image: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in srgb, var(--sheet) 60%, transparent) 3px 5px); }
+/* For colour vision deficiency: orange and blue, which stay apart, and a second signal next to colour. */
+:root[data-colors='safe'] { --confidence-low: #c2570c; --confidence-mid: #858ea5; --confidence-high: #1f5fb8; }
+:root[data-colors='safe'][data-theme='dark'] { --confidence-low: #d27a1e; --confidence-mid: #5e6780; --confidence-high: #4f94ee; }
+/* Stripes on "unsure", so it is never told apart by hue alone. */
+:root[data-colors='safe'] .wb-stripes { background-image: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in srgb, var(--sheet) 60%, transparent) 3px 5px); }
+
+/* ───────── flashcards ───────── */
+/* The deck as a list next to its text. Cards are asides from the deck's own Typst. */
+.prose-deck { font-size: 14.5px; max-width: none; }
+.prose-deck aside[data-wb="card"] {
+  display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--sheet); overflow: hidden; margin-block: 0.75em;
+}
+.prose-deck aside[data-wb="card"] > [data-side] { padding: 0.7em 0.9em; min-width: 0; }
+.prose-deck aside[data-wb="card"] > [data-side="back"] { border-left: 1px solid var(--line); background: var(--paper); }
+.prose-deck aside[data-wb="card"] > [data-side="text"] { grid-column: 1 / -1; }
+.prose-deck aside[data-wb="card"][data-kind="both"] > [data-side="back"]::before { content: "⇄"; float: right; color: var(--ink-3); margin-left: 0.5em; }
+.prose-deck .wb-card-from { grid-column: 1 / -1; margin: 0; padding: 0.35em 0.9em; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-3); }
+a.wb-card-from:hover { color: var(--accent); }
+.wb-card-course { margin-left: 0.4em; opacity: 0.8; }
+.wb-card-course::before { content: "· "; }
+@media (max-width: 640px) {
+  .prose-deck aside[data-wb="card"] { grid-template-columns: 1fr; }
+  .prose-deck aside[data-wb="card"] > [data-side="back"] { border-left: 0; border-top: 1px solid var(--line); }
+}
+.wb-gap { background: var(--accent-soft); border-radius: 3px; box-decoration-break: clone; }
+.wb-card-face .wb-gap { background: none; }
+.wb-card-face .wb-gap-asked { background: var(--accent-soft); color: var(--accent); }
+.wb-card-face .wb-gap-hidden { display: none; }
+.wb-gap-placeholder {
+  display: inline-block; min-width: 3em; padding-inline: 0.4em; border-radius: 4px; text-align: center;
+  background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+.tok-heading { color: var(--tok-def); font-weight: 650; }
+.tok-strong { font-weight: 650; }
+.tok-emph { font-style: italic; }
+.tok-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.wb-show-gaps .wb-card-face .wb-gap { background: var(--accent-soft); color: var(--accent); }
+
+/* A student's text laid out as a page, when HTML export would lose part of it. Black in it is the theme's text colour. */
+.wb-as-picture svg, [data-side] > svg, .wb-card-face .prose-task > svg { max-width: 100%; height: auto; color: var(--ink); }

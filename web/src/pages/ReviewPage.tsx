@@ -4,12 +4,14 @@ import { useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import type { ExerciseMeta, ReviewData } from '@wb/shared';
 import { CodeBlock } from '@/components/Dialogs';
+import { CardsOverview } from '@/components/CardsOverview';
 import { ConfidenceOverview } from '@/components/ConfidenceOverview';
 import { Prose } from '@/components/Prose';
 import { RenderedText } from '@/components/RenderedText';
 import { Button, Chip, Empty, Spinner, StatusMark, clsx } from '@/components/ui';
 import { FLAGS, cellFor, formatDuration, urgency, type Cell, type Flag } from '@/lib/attention';
-import { isExercise, keys, saveOpenQuestion, useOutline, useReviewData } from '@/lib/api';
+import { isExercise, keys, saveOpenQuestion, useOutline, useReviewData, useSettings } from '@/lib/api';
+import { useCourseCards } from '@/lib/flashcards';
 import { useLang, useT } from '@/lib/i18n';
 
 type Exercise = ExerciseMeta & { chapter: string };
@@ -24,6 +26,8 @@ export function ReviewPage() {
   const t = useT();
   const mine = useReviewData();
   const outline = useOutline().data;
+  const flashcardsOn = !!useSettings().data?.showFlashcards;
+  const cards = useCourseCards(flashcardsOn).data;
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 pb-24 pt-10 sm:px-8">
@@ -35,6 +39,8 @@ export function ReviewPage() {
         {mine.data ? (
           <>
             {outline ? <ConfidenceOverview outline={outline} data={mine.data} /> : null}
+            {outline && flashcardsOn && cards ? <CardsOverview outline={outline} cards={cards} /> : null}
+
             <WeakChecklistAnswers data={mine.data} />
             <Attention data={mine.data} />
           </>

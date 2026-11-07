@@ -37,6 +37,12 @@ text with Typst, and runs every test program against your reference solution.
 
 ```yaml
 title: Deklarative Programmierung
+id: deklprog            # optional: stable name of the course, see below
+exams:                  # optional: suggested to students as the date their flashcards should be ready by
+  - title: Erster Prüfungszeitraum
+    date: 2027-02-12
+  - title: Zweiter Prüfungszeitraum
+    date: 2027-04-01
 language: de            # language of the texts (hyphenation, "Abbildung 1", ...)
 landing: landing.typ    # optional: introduces the course, see below
 issues: https://github.com/you/course/issues   # optional, see "Reporting problems"
@@ -44,6 +50,11 @@ defaults:               # optional, applies to every exercise
   level: 1
 chapters: [01-basics, 02-types]   # optional; default is the sorted folder names
 ```
+
+Students' flashcards point back to the exercise they came from as `from: "<course id>/<exercise id>"`. Without
+`id:`, the course id is made from the title ("Deklarative Programmierung" becomes `deklarative-programmierung`), so
+set it before students start making cards if the title may change. Renaming an exercise id breaks the link too: the
+card stays, but the app warns that it points nowhere.
 
 A long course can be divided into **parts**. The order of the parts then sets the
 order of the chapters, and `chapters:` is not needed. The outline becomes
@@ -221,7 +232,9 @@ A `cetz` canvas works as it is, and a `box` or `block` with a size, fill or stro
 
 For anything else that draws and comes out in pieces, wrap it in `#diagram(…)`, which turns all of it into one picture.
 
-Typst packages are downloaded on first use (the container needs internet then) and cached in the data volume.
+Typst packages are downloaded on first use (the container needs internet then) and cached in the data volume. Course text is rendered with Typst's HTML export, which drops what is laid out like a page: put the output of drawing packages (cetz, fletcher, lovelace, …) inside `#diagram[…]`, which draws it as a picture. fletcher exports a `diagram` of its own, so import it with `as fletcher`. (Students' own notes, answers and cards fall back to a picture automatically when something would be lost; course text does not, so a missing `#diagram` shows up as a warning in `lint --render`.)
+
+**Editor:** for writing a course, [Tinymist](https://github.com/Myriad-Dreamin/tinymist) in VS Code (or another editor) gives completion, hover docs and errors on the course repository as it is. Open the repository folder; `prelude.typ` and the workbook helpers are not in it, so Tinymist will mark `#hint`, `#remark` and friends as unknown, which is expected. `lint` is still what checks a course the way the app renders it.
 Run `lint --render` to see Typst warnings such as "… was ignored during HTML export".
 
 Not supported: page-level things (`#set page`, headers, page breaks), `image` sizing beyond what the browser does.
