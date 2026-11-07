@@ -3,6 +3,7 @@ import { Columns2, PanelBottom, X } from 'lucide-react';
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { ApiError } from '@/lib/api';
 import { cardText, previewDeck, type CardFields } from '@/lib/flashcards';
+import { QuizCardFields } from './QuizCardFields';
 import { useT } from '@/lib/i18n';
 import { modKey } from '@/lib/keys';
 import { readPref, writePref } from '@/lib/shell';
@@ -12,7 +13,7 @@ import { CardFace } from './CardFace';
 import { CodeEditor } from './CodeEditor';
 import { Button, IconButton, Segmented, clsx } from './ui';
 
-const KINDS: CardKind[] = ['basic', 'both', 'cloze'];
+const KINDS: CardKind[] = ['basic', 'both', 'cloze', 'quiz'];
 
 // ───────────────────────── where the preview goes ─────────────────────────
 
@@ -76,7 +77,9 @@ export function CardForm({
   const roomy = useMediaQuery(ROOMY);
   const side = layout === 'side' && roomy;
 
-  const ready = front.trim() !== '' && (kind === 'cloze' || back.trim() !== '');
+  /** Cloze and quiz cards are one text, without a back. */
+  const single = kind === 'cloze' || kind === 'quiz';
+  const ready = front.trim() !== '' && (single || back.trim() !== '');
 
   // A preview a moment after typing stops. The last one that compiled stays up.
   useEffect(() => {
@@ -105,7 +108,7 @@ export function CardForm({
     setBusy(true);
     setError(null);
     try {
-      await onSubmit({ kind, front, back: kind === 'cloze' ? '' : back, tags });
+      await onSubmit({ kind, front, back: single ? '' : back, tags });
       if (!initial?.front) {
         setFront('');
         setBack('');
@@ -136,10 +139,27 @@ export function CardForm({
     </label>
   );
 
+  /** Where the preview goes: it belongs to the preview, so the card kinds keep the whole width. */
+  const placeToggle = roomy ? (
+    <div className="flex items-center" role="group" aria-label={t.cardPreviewPlace}>
+      {(
+        [
+          ['below', PanelBottom, t.cardPreviewBelow],
+          ['side', Columns2, t.cardPreviewBeside],
+        ] as const
+      ).map(([l, Icon, name]) => (
+        <IconButton key={l} label={name} aria-pressed={layout === l} onClick={() => setLayout(l)} className={clsx('size-7', layout === l && 'bg-sunk text-ink')}>
+          <Icon size={15} />
+        </IconButton>
+      ))}
+    </div>
+  ) : null;
+
   const previewBox = preview ? (
     <div>
-      <div className="mb-1 flex items-center justify-between">
-        <span className="text-[12.5px] font-medium text-ink-3">{t.preview}</span>
+      <div className="mb-1 flex min-h-7 items-center gap-2">
+        <span className="flex-1 text-[12.5px] font-medium text-ink-3">{t.preview}</span>
+        {placeToggle}
         {kind === 'cloze' ? (
           <button type="button" className="text-[12.5px] text-accent hover:underline" onClick={() => setRevealed(!revealed)}>
             {revealed ? t.hideGap : t.showAnswer}
@@ -148,41 +168,38 @@ export function CardForm({
       </div>
       <div className="overflow-hidden rounded-lg border border-line bg-sheet">
         <CardFace html={preview.card.front} css={preview.css} gap={kind === 'cloze' ? 1 : null} revealed={revealed} className="px-4 py-3" />
-        {kind !== 'cloze' ? <CardFace html={preview.card.back} css={preview.css} gap={null} revealed className="border-t border-line bg-paper px-4 py-3" /> : null}
+        {!single ? <CardFace html={preview.card.back} css={preview.css} gap={null} revealed className="border-t border-line bg-paper px-4 py-3" /> : null}
       </div>
     </div>
   ) : side ? (
     // Beside the inputs the place stays, so nothing jumps when the first preview comes.
     <div>
-      <span className="mb-1 block text-[12.5px] font-medium text-ink-3">{t.preview}</span>
+      <div className="mb-1 flex min-h-7 items-center gap-2">
+        <span className="flex-1 text-[12.5px] font-medium text-ink-3">{t.preview}</span>
+        {placeToggle}
+      </div>
       <p className="grid min-h-32 place-items-center rounded-lg border border-dashed border-line-strong px-4 text-center text-[13px] text-ink-3">{t.previewHere}</p>
+    </div>
+  ) : placeToggle ? (
+    // Before anything is typed: only the header, so the place can be chosen.
+    <div className="flex min-h-7 items-center gap-2">
+      <span className="flex-1 text-[12.5px] font-medium text-ink-3">{t.preview}</span>
+      {placeToggle}
     </div>
   ) : null;
 
   const inputs = (
     <>
       <div>
-        <div className="flex items-center justify-between gap-3">
-          <Segmented value={kind} onChange={setKind} options={KINDS.map((k) => [k, t.cardKind[k]])} />
-          {roomy ? (
-            <div className="flex items-center" role="group" aria-label={t.cardPreviewPlace}>
-              {(
-                [
-                  ['below', PanelBottom, t.cardPreviewBelow],
-                  ['side', Columns2, t.cardPreviewBeside],
-                ] as const
-              ).map(([l, Icon, name]) => (
-                <IconButton key={l} label={name} aria-pressed={layout === l} onClick={() => setLayout(l)} className={clsx('size-7', layout === l && 'bg-sunk text-ink')}>
-                  <Icon size={15} />
-                </IconButton>
-              ))}
-            </div>
-          ) : null}
-        </div>
+        <Segmented value={kind} onChange={setKind} options={KINDS.map((k) => [k, t.cardKind[k]])} />
         <p className="mt-1.5 text-[12.5px] text-ink-3">{t.cardKindHint[kind]}</p>
       </div>
-      {field(kind === 'cloze' ? t.clozeText : t.cardFront, front, setFront, kind === 'cloze' ? 8 : 5, !!autoFocus)}
-      {kind !== 'cloze' ? field(t.cardBack, back, setBack, 5, false) : null}
+      {kind === 'quiz' ? (
+        <QuizCardFields value={front} onChange={setFront} autoFocus={!!autoFocus} />
+      ) : (
+        field(kind === 'cloze' ? t.clozeText : t.cardFront, front, setFront, single ? 9 : 5, !!autoFocus)
+      )}
+      {!single ? field(t.cardBack, back, setBack, 5, false) : null}
       <TagPicker tags={tags} onChange={setTags} />
     </>
   );

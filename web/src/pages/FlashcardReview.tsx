@@ -3,12 +3,14 @@ import type { CardRating, ReviewNext, StrugglingCard } from '@wb/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { CardFace } from '@/components/CardFace';
+import { Quiz, partsOfHtml } from '@/components/widgets';
 import { StrugglingCardView } from '@/components/StrugglingCardView';
 import { Button, Chip, Dialog, Spinner, clsx } from '@/components/ui';
 import { api } from '@/lib/api';
 import { buryCard, cardKeys, nextCard, rateCard } from '@/lib/flashcards';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
+import { Title } from '@/components/Title';
 
 const RATINGS: CardRating[] = [1, 2, 3, 4];
 
@@ -22,6 +24,8 @@ export function FlashcardReview({ deckIds }: { deckIds: string[] }) {
   const qc = useQueryClient();
   const [next, setNext] = useState<ReviewNext | null>(null);
   const [revealed, setRevealed] = useState(false);
+  /** For a quiz card: the rating its first pick suggests. */
+  const [suggested, setSuggested] = useState<CardRating | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   /** A card that was just forgotten once too often. */
@@ -34,6 +38,7 @@ export function FlashcardReview({ deckIds }: { deckIds: string[] }) {
     try {
       setNext(await nextCard(key.split(','), ahead.current));
       setRevealed(false);
+      setSuggested(null);
       setFailed(false);
     } catch {
       setFailed(true);
@@ -148,17 +153,31 @@ export function FlashcardReview({ deckIds }: { deckIds: string[] }) {
               {deckIds.length > 1 ? <span className="ml-auto text-[12.5px] text-ink-3">{card.deckTitle}</span> : null}
             </div>
             <div className="rounded-xl border border-line bg-sheet shadow-sm">
-              <CardFace html={card.front} css={card.css} gap={card.gap} revealed={revealed && card.kind === 'cloze'} className="min-h-24 px-6 py-5 text-[15px]" />
-              {revealed && card.kind !== 'cloze' ? <CardFace html={card.back} css={card.css} gap={null} revealed className="border-t border-line bg-paper px-6 py-5 text-[15px]" /> : null}
+              {card.kind === 'quiz' ? (
+                <div className="min-h-24 px-6 py-5">
+                  <Quiz
+                    bare
+                    parts={partsOfHtml(card.front)}
+                    reveal={revealed}
+                    onPick={(right) => {
+                      setSuggested(right ? 3 : 1);
+                      setRevealed(true);
+                    }}
+                  />
+                </div>
+              ) : (
+                <CardFace html={card.front} css={card.css} gap={card.gap} revealed={revealed && card.kind === 'cloze'} className="min-h-24 px-6 py-5 text-[15px]" />
+              )}
+              {revealed && card.kind !== 'cloze' && card.kind !== 'quiz' ? <CardFace html={card.back} css={card.css} gap={null} revealed className="border-t border-line bg-paper px-6 py-5 text-[15px]" /> : null}
               {revealed && card.origin ? (
                 <p className="border-t border-line px-6 py-2 text-[12.5px] text-ink-3">
                   {t.cardFrom}{' '}
                   {card.origin.href ? (
                     <a href={card.origin.href} className="text-accent hover:underline">
-                      {card.origin.title}
+                      <Title text={card.origin.title} />
                     </a>
                   ) : (
-                    card.origin.title
+                    <Title text={card.origin.title} />
                   )}{' '}
                   · {card.origin.courseTitle}
                 </p>
@@ -181,6 +200,7 @@ export function FlashcardReview({ deckIds }: { deckIds: string[] }) {
                       className={clsx(
                         'flex flex-col items-center gap-0.5 rounded-lg border px-2 py-2.5 text-sm font-medium transition-colors disabled:opacity-50',
                         r === 1 ? 'border-line-strong bg-sheet hover:border-review hover:bg-review-soft' : 'border-line-strong bg-sheet hover:border-accent hover:bg-accent-soft',
+                        r === suggested && 'ring-3 ring-accent-soft border-accent',
                       )}
                     >
                       {t.rating[r]}

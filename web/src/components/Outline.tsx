@@ -1,15 +1,17 @@
 import * as Popover from '@radix-ui/react-popover';
-import { ChevronDown, Clock, Compass, FileText, Flame, ListChecks, ListFilter, Search, X } from 'lucide-react';
+import { ChevronDown, Clock, Compass, FileText, Flame, GraduationCap, ListChecks, ListFilter, Search, X } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useRoute } from 'wouter';
 import type { ChapterMeta, ExerciseKind, ItemMeta, Outline as OutlineT, PartMeta, Status, StudentState, ThreadInfo } from '@wb/shared';
-import { statusOf } from '@/lib/api';
+import { statusOf, useSettings } from '@/lib/api';
+import { useLessonToc } from '@/lib/lessonToc';
 import { focusExercises, foldItems } from '@/lib/focus';
 import { adventureOfSection, isChapterWide } from '@/lib/sections';
 import { useT } from '@/lib/i18n';
 import { activeCount, matches, type Filters } from '@/lib/filters';
 import { Plant } from './Plant';
 import { Level, StatusMark, clsx } from './ui';
+import { Title } from '@/components/Title';
 
 const STATUSES: Status[] = ['todo', 'in_progress', 'done', 'review'];
 
@@ -312,12 +314,12 @@ function Row({ item, status, answered, current, first, last, wide, outside, onNa
             <StatusMark status={status} />
           ) : (
             <span className="grid size-4 place-items-center rounded-[4px] bg-sheet text-ink-3 ring-1 ring-line-strong">
-              {item.type === 'checklist' ? <ListChecks size={10} className={answered ? 'text-done' : undefined} /> : <FileText size={10} />}
+              {item.type === 'checklist' ? <ListChecks size={10} className={answered ? 'text-done' : undefined} /> : item.type === 'lesson' ? <GraduationCap size={10} className={done ? 'text-done' : undefined} /> : <FileText size={10} />}
             </span>
           )}
         </span>
         <span className={clsx('min-w-0 flex-1', (status === 'done' || outside) && !current && 'text-ink-3')} title={outside ? t.outsideFocus : undefined}>
-          <span className={clsx('line-clamp-2', outside && 'italic')}>{item.title}</span>
+          <span className={clsx('line-clamp-2', outside && 'italic')}><Title text={item.title} /></span>
           {outside ? <span className="sr-only">, {t.outsideFocus}</span> : null}
         </span>
         {ex ? (
@@ -333,7 +335,35 @@ function Row({ item, status, answered, current, first, last, wide, outside, onNa
           </span>
         ) : null}
       </Link>
+      {current && item.type === 'lesson' ? <LessonSections id={item.id} /> : null}
     </li>
+  );
+}
+
+/** The sections of the lesson that is open, with the one being read marked. */
+function LessonSections({ id }: { id: string }) {
+  const t = useT();
+  const toc = useLessonToc();
+  const on = useSettings().data?.showLessonOutline ?? true;
+  if (!on || toc?.id !== id || toc.sections.length < 2) return null;
+  return (
+    <ol aria-label={t.lessonSections} className="relative pb-1.5 pt-0.5">
+      {toc.sections.map((s, i) => (
+        <li key={i}>
+          <button
+            type="button"
+            aria-current={i === toc.active ? 'location' : undefined}
+            onClick={() => s.el.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className={clsx(
+              'ml-[30px] block w-[calc(100%-30px)] py-1 pl-3 pr-3 text-left text-[13px] leading-snug transition-colors',
+              i === toc.active ? 'font-medium text-ink shadow-[inset_2px_0_0_var(--accent)]' : 'text-ink-3 hover:text-ink',
+            )}
+          >
+            {s.title}
+          </button>
+        </li>
+      ))}
+    </ol>
   );
 }
 

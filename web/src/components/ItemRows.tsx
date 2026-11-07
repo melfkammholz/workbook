@@ -1,9 +1,10 @@
-import { ArrowRight, FileText, ListChecks } from 'lucide-react';
+import { ArrowRight, FileText, GraduationCap, ListChecks } from 'lucide-react';
 import { Link } from 'wouter';
 import type { ItemMeta, StudentState } from '@wb/shared';
 import { statusOf } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Level, StatusMark, clsx } from './ui';
+import { Title } from '@/components/Title';
 
 /** One exercise, page or checklist in a list, with how far along it is. */
 export function ItemRow({ item, state, outside = false, className }: { item: ItemMeta; state: StudentState | undefined; outside?: boolean; className?: string }) {
@@ -15,12 +16,14 @@ export function ItemRow({ item, state, outside = false, className }: { item: Ite
         <StatusMark status={statusOf(state, item.id)} size={16} />
       ) : item.type === 'checklist' ? (
         <ListChecks size={16} className={answered ? 'text-done' : 'text-ink-3'} />
+      ) : item.type === 'lesson' ? (
+        <GraduationCap size={16} className={statusOf(state, item.id) === 'done' ? 'text-done' : 'text-ink-3'} />
       ) : (
         <FileText size={16} className="text-ink-3" />
       )}
       <span className={clsx('min-w-0 flex-1 truncate text-[14.5px]', outside && 'italic text-ink-3')}>
         {item.type === 'exercise' && item.startHere && item.emoji ? <span className="mr-1.5">{item.emoji}</span> : null}
-        {item.title}
+        <Title text={item.title} />
       </span>
       {outside ? <span className="hidden shrink-0 text-xs text-ink-3 sm:inline">{t.outsideFocus}</span> : null}
       {item.type === 'exercise' ? <Level level={item.level} /> : null}

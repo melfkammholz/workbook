@@ -8,6 +8,7 @@ import { Level, StatusMark, clsx } from '@/components/ui';
 import { indexItems, isExercise, statusOf, threadProgress, useOutline, useSettings, useState_ } from '@/lib/api';
 import { focusExercises } from '@/lib/focus';
 import { useT } from '@/lib/i18n';
+import { Title, plainTitle } from '@/components/Title';
 
 export function Dashboard() {
   const t = useT();
@@ -77,7 +78,7 @@ export function Dashboard() {
 
         {fresh && first ? (
           <Link href={`/item/${first.id}`} className="mt-8 inline-flex h-10 items-center gap-2 rounded-md bg-accent px-5 font-medium text-accent-ink hover:brightness-110">
-            {t.startWith(first.title)} <ArrowRight size={16} />
+            {t.startWith(plainTitle(first.title))} <ArrowRight size={16} />
           </Link>
         ) : null}
 
@@ -93,7 +94,7 @@ export function Dashboard() {
             <h2 className="mb-2 text-sm font-semibold text-ink-2">{t.pickUp}</h2>
             <Link href={`/item/${last.id}`} className="flex items-center gap-3 rounded-lg border border-line bg-sheet px-4 py-3.5 hover:border-line-strong">
               <StatusMark status={statusOf(state, last.id)} size={18} />
-              <span className="min-w-0 flex-1 truncate font-medium">{last.title}</span>
+              <span className="min-w-0 flex-1 truncate font-medium"><Title text={last.title} /></span>
               <ArrowRight size={16} className="text-ink-3" />
             </Link>
           </section>
@@ -113,7 +114,7 @@ export function Dashboard() {
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[15px] font-medium">
                           {e.startHere && e.emoji ? <span className="mr-1.5">{e.emoji}</span> : null}
-                          {e.title}
+                          <Title text={e.title} />
                         </span>
                         <span className={clsx('block text-[13px]', s.reason === 'review-due' ? 'text-review' : 'text-ink-3')}>{t.reason[s.reason]}</span>
                       </span>
@@ -195,7 +196,7 @@ export function Dashboard() {
                             return (
                               <Link key={id} href={`/item/${id}`} className="inline-flex max-w-[15rem] items-center gap-1.5 rounded-full border border-line bg-paper py-1 pl-1.5 pr-3 text-[13px] hover:border-line-strong">
                                 <StatusMark status={statusOf(state, id)} size={13} />
-                                <span className="truncate">{it.title}</span>
+                                <span className="truncate"><Title text={it.title} /></span>
                               </Link>
                             );
                           })}

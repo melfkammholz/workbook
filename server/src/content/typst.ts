@@ -2,7 +2,8 @@ import { execFile, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { RenderedItem, TypstDiagnostic } from '@wb/shared';
+import { scanCards, type RenderedItem, type TypstDiagnostic } from '@wb/shared';
+import { dedent } from '../flashcards/source.js';
 import type { ServerItem } from './loader.js';
 import { bodyOf, splitDocument } from './html.js';
 
@@ -26,7 +27,7 @@ export interface RenderedNote {
 }
 
 /** Bump when the processing of Typst's output changes, so cached renders are made again. */
-const RENDER_VERSION = '2';
+const RENDER_VERSION = '4';
 
 /** Typst's warning when HTML export drops something, e.g. what a package lays out. */
 const LOST_IN_HTML = /was ignored during HTML export/;
@@ -104,9 +105,12 @@ export class TypstRenderer {
     return lines;
   }
 
-  async renderItem(item: Pick<ServerItem, 'typst' | 'chapterRel' | 'codeLanguage'>): Promise<RenderedItem> {
+  async renderItem(item: Pick<ServerItem, 'typst' | 'chapterRel' | 'codeLanguage'> & { meta?: { type: string } }): Promise<RenderedItem> {
+    item = { ...item, typst: withQuizSources(item.typst) };
     const header = this.header(item.chapterRel, item.codeLanguage).join('\n') + '\n';
-    const key = await this.cacheKey(header + item.typst);
+    // A lesson's remarks are notes in its text, where the author put them.
+    const inlineRemarks = item.meta?.type === 'lesson';
+    const key = await this.cacheKey(header + item.typst + (inlineRemarks ? '\0inline-remarks' : ''));
     const cached = this.readCache(key);
     // Titles are filled in after the cache, so renaming an exercise updates links to it.
     if (cached) return this.fillTitles(cached);
@@ -115,7 +119,7 @@ export class TypstRenderer {
     if (run.html === null) {
       return { task: '', remarks: [], hints: [], samples: [], questions: [], css: '', diagnostics: run.diagnostics.map((d) => ({ ...d })) };
     }
-    const parts = splitDocument(run.html);
+    const parts = splitDocument(run.html, { inlineRemarks });
     const rendered: RenderedItem = { ...parts, diagnostics: run.diagnostics };
     this.writeCache(key, rendered);
     return this.fillTitles(rendered);
@@ -143,7 +147,7 @@ export class TypstRenderer {
 
   /** Renders a flashcard deck. Cached like exercises: a review session renders the same deck again and again. */
   async renderDeck(source: string): Promise<RenderedNote> {
-    const header = [...this.header(), '#import "/_workbook/flashcards.typ": flashcard, cloze'].join('\n') + '\n';
+    const header = [...this.header(), '#import "/_workbook/flashcards.typ": flashcard, cloze, quiz'].join('\n') + '\n';
     const key = await this.cacheKey(`deck\n${header}${source}`);
     const cached = this.readCache<RenderedNote>(key);
     if (cached && typeof cached.html === 'string') return { ...cached, html: this.fillXrefs(cached.html) };
@@ -151,7 +155,7 @@ export class TypstRenderer {
     let asPicture = false;
     // Lost in HTML export: card sides are laid out as pages. A cloze stays text, or its gaps could not be hidden.
     if (lostSomething(run.diagnostics)) {
-      const pictured = [...this.header(), '#import "/_workbook/flashcards.typ": _flashcard-framed as flashcard, cloze'].join('\n') + '\n';
+      const pictured = [...this.header(), '#import "/_workbook/flashcards.typ": _flashcard-framed as flashcard, cloze, quiz'].join('\n') + '\n';
       const again = await this.compile(pictured + source, pictured.split('\n').length - 1);
       if (again.html !== null) {
         run = again;
@@ -173,7 +177,8 @@ export class TypstRenderer {
       const id = /\bdata-xref="([^"]*)"/.exec(attrs)?.[1] ?? '';
       const title = this.titles(id);
       const a = title === undefined ? attrs.replace('class="wb-xref"', 'class="wb-xref wb-xref-broken"') : attrs;
-      return `<a ${a}>${escape(title ?? id)}</a>`;
+      // Code in a title, `like this`, is code in the link too.
+      return `<a ${a}>${escape(title ?? id).replace(/`([^`]+)`/g, '<code>$1</code>')}</a>`;
     });
   }
 
@@ -304,6 +309,22 @@ function parseDiagnostics(stderr: string, headerLines: number, wrapperName: stri
       column: inWrapper ? Number(g.col) : null,
       message: inWrapper ? g.msg! : `${path.basename(g.file!)}:${ln}: ${g.msg}`,
     });
+  }
+  return out;
+}
+
+/**
+ * Every `#quiz(…)` is given its own text as `_src`, so a student can make a flashcard of it: a quiz card is
+ * written exactly like the quiz in the lesson. The string stays on the line, so no line moves.
+ */
+export function withQuizSources(typst: string): string {
+  let out = typst;
+  const quizzes = scanCards(typst).filter((c) => c.kind === 'quiz' && c.args);
+  for (const q of quizzes.reverse()) {
+    const at = q.args!.from + 1;
+    const body = dedent(typst.slice(at, q.args!.to));
+    const literal = `"${body.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r/g, '').replace(/\n/g, '\\n').replace(/\t/g, '\\t')}"`;
+    out = `${out.slice(0, at)}_src: ${literal}, ${out.slice(at)}`;
   }
   return out;
 }

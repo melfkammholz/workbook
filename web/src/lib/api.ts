@@ -298,7 +298,9 @@ export function threadProgress(thread: ThreadInfo, state: StudentState | undefin
 
 /** Out of the focus and not worked on: folded away in the outline, and passed over when moving through the course. */
 function folded(item: ItemMeta, state: StudentState | undefined): boolean {
-  return isExercise(item) && !inFocus(item, focusOf(state)) && statusOf(state, item.id) === 'todo';
+  const focus = focusOf(state);
+  const outside = isExercise(item) ? !inFocus(item, focus) : item.type === 'lesson' && item.extra && focus !== 'everything';
+  return outside && statusOf(state, item.id) === 'todo';
 }
 
 /** The items around one, in the order of the course, passing over what the focus folds away. */

@@ -42,6 +42,18 @@ export const classHighlighter = tagHighlighter([
   { tag: t.escape, class: 'tok-op' },
 ]);
 
+/**
+ * The legacy Haskell mode calls type and constructor names `variable-2` or `builtin`, which reads as plain text. Short
+ * inline code (`Maybe a`, `Just x`) is mostly such names, so they are types here, as in the editor.
+ */
+const haskellTypes: StreamParser<unknown> = {
+  ...(haskell as StreamParser<unknown>),
+  token(stream, state) {
+    const style = (haskell as StreamParser<unknown>).token(stream, state);
+    return (style === 'variable-2' || style === 'builtin') && /^[A-Z]/.test(stream.current()) ? 'typeName' : style;
+  },
+};
+
 /** A small Prolog tokenizer: enough for readable highlighting of facts, rules and queries. */
 const prolog: StreamParser<{ block: boolean }> = {
   startState: () => ({ block: false }),
@@ -85,7 +97,7 @@ const prolog: StreamParser<{ block: boolean }> = {
 
 const parsers = {
   typst: typstParser,
-  haskell,
+  haskell: haskellTypes,
   prolog,
   python,
   c,

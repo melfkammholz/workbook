@@ -3,7 +3,7 @@ import type { DeckDoc } from '@wb/shared';
 import { Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
-import { addCard, cardKeys, createDeck, useFlashcards } from '@/lib/flashcards';
+import { addCard, cardKeys, createDeck, useFlashcards, type CardFields } from '@/lib/flashcards';
 import { useT } from '@/lib/i18n';
 import { useMediaQuery } from '@/lib/useActiveTime';
 import { CardForm, ROOMY, useCardLayout } from './CardForm';
@@ -13,7 +13,7 @@ import { Dialog } from './ui';
  * The quick way to a card: it only appends one card to the deck's text, the same
  * as typing it there. The card remembers the exercise it was made in.
  */
-export function MakeCardDialog({ open, onClose, exerciseId }: { open: boolean; onClose: () => void; exerciseId: string | null }) {
+export function MakeCardDialog({ open, onClose, exerciseId, initial }: { open: boolean; onClose: () => void; exerciseId: string | null; initial?: Partial<CardFields> }) {
   const t = useT();
   const qc = useQueryClient();
   const list = useFlashcards();
@@ -56,6 +56,9 @@ export function MakeCardDialog({ open, onClose, exerciseId }: { open: boolean; o
         </div>
       ) : null}
       <CardForm
+        // A card started elsewhere (a quiz in a lesson) starts the form afresh.
+        key={initial ? `${initial.kind}:${initial.front}` : 'blank'}
+        initial={initial}
         autoFocus
         submitLabel={t.addCard}
         onSubmit={async (f) => {

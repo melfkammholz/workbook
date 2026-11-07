@@ -37,7 +37,7 @@ export interface SplitHtml {
 }
 
 /** Splits Typst HTML into the task and the marked-up parts (remarks, hints). Author notes are dropped here, so they never reach a browser. */
-export function splitDocument(html: string): SplitHtml {
+export function splitDocument(html: string, o: { inlineRemarks?: boolean } = {}): SplitHtml {
   const doc = parse(html, { comment: false });
   const css = doc
     .querySelectorAll('head style')
@@ -54,7 +54,7 @@ export function splitDocument(html: string): SplitHtml {
     }
     return out;
   };
-  const remarks = take('remark');
+  const remarks = o.inlineRemarks ? [] : take('remark');
   const hints = take('hint');
   const questions = take('question').map((html) => ({ id: crypto.createHash('sha1').update(html).digest('hex').slice(0, 12), html }));
   const samples = take('sample');

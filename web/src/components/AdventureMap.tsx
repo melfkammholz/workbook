@@ -5,6 +5,7 @@ import { focusOf, inFocus, type ItemMeta, type StudentState, type ThreadInfo } f
 import { statusOf } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { StatusMark, clsx } from './ui';
+import { Title, plainTitle } from '@/components/Title';
 
 const NODE = 44;
 const LABEL = 54;
@@ -125,8 +126,8 @@ export function AdventureMap({ thread, byId, state }: { thread: ThreadInfo; byId
             <Link
               href={`/item/${stop.id}`}
               aria-current={here ? 'step' : undefined}
-              title={item.title}
-              aria-label={`${item.title}: ${finale ? `${t.finale}, ` : ''}${here ? `${t.youAreHere}, ` : ''}${t.status[status]}${outside ? `, ${t.outsideFocus}` : ''}`}
+              title={plainTitle(item.title)}
+              aria-label={`${plainTitle(item.title)}: ${finale ? `${t.finale}, ` : ''}${here ? `${t.youAreHere}, ` : ''}${t.status[status]}${outside ? `, ${t.outsideFocus}` : ''}`}
               className={clsx('group flex flex-col items-center text-center focus:outline-none', outside && !here && 'opacity-55 hover:opacity-100 focus-visible:opacity-100')}
             >
               <span
@@ -141,7 +142,7 @@ export function AdventureMap({ thread, byId, state }: { thread: ThreadInfo; byId
               </span>
               {/* On the page's colour, so the route passes behind the words instead of through them. */}
               <span className="mt-1.5 rounded bg-paper px-1">
-                <span className={clsx('line-clamp-2 text-[13px] leading-tight group-hover:underline', here || finale ? 'font-semibold' : status === 'done' ? 'text-ink-2' : '')}>{item.title}</span>
+                <span className={clsx('line-clamp-2 text-[13px] leading-tight group-hover:underline', here || finale ? 'font-semibold' : status === 'done' ? 'text-ink-2' : '')}><Title text={item.title} /></span>
                 {here || finale ? <span className={clsx('block text-xs leading-tight', here ? 'font-medium text-accent' : 'text-ink-3')}>{here ? t.youAreHere : t.finale}</span> : null}
               </span>
             </Link>

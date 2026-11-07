@@ -54,7 +54,7 @@ export interface Unit {
 export function unitsOf(source: string, card: CardCall): Unit[] {
   if (!card.id) return [];
   const id = card.id;
-  if (card.kind === 'basic') return [{ key: id, cardId: id, side: 'front', gap: null }];
+  if (card.kind === 'basic' || card.kind === 'quiz') return [{ key: id, cardId: id, side: 'front', gap: null }];
   if (card.kind === 'both')
     return [
       { key: id, cardId: id, side: 'front', gap: null },
@@ -187,6 +187,8 @@ export function cardText(kind: CardKind, front: string, back: string, from: stri
   if (kind === 'both') args.push('both: true');
   // A one-element array needs its trailing comma in Typst.
   if (tags.length) args.push(`tags: (${tags.map((t) => JSON.stringify(t)).join(', ')}${tags.length === 1 ? ',' : ''})`);
+  // A quiz is all arguments: the question and its choices follow the named ones.
+  if (kind === 'quiz') return `#quiz(${args.map((a) => `${a}, `).join('')}\n${indent(front)}\n)`;
   const head = `#${kind === 'cloze' ? 'cloze' : 'flashcard'}${args.length ? `(${args.join(', ')})` : ''}`;
   return kind === 'cloze' ? `${head}[\n${indent(front)}\n]` : `${head}[\n${indent(front)}\n][\n${indent(back)}\n]`;
 }
@@ -212,7 +214,17 @@ export interface CardFields {
   line: number;
 }
 
+/** A quiz's arguments without the ones the deck keeps (`id`, `from`, `tags`): the question and its choices. */
+export function quizBody(args: string): string {
+  // Up to the line break, so the indentation of what follows stays as it is.
+  return args.replace(/^[ \t]*(?:(?:id|from|tags|_lang)\s*:\s*(?:"(?:[^"\\]|\\.)*"|\([^)]*\))\s*,[ \t]*)*/, '');
+}
+
 export function fieldsOf(source: string, c: CardCall): CardFields {
+  if (c.kind === 'quiz') {
+    const front = c.args ? dedent(quizBody(source.slice(c.args.from + 1, c.args.to))) : '';
+    return { id: c.id, kind: c.kind, from: c.from, tags: c.tags, front, back: '', line: c.line };
+  }
   const body = (i: number) => (c.bodies[i] ? dedent(source.slice(c.bodies[i]!.from, c.bodies[i]!.to)) : '');
   return { id: c.id, kind: c.kind, from: c.from, tags: c.tags, front: body(0), back: c.kind === 'cloze' ? '' : body(1), line: c.line };
 }

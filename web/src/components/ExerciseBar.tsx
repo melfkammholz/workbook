@@ -7,6 +7,7 @@ import { useT } from '@/lib/i18n';
 import { altKey } from '@/lib/keys';
 import { Button, IconButton, clsx } from './ui';
 import { StatusControl } from './StatusControl';
+import { plainTitle } from '@/components/Title';
 
 /**
  * Always in view, whichever tab or pane is open: how far along this exercise is,
@@ -104,7 +105,7 @@ export function ExerciseBar({
 function NavIcon({ item, label, children }: { item: ItemMeta | undefined; label: string; children: React.ReactNode }) {
   const box = 'inline-flex size-7 items-center justify-center rounded-md';
   if (!item) return <span aria-hidden className={clsx(box, 'text-ink-3 opacity-30')}>{children}</span>;
-  const full = `${label}: ${item.title}`;
+  const full = `${label}: ${plainTitle(item.title)}`;
   return (
     <Link href={`/item/${item.id}`} aria-label={full} title={full} className={clsx(box, 'text-ink-2 hover:bg-sunk hover:text-ink')}>
       {children}
@@ -118,7 +119,7 @@ export function ContinueBanner({ next }: { next: ItemMeta }) {
   return (
     <div className="settle flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-done/30 bg-done-soft px-4 py-2 text-sm">
       <Check size={16} className="shrink-0 text-done" aria-hidden />
-      <span className="min-w-0 flex-1 basis-48 truncate">{t.continueWith(next.title)}</span>
+      <span className="min-w-0 flex-1 basis-48 truncate">{t.continueWith(plainTitle(next.title))}</span>
       <Link href={`/item/${next.id}`} className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 text-[13px] font-medium text-accent-ink hover:brightness-110">
         {t.continueButton} <ArrowRight size={14} />
       </Link>

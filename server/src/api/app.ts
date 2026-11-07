@@ -9,6 +9,7 @@ import { courseRoutes } from './routes-courses.js';
 import { flashcardRoutes } from './routes-flashcards.js';
 import type { Deps } from './deps.js';
 import { replSocket } from './repl-socket.js';
+import { widgetRoutes } from './routes-widgets.js';
 import { workRoutes } from './routes-work.js';
 
 export async function buildApp(d: Deps): Promise<FastifyInstance> {
@@ -49,6 +50,7 @@ export async function buildApp(d: Deps): Promise<FastifyInstance> {
   aiRoutes(app, d);
   courseRoutes(app, d);
   flashcardRoutes(app, d);
+  widgetRoutes(app, d);
   replSocket(app, d);
 
   const web = d.config.webDir;

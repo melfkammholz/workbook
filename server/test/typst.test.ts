@@ -103,6 +103,47 @@ describe.skipIf(!have)('TypstRenderer', () => {
     expect(note.html).toContain('color:#ff4136');
   });
 
+  it('writes widgets as hosts with their parts, for the app to bring to life', async () => {
+    const note = await r.renderNote(
+      [
+        '#quiz([Was ergibt `1 + 1`?], choice[`3`][Fast.], choice(correct: true)[`2`][Genau.])',
+        '#tabs(tab("Maybe a")[#steps(step(label: "Eins")[first], step[second])])',
+        '#fold-signature("data Maybe a = Nothing | Just a", given: true)',
+      ].join('\n\n'),
+    );
+    expect(note.diagnostics).toEqual([]);
+    expect(note.html).toContain('data-widget="quiz"');
+    expect(note.html).toContain('<div data-part="choice" data-correct="true"><div data-part="label"><code');
+    expect(note.html).toContain('<div data-part="why">Genau.</div>');
+    expect(note.html).toContain('data-part="tab" data-label="Maybe a"><div class="wb-widget" data-widget="steps">');
+    expect(note.html).toContain('data-decl="data Maybe a = Nothing | Just a" data-given="true"');
+    // Without the app, the declaration is still there to read.
+    expect(note.html).toContain('<pre><code');
+  });
+
+  it('writes a recipe as steps with one result per step for each example', async () => {
+    const note = await r.renderNote('#recipe(step(label: "Erst")[eins], step(label: "Dann")[zwei], example("Maybe a", [A1], [A2]))');
+    expect(note.diagnostics).toEqual([]);
+    expect(note.html).toContain('data-widget="recipe"');
+    expect(note.html).toContain('<div data-part="step" data-label="Dann">zwei</div>');
+    expect(note.html).toContain('<div data-part="example" data-label="Maybe a"><div data-part="result">A1</div><div data-part="result">A2</div></div>');
+  });
+
+  it('keeps the marks of compared code for the app, and the notes as parts', async () => {
+    const note = await r.renderNote('#compare(pairs: (nil: "Leer"), notes: (nil: [Wird zu fnil.]), [```haskell\nf [] = [[nil|0]]\n```], [```haskell\nfnil = [[nil|0]]\n```])');
+    expect(note.diagnostics).toEqual([]);
+    expect(note.html).toContain('data-widget="compare"');
+    expect(note.html).toContain('f [] = [[nil|0]]');
+    expect(note.html).toContain('<div data-part="note" data-id="nil">Wird zu fnil.</div>');
+  });
+
+  it('passes the configuration of the computing widgets as JSON', async () => {
+    const note = await r.renderNote('#fold-tree("data Maybe a = Nothing | Just a", "Just 3", functions: (Nothing: "Nothing", Just: "Just"))');
+    expect(note.diagnostics).toEqual([]);
+    const config = /data-config="([^"]*)"/.exec(note.html)?.[1]?.replace(/&quot;/g, '"');
+    expect(JSON.parse(config ?? '{}')).toEqual({ value: 'Just 3', functions: { Nothing: 'Nothing', Just: 'Just' }, type: null, fold: null });
+  });
+
   const svgCount = (html: string) => (html.match(/<svg/g) ?? []).length;
 
   it('draws a sized block as one picture, the way a cetz canvas arrives', async () => {

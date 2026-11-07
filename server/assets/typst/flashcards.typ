@@ -38,3 +38,13 @@
 /// A text with gaps: `#cloze[`map` applies a function to {{every element}}.]`.
 /// Each gap is asked on its own.
 #let cloze(id: none, from: none, tags: (), _lang: none, body) = _card("cloze", id, from, _lang, html.elem("div", attrs: (data-side: "text"), body))
+
+/// A question with answers to choose from, written as in a lesson:
+/// `#quiz([Frage], choice[falsch][warum], choice(correct: true)[richtig][warum])`.
+#let quiz(id: none, from: none, tags: (), _lang: none, _src: none, question, ..choices) = _card("quiz", id, from, _lang, {
+  _side("front", {
+    html.elem("div", attrs: (data-part: "question"), question)
+    choices.pos().join()
+  }, false)
+  _side("back", [], false)
+})

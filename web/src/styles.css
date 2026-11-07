@@ -41,6 +41,11 @@
   --danger-soft: #fbe3e7;
   --warn: #a8700b;
   --shadow: 0 8px 30px -8px rgb(26 32 51 / 0.25), 0 2px 6px -2px rgb(26 32 51 / 0.12);
+  /* One colour per constructor in lesson widgets: categories, not judgements. */
+  --k1: #a66a00; --k1-soft: #fbefd5;
+  --k2: #1e8e6e; --k2-soft: #dff3ec;
+  --k3: #1f5fb8; --k3-soft: #dfeafa;
+  --k4: #b0397a; --k4-soft: #f8e1ee;
   color-scheme: light;
 }
 :root[data-theme='dark'] {
@@ -66,6 +71,10 @@
   --danger-soft: #3d1a22;
   --warn: #e3b25a;
   --shadow: 0 8px 30px -8px rgb(0 0 0 / 0.6), 0 2px 6px -2px rgb(0 0 0 / 0.4);
+  --k1: #e3a93a; --k1-soft: #3a2d10;
+  --k2: #3cc4a0; --k2-soft: #12332b;
+  --k3: #6fa8f2; --k3-soft: #14294a;
+  --k4: #ee7fbd; --k4-soft: #3d1530;
   color-scheme: dark;
 }
 
@@ -272,3 +281,95 @@ a.wb-card-from:hover { color: var(--accent); }
 
 /* A student's text laid out as a page, when HTML export would lose part of it. Black in it is the theme's text colour. */
 .wb-as-picture svg, [data-side] > svg, .wb-card-face .prose-task > svg { max-width: 100%; height: auto; color: var(--ink); }
+
+/* ───────── lesson widgets ───────── */
+.wb-widget { margin-block: 1.25em; }
+.wb-k1 { --k: var(--k1); --ks: var(--k1-soft); }
+.wb-k2 { --k: var(--k2); --ks: var(--k2-soft); }
+.wb-k3 { --k: var(--k3); --ks: var(--k3-soft); }
+.wb-k4 { --k: var(--k4); --ks: var(--k4-soft); }
+.wb-kr { --k: var(--accent); --ks: var(--accent-soft); }
+/* Several states in one cell, so the widget keeps the height of the tallest. */
+.wb-stack { display: grid; }
+.wb-stack > * { grid-area: 1 / 1; min-width: 0; }
+.wb-stack > [aria-hidden='true'] { visibility: hidden; }
+.wb-shake { animation: wb-shake 0.3s; }
+@keyframes wb-shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+.wb-flip { animation: wb-flip 0.38s ease-in-out; }
+@keyframes wb-flip { 50% { transform: scaleY(0.05); } }
+.wb-land { animation: wb-land 0.35s; }
+@keyframes wb-land { from { transform: translateY(-6px); opacity: 0.2; } }
+.wb-arrow { stroke-dasharray: 1; stroke-dashoffset: 1; animation: wb-draw 0.55s ease-out forwards; }
+@keyframes wb-draw { to { stroke-dashoffset: 0; } }
+/* The head comes once its line has arrived. */
+.wb-arrow-head { opacity: 0; animation: wb-appear 0.12s 0.5s forwards; }
+@keyframes wb-appear { to { opacity: 1; } }
+/* A tick where a piece landed right: it pops up, then floats away. */
+.wb-tick { animation: wb-tick 1s ease-out forwards; }
+@keyframes wb-tick {
+  0% { opacity: 0; transform: scale(0.3); }
+  22% { opacity: 1; transform: scale(1.15); }
+  35% { opacity: 1; transform: scale(1) translateY(0); }
+  100% { opacity: 0; transform: translateY(-16px); }
+}
+.wb-widget .prose-task { max-width: none; }
+.wb-widget .prose-task > :first-child { margin-top: 0; }
+/* An answer on a button is already a box: its code needs no box of its own. */
+.wb-inline code { background: none; padding: 0; }
+.wb-widget .prose-task > :last-child { margin-bottom: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .wb-shake, .wb-flip, .wb-land { animation: none; }
+  .wb-arrow { animation: none; stroke-dashoffset: 0; }
+  .wb-arrow-head { animation: none; opacity: 1; }
+  .wb-tick { animation: wb-tick-still 1.3s forwards; }
+  @keyframes wb-tick-still { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+}
+
+/* ───────── lessons: one scrolling page, set like a short book chapter ───────── */
+.wb-lesson { font-size: 15.5px; line-height: 1.65; max-width: none; }
+.wb-lesson > p, .wb-lesson > ul, .wb-lesson > ol, .wb-lesson > aside { max-width: 74ch; }
+.wb-lesson > h2 {
+  margin-top: 2.2em; font-size: 1.36em; font-weight: 600; line-height: 1.25; letter-spacing: -0.015em;
+  text-wrap: balance; scroll-margin-top: 1.5rem;
+}
+.wb-lesson > h2:first-child { margin-top: 0; }
+.wb-lesson > h2 + * { margin-top: 0.6em; }
+.wb-lesson > h3 { margin-top: 1.8em; font-size: 1em; font-weight: 600; color: var(--ink-2); }
+.wb-lesson > .wb-widget { margin-block: 1.4em; }
+/* A remark keeps the look of remarks elsewhere (a box with a speech bubble), but stays where the author put it. */
+.wb-lesson aside[data-wb='remark'] {
+  position: relative; padding: 1rem 1rem 1rem calc(2rem + 17px - 0.25rem);
+  border: 1px solid var(--line); border-radius: 0.5rem; background: var(--sheet);
+  font-size: 15px; line-height: 1.6;
+}
+/* The icon sits in the margin, so the text inside flows as usual: one paragraph is not a grid of pieces. */
+.wb-lesson aside[data-wb='remark']::before {
+  content: ''; position: absolute; left: 1rem; top: calc(1rem + 0.2em); width: 17px; height: 17px; background: var(--accent);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.wb-lesson aside[data-wb='remark'] > * + * { margin-top: 0.7em; }
+.wb-lesson aside[data-wb='remark'] pre { margin-bottom: 0; }
+.wb-recipe-code pre { margin: 0; padding: 0.7em 0.9em; font-size: 0.92em; }
+
+/* Marked pieces of code that are compared: quiet until chosen. */
+.wb-compare .wb-gap { background: none; border-radius: 3px; transition: background-color 0.2s, box-shadow 0.2s; }
+.wb-compare .wb-gap.wb-pair-on { background: var(--ks); box-shadow: inset 0 -2px var(--k); border-radius: 0; }
+
+/* `#wide[…]`: wider than the text, centred on it, as wide as the page allows (up to 76rem). */
+.wb-wide {
+  --wb-wide: max(100%, min(76rem, 100cqw - 4rem));
+  width: var(--wb-wide);
+  margin-inline: calc((100% - var(--wb-wide)) / 2);
+  margin-block: 1.4em;
+}
+.wb-wide > .wb-widget { margin-block: 0; }
+
+/* A quiz card shown as it is (preview, deck view): the answers as a list, the right one marked. */
+.wb-card-face [data-part='question'] { font-weight: 600; margin-bottom: 0.6em; }
+.wb-card-face [data-part='choice'] { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2em 0.7em; margin-top: 0.35em; }
+.wb-card-face [data-part='choice'] > [data-part='label'] { padding: 0.1em 0.6em; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--sheet); }
+.wb-card-face [data-part='choice'][data-correct] > [data-part='label'] { border-color: var(--done); background: var(--done-soft); font-weight: 600; }
+.wb-card-face [data-part='choice'] > [data-part='why'] { font-size: 0.9em; color: var(--ink-3); }
+
+/* Code in a title (`backticks` in the course): the code font and a quiet background, no highlighting. */
+.wb-title-code { font-family: var(--font-mono); font-size: 0.88em; font-weight: inherit; background: var(--sunk); padding: 0.05em 0.3em; border-radius: 4px; }

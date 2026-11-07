@@ -21,6 +21,7 @@ export function HelpPage({ section }: { section?: string }) {
   const sections: { id: string; title: string; body: React.ReactNode }[] = [
     { id: 'working', title: t.helpWorkingTitle, body: <p>{t.helpWorking}</p> },
     { id: 'interpreter', title: t.helpInterpreterTitle, body: <p>{t.helpInterpreter}</p> },
+    { id: 'lessons', title: t.helpLessonsTitle, body: <p>{t.helpLessons}</p> },
     { id: 'review', title: t.helpReviewTitle, body: <p>{t.helpReview}</p> },
     { id: 'focus', title: t.helpFocusTitle, body: <p>{t.helpFocus}</p> },
     { id: 'timer', title: t.helpTimerTitle, body: <p>{t.helpTimer}</p> },

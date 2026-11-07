@@ -123,6 +123,7 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
         </fieldset>
 
         <Toggle checked={settings.safeColors} onChange={(v) => set({ safeColors: v })} title={t.safeColors} body={t.safeColorsBody} />
+        <Toggle checked={settings.showLessonOutline} onChange={(v) => set({ showLessonOutline: v })} title={t.showLessonOutline} body={t.showLessonOutlineBody} />
 
         <fieldset>
           <legend className="mb-1 text-sm font-medium">{t.language}</legend>

@@ -40,6 +40,134 @@
   if body == none { [] } else { body },
 )
 
+// ───────────────────────── widgets ─────────────────────────
+//
+// Things to try out in a lesson (or any other text). The author configures them,
+// the app brings them to life: each is a `div[data-widget]` whose parts are
+// ordinary Typst, so feedback and code in them are written as everywhere else.
+// Without the app the parts are simply shown one after another.
+
+#let _widget(kind, attrs: (:), body) = html.elem("div", attrs: (class: "wb-widget", data-widget: kind) + attrs, body)
+#let _part(name, attrs: (:), body) = html.elem("div", attrs: (data-part: name) + attrs, body)
+
+/// One answer of a `quiz`: what is shown, then why it is right or wrong.
+/// `#choice[`0`][Das ist die Antwort für `Nothing`.]`, `#choice(correct: true)[`42`][Genau.]`
+#let choice(correct: false, label, ..why) = _part(
+  "choice",
+  attrs: if correct { (data-correct: "true") } else { (:) },
+  {
+    _part("label", label)
+    for w in why.pos() { _part("why", w) }
+  },
+)
+
+/// A question with answers to choose from. A wrong answer explains itself, the student tries again.
+/// `_src` is the quiz's own text, added by the app: from it a student can make a flashcard.
+#let quiz(_src: none, question, ..choices) = _widget("quiz", attrs: if _src == none { (:) } else { (data-src: _src) }, {
+  _part("question", question)
+  choices.pos().join()
+})
+
+/// One state of `steps`, optionally with a short label.
+#let step(label: none, body) = _part("step", attrs: if label == none { (:) } else { (data-label: label) }, body)
+
+/// Shows its steps one at a time, with buttons to go back and forth.
+#let steps(..steps) = _widget("steps", steps.pos().join())
+
+/// One choice of `tabs`.
+#let tab(label, body) = _part("tab", attrs: (data-label: label), body)
+
+/// The same thing for several examples: the student picks which one to see. `label` names the choice ("Datentyp").
+#let tabs(label: none, ..tabs) = _widget("tabs", attrs: if label == none { (:) } else { (data-label: label) }, tabs.pos().join())
+
+/// One worked example of a `recipe`: what each step gives for it, in the order of the steps.
+#let example(label, ..results) = _part("example", attrs: (data-label: label), results.pos().map(r => _part("result", r)).join())
+
+/// A numbered procedure next to a worked example: `step(label: "Title")[What to do]` for each step,
+/// then an `example` per case, with one result per step. The student picks the example.
+#let recipe(..items) = _widget("recipe", items.pos().join())
+
+/// From a data declaration to the signature of its fold, step by step.
+/// `given: true` starts with the types of the constructors written out.
+#let fold-signature(data, fold: none, given: false) = _widget(
+  "fold-signature",
+  attrs: (data-decl: data, data-given: if given { "true" } else { "false" }) + if fold == none { (:) } else { (data-fold: fold) },
+  raw(data, lang: "haskell", block: true),
+)
+
+#let _config(..fields) = str(json.encode(fields.named(), pretty: false))
+
+/// Try out what a fold does: the student picks a value and an answer for each constructor, the app
+/// writes the fold from the declaration and lets the interpreter compute the result.
+/// `results` has one entry per result type: `(type: "Int", Nothing: ("0", "100"), Just: ("x + 1", "x * 2"))`.
+/// An answer for a constructor with fields is the body of its function, with the fields called `x`, `y`, `z`.
+#let fold-explorer(data, values: (), type: none, results: (), fold: none) = _widget(
+  "fold-explorer",
+  attrs: (data-decl: data, data-config: _config(values: values, type: type, results: results, fold: fold)),
+  raw(data, lang: "haskell", block: true),
+)
+
+/// A value as a tree of constructors, folded step by step: the constructors become the fold's functions,
+/// `functions` fills them in (`(Nothing: "Nothing", Just: "Just")`), and the tree folds together from the leaves.
+#let fold-tree(data, value, functions: (:), type: none, fold: none) = _widget(
+  "fold-tree",
+  attrs: (data-decl: data, data-config: _config(value: value, functions: functions, type: type, fold: fold)),
+  raw(value, lang: "haskell", block: true),
+)
+
+/// A fold computed step by step on a value: constructors replaced, then folded together from the leaves,
+/// with the expression at every step underneath. `folds` are the choices:
+/// `((name: "Summe", functions: ("(:)": "(+)", "[]": "0")), …)`. `predict` offers answers to guess first;
+/// which one is right, the interpreter decides.
+#let fold-steps(data, value, folds: (), type: none, fold: none, predict: none) = _widget(
+  "fold-steps",
+  attrs: (data-decl: data, data-config: _config(value: value, folds: folds, type: type, fold: fold, predict: predict)),
+  raw(value, lang: "haskell", block: true),
+)
+
+/// Two pieces of code side by side, with what corresponds marked in both: `[[id|text]]` in the code.
+/// `pairs` names each mark in order (`(nil: "Die leere Liste", …)`), `notes` explains it.
+#let compare(pairs: (:), notes: (:), left, right) = _widget("compare", attrs: (data-config: _config(pairs: pairs)), {
+  _part("side", left)
+  _part("side", right)
+  for (id, body) in notes { _part("note", attrs: (data-id: id), body) }
+})
+
+/// An exercise to do next, in a box of its own: the app adds its title, difficulty and how far the student is.
+/// `#practice("w03-fold-tree")[Die Faltung für diesen Baum schreibst du selbst.]`
+#let practice(id, ..body) = _widget("practice", attrs: (data-id: id), {
+  xref(id)
+  for b in body.pos() { _part("text", b) }
+})
+
+/// Expressions drawn as trees, side by side: `(expr: "f 1 (f 2 z)", caption: "foldr f z [1, 2]")`.
+/// `colors` gives names a constructor colour (1 to 4): `(f: 3, z: 1)`.
+#let expr-trees(colors: (:), ..trees) = _widget(
+  "expr-trees",
+  attrs: (data-config: _config(trees: trees.pos(), colors: colors)),
+  trees.pos().map(t => raw(t.expr, lang: "haskell", block: true)).join(),
+)
+
+/// A list folded element by element, with what is left of the input and the accumulator as cards.
+/// `folds: ((name: "foldl (flip (:)) []", dir: "left", fn: "flip (:)", start: "[]"), …)`; the interpreter
+/// computes every step.
+#let fold-list(xs: (), folds: ()) = _widget(
+  "fold-list",
+  attrs: (data-config: _config(xs: xs, folds: folds)),
+  raw(folds.map(f => f.name).join("\n"), lang: "haskell", block: true),
+)
+
+/// Where foldr and foldl put the brackets and the start value, for a few operations to choose from:
+/// `ops: ((op: "+", list: ("1", "2", "3"), assoc: true, starts: ((value: "0", neutral: true), (value: "10", neutral: false))), …)`.
+#let bracketing(ops: ()) = _widget(
+  "bracketing",
+  attrs: (data-config: _config(ops: ops)),
+  raw(ops.map(o => "(" + o.op + ")").join(" "), lang: "haskell", block: true),
+)
+
+/// More room for a widget that is dense, e.g. two trees side by side: wider than the text, as far as the window allows.
+#let wide(body) = html.elem("div", attrs: (class: "wb-wide"), body)
+
 // ───────────────────────── layout shims ─────────────────────────
 //
 // Typst's HTML export does not lay out a number of elements: it drops them

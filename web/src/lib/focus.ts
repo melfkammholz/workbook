@@ -9,11 +9,13 @@ export { focusOf, inFocus };
  * and without extra material "thorough" shows the same as "everything".
  */
 export function focusesOf(outline: Outline): Focus[] {
-  const exercises = outline.chapters.flatMap((c) => c.items).filter(isExercise);
+  const items = outline.chapters.flatMap((c) => c.items);
+  const exercises = items.filter(isExercise);
+  const extra = items.some((i) => (i.type === 'exercise' || i.type === 'lesson') && i.extra);
   const out: Focus[] = [];
   if (exercises.some((e) => e.startHere)) out.push('essentials');
-  out.push(exercises.some((e) => e.extra) ? 'thorough' : 'everything');
-  if (exercises.some((e) => e.extra)) out.push('everything');
+  out.push(extra ? 'thorough' : 'everything');
+  if (extra) out.push('everything');
   return out;
 }
 
@@ -24,8 +26,9 @@ export function shownFocus(outline: Outline, focus: Focus): Focus {
   return focus === 'essentials' ? offered[0]! : offered.at(-1)!;
 }
 
-/** Pages and checklists are always in the focus. */
+/** Pages, checklists and lessons are always in the focus, except a lesson that is extra material. */
 export function itemInFocus(item: ItemMeta, focus: Focus): boolean {
+  if (item.type === 'lesson') return !item.extra || focus === 'everything';
   return !isExercise(item) || inFocus(item, focus);
 }
 
@@ -57,7 +60,7 @@ export function useSetFocus() {
 export type FoldEntry =
   | { kind: 'item'; item: ItemMeta; outside: boolean }
   /** Exercises of one section outside the focus. Open, they stand in their places and this line folds them away again. */
-  | { kind: 'fold'; key: string; sectionId: string | null; hidden: ExerciseMeta[]; open: boolean };
+  | { kind: 'fold'; key: string; sectionId: string | null; hidden: ItemMeta[]; open: boolean };
 
 /**
  * A chapter's items as a list shows them: what is outside the focus folds into one line at the end of its section.
@@ -72,9 +75,9 @@ export function foldItems(chapterId: string, items: ItemMeta[], state: StudentSt
     while (end < items.length && items[end]!.sectionId === items[start]!.sectionId) end++;
     const group = items.slice(start, end);
     const key = `${chapterId}/${group[0]!.sectionId ?? `-${start}`}`;
-    const hidden = group.filter((i): i is ExerciseMeta => !staysInSight(i, state));
+    const hidden = group.filter((i) => !staysInSight(i, state));
     const open = unfold || opened.has(key);
-    for (const item of group) if (open || !hidden.includes(item as ExerciseMeta)) out.push({ kind: 'item', item, outside: !itemInFocus(item, focus) });
+    for (const item of group) if (open || !hidden.includes(item)) out.push({ kind: 'item', item, outside: !itemInFocus(item, focus) });
     if (hidden.length && !unfold) out.push({ kind: 'fold', key, sectionId: group[0]!.sectionId, hidden, open });
     start = end;
   }

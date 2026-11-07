@@ -1,14 +1,16 @@
 import { ArrowLeft, ArrowRight, Clock, Compass, ExternalLink, Flag, Flame, Lightbulb, MessageCircle, Sparkles } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import type { ExerciseMeta, ItemDetail, ItemMeta, Outline, StudentState } from '@wb/shared';
 import { focusOf, inFocus } from '@wb/shared';
 import { neighbours, statusOf, useCourses } from '@/lib/api';
 import { issueLink } from '@/lib/issues';
 import { useT } from '@/lib/i18n';
+import { watchLesson } from '@/lib/lessonToc';
 import { Checklist } from './Checklist';
 import { Prose } from './Prose';
 import { Button, Chip, Level, StatusMark, clsx } from './ui';
+import { Title, plainTitle } from '@/components/Title';
 
 interface Props {
   detail: ItemDetail;
@@ -31,10 +33,17 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
   const chapter = outline.chapters.find((c) => c.items.some((i) => i.id === meta.id));
   const courses = useCourses().data;
   const repository = courses?.courses.find((c) => c.id === courses.activeId)?.url ?? null;
-  const report = issueLink(outline.issues, repository, t.issueTitle(meta.title), t.issueBody(meta.id, meta.title));
+  const report = issueLink(outline.issues, repository, t.issueTitle(plainTitle(meta.title)), t.issueBody(meta.id, plainTitle(meta.title)));
+
+  const lesson = meta.type === 'lesson';
+  const article = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!lesson || !article.current) return;
+    return watchLesson(meta.id, article.current);
+  }, [lesson, meta.id, rendered.task]);
 
   return (
-    <article className="settle mx-auto flex max-w-[46rem] flex-col px-6 pb-24 pt-7 sm:px-8">
+    <article ref={article} className={clsx('settle mx-auto flex flex-col px-6 pb-24 pt-7 sm:px-8', lesson ? 'max-w-[56rem]' : 'max-w-[46rem]')}>
       <header className="mb-6">
         {chapter ? (
           // The way up, to the chapter this belongs to.
@@ -42,13 +51,14 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
             <ArrowLeft size={13} className="shrink-0" /> <span className="truncate">{chapter.title}</span>
           </Link>
         ) : null}
-        <h1 className="text-balance text-[1.75rem] font-semibold leading-tight tracking-[-0.02em]">
+        {lesson ? <p className="mb-1.5 text-[13px] font-medium text-accent">{t.lesson}</p> : null}
+        <h1 className={clsx('text-balance font-semibold leading-tight', lesson ? 'text-[2rem] tracking-[-0.025em]' : 'text-[1.75rem] tracking-[-0.02em]')}>
           {ex?.startHere && ex.emoji ? (
             <span className="mr-2" role="img" aria-label={t.recommendedFirst}>
               {ex.emoji}
             </span>
           ) : null}
-          {meta.title}
+          <Title text={meta.title} />
         </h1>
         {ex ? (
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-ink-2">
@@ -111,7 +121,7 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
       {ex ? <Prerequisites ex={ex} byId={byId} state={state} /> : null}
       {ex ? <SharedOutsideFocus ex={ex} byId={byId} state={state} /> : null}
 
-      <Prose html={rendered.task} css={rendered.css} />
+      <Prose html={rendered.task} css={rendered.css} className={lesson ? 'wb-lesson' : undefined} />
 
       {meta.type === 'checklist' ? <Checklist id={meta.id} questions={rendered.questions} /> : null}
 
@@ -136,7 +146,7 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
             <ArrowLeft size={15} className="shrink-0" />
             <span className="min-w-0">
               <span className="block text-xs text-ink-3">{t.previousItem}</span>
-              <span className="block truncate group-hover:underline">{previous.title}</span>
+              <span className="block truncate group-hover:underline"><Title text={previous.title} /></span>
             </span>
           </Link>
         ) : (
@@ -146,7 +156,7 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
           <Link href={`/item/${next.id}`} className="group ml-auto flex min-w-0 max-w-[48%] items-center gap-2 text-right text-ink-2 hover:text-ink">
             <span className="min-w-0">
               <span className="block text-xs text-ink-3">{t.nextItem}</span>
-              <span className="block truncate group-hover:underline">{next.title}</span>
+              <span className="block truncate group-hover:underline"><Title text={next.title} /></span>
             </span>
             <ArrowRight size={15} className="shrink-0" />
           </Link>
@@ -273,7 +283,7 @@ function ItemLink({ item, state, arrow }: { item: ItemMeta; state: StudentState 
     <li>
       <Link href={`/item/${item.id}`} className={clsx('group -mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-sunk')}>
         <StatusMark status={statusOf(state, item.id)} size={14} />
-        <span className="min-w-0 flex-1 truncate">{item.title}</span>
+        <span className="min-w-0 flex-1 truncate"><Title text={item.title} /></span>
         {item.type === 'exercise' ? <Level level={item.level} /> : null}
         {arrow ? <ArrowRight size={14} className="text-ink-3 opacity-0 transition-opacity group-hover:opacity-100" /> : null}
       </Link>

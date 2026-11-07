@@ -13,6 +13,7 @@ import { isExercise, keys, saveOpenQuestion, useOutline, useReviewData, useSetti
 import { useCourseCards } from '@/lib/flashcards';
 import { BackLink } from '@/lib/history';
 import { useLang, useT } from '@/lib/i18n';
+import { Title } from '@/components/Title';
 
 type Exercise = ExerciseMeta & { chapter: string };
 
@@ -69,7 +70,7 @@ function WeakChecklistAnswers({ data }: { data: ReviewData }) {
           <li key={`${e.checklistId}/${e.question.id}`}>
             <Link href={`/item/${e.checklistId}`} className="flex items-start gap-3 rounded-lg border border-line bg-sheet px-4 py-3 hover:bg-paper/60">
               <span className="min-w-0 flex-1">
-                <span className="mb-1 block text-xs text-ink-3">{e.title}</span>
+                <span className="mb-1 block text-xs text-ink-3"><Title text={e.title} /></span>
                 <Prose html={e.question.html} className="prose-note text-[15px]" />
                 {e.answer.note ? <span className="mt-1.5 block whitespace-pre-wrap border-l-2 border-accent pl-3 text-[14px] text-ink-2">{e.answer.note}</span> : null}
               </span>
@@ -159,7 +160,7 @@ function Entry({ ex, cell, data }: { ex: Exercise; cell: Cell; data: ReviewData 
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-paper/60">
         <StatusMark status={cell.progress?.status ?? 'todo'} size={16} className="mt-0.5 shrink-0" />
         <span className="min-w-0 flex-1">
-          <span className="block font-medium">{ex.title}</span>
+          <span className="block font-medium"><Title text={ex.title} /></span>
           {cell.question ? <span className="mt-0.5 line-clamp-2 block text-[13.5px] text-ink-2">{cell.question.content}</span> : null}
           <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {due ? <Chip tone="danger">{t.dueNow}</Chip> : null}

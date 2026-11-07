@@ -7,6 +7,7 @@ import { useT } from '@/lib/i18n';
 import { CardFace } from './CardFace';
 import { CardForm } from './CardForm';
 import { Button, clsx } from './ui';
+import { Title } from '@/components/Title';
 
 type Mode = 'look' | 'rewrite' | 'split-new' | 'split-old' | 'drop';
 
@@ -28,7 +29,7 @@ export function StrugglingCardView({ item, onDone }: { item: StrugglingCard; onD
     <article className="overflow-hidden rounded-xl border border-line bg-sheet">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-4 py-2 text-[12.5px] text-ink-3">
         <span className="font-medium text-ink-2">{item.deckTitle}</span>
-        {item.origin ? <span>{t.cardFrom} {item.origin.title}</span> : null}
+        {item.origin ? <span>{t.cardFrom} <Title text={item.origin.title} /></span> : null}
         <span className="ml-auto">{t.forgottenTimes(item.lapses)}</span>
         <span className="flex items-center gap-0.5" role="img" aria-label={item.ratings.map((r) => t.rating[r.rating]).join(', ')}>
           {item.ratings.map((r, i) => (

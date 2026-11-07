@@ -59,6 +59,17 @@ export const pageSchema = z
   })
   .strict();
 
+/** An explanation with widgets (`#quiz`, `#steps`, `#tabs`, `#fold-signature`), marked done by the student. */
+export const lessonSchema = z
+  .object({
+    lesson: id,
+    title: z.string(),
+    text: z.string().optional(),
+    /** Extra material: shown when the student wants to see everything. */
+    extra: z.boolean().default(false),
+  })
+  .strict();
+
 /** Questions about a chapter or section as a whole, placed wherever the author puts this. */
 export const checklistSchema = z
   .object({
@@ -91,7 +102,7 @@ export const chapterSchema = z
     /** Typst file for the chapter's start page, relative to the chapter directory. */
     intro: z.string().optional(),
     defaults: defaultsSchema.default({}),
-    items: z.array(z.union([sectionSchema, pageSchema, checklistSchema, exerciseSchema])),
+    items: z.array(z.union([sectionSchema, pageSchema, lessonSchema, checklistSchema, exerciseSchema])),
   })
   .strict();
 

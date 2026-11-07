@@ -110,6 +110,12 @@ export class GhciSession extends PipeRepl {
     return { type: type.replace(/\s+/g, ' '), library, doc: library ? firstParagraph(await this.exec(`:doc ${inParens(name)}`)) : null };
   }
 
+  /** Evaluates one expression at the prompt and returns what ghci printed. */
+  evaluate(expr: string, timeoutMs: number): Promise<string> {
+    this.lastActivity = Date.now();
+    return this.exec(expr.replace(/\n/g, ' '), timeoutMs);
+  }
+
   /** Write the student's files and (re)load them. Resolves with diagnostics. */
   async load(files: Record<string, string>): Promise<LoadResult> {
     const changed = syncFiles(this.opts.dir, files);

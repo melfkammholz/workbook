@@ -45,6 +45,7 @@ const indent = (text: string) =>
 
 /** The same text the server writes for a card, for a preview of one being written. */
 export function cardText(kind: CardKind, front: string, back: string): string {
+  if (kind === 'quiz') return `#quiz(id: "preview",\n${indent(front)}\n)`;
   const head = kind === 'cloze' ? '#cloze(id: "preview")' : kind === 'both' ? '#flashcard(id: "preview", both: true)' : '#flashcard(id: "preview")';
   return kind === 'cloze' ? `${head}[\n${indent(front)}\n]` : `${head}[\n${indent(front)}\n][\n${indent(back)}\n]`;
 }

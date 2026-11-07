@@ -13,6 +13,7 @@ import type {
   ItemMeta,
   Language,
   Outline,
+  LessonMeta,
   PageMeta,
   PartMeta,
   RunnableLanguage,
@@ -26,6 +27,7 @@ import {
   chapterSchema,
   checklistSchema,
   exerciseSchema,
+  lessonSchema,
   pageSchema,
   sectionSchema,
   tagsSchema,
@@ -71,7 +73,7 @@ export interface ServerExercise extends ServerItemBase {
   code: ServerCode | null;
 }
 export interface ServerPage extends ServerItemBase {
-  meta: PageMeta;
+  meta: PageMeta | LessonMeta;
 }
 export interface ServerChecklist extends ServerItemBase {
   meta: ChecklistMeta;
@@ -380,6 +382,20 @@ export function loadContent(dir: string): Content {
         return;
       }
 
+      if (typeof rawItem === 'object' && rawItem !== null && 'lesson' in rawItem) {
+        const parsed = lessonSchema.safeParse(rawItem);
+        if (!parsed.success) return err(rel(chapterFile), `items[${n}]: ${formatZod(parsed.error)}`);
+        const l = parsed.data;
+        if (items.has(l.lesson)) return err(rel(chapterFile), `duplicate id "${l.lesson}"`, l.lesson);
+        const textRel = rel(path.join(chapterDir, l.text ?? `${l.lesson}.typ`));
+        const typst = readText(path.join(dir, textRel));
+        if (typst === null) return err(textRel, `text file not found (lesson "${l.lesson}")`, l.lesson);
+        const meta: LessonMeta = { type: 'lesson', id: l.lesson, chapterId, sectionId, title: l.title, index: globalIndex++, extra: l.extra };
+        chapter.items.push(meta);
+        items.set(l.lesson, { meta, typst, typstRel: textRel, chapterRel: rel(chapterDir), codeLanguage: defaults.scratch ?? null });
+        return;
+      }
+
       if (typeof rawItem === 'object' && rawItem !== null && 'checklist' in rawItem) {
         const parsed = checklistSchema.safeParse(rawItem);
         if (!parsed.success) return err(rel(chapterFile), `items[${n}]: ${formatZod(parsed.error)}`);
@@ -478,16 +494,17 @@ export function loadContent(dir: string): Content {
   }
   for (const item of items.values()) {
     const seen = new Set<string>();
-    for (const x of item.typst.matchAll(/xref\(\s*"([^"]+)"/g)) {
-      const ref = x[1]!;
+    // `#practice("id")` points at an exercise like `#xref` does.
+    for (const x of item.typst.matchAll(/(xref|practice)\(\s*"([^"]+)"/g)) {
+      const ref = x[2]!;
       if (ref === item.meta.id) continue;
-      if (!known(ref)) err(item.typstRel, `xref: unknown id "${ref}"`, item.meta.id);
+      if (!known(ref)) err(item.typstRel, `${x[1]}: unknown id "${ref}"`, item.meta.id);
       else seen.add(ref);
     }
     if (item.meta.type === 'exercise') item.meta.mentions = [...seen];
   }
   for (const doc of docs.values())
-    for (const x of doc.typst.matchAll(/xref\(\s*"([^"]+)"/g)) if (!known(x[1]!)) err(doc.typstRel, `xref: unknown id "${x[1]}"`);
+    for (const x of doc.typst.matchAll(/(xref|practice)\(\s*"([^"]+)"/g)) if (!known(x[2]!)) err(doc.typstRel, `${x[1]}: unknown id "${x[2]}"`);
 
   // A part of a shared solution has to name exercises that work in that file.
   for (const [threadId, sf] of shared) {
@@ -543,7 +560,7 @@ export function loadContent(dir: string): Content {
     for (const step of t.steps)
       for (const sid of step) {
         if (!known(sid)) err(`threads/${t.id}.yml`, `unknown id "${sid}"`);
-        else if (items.get(sid)!.meta.type !== 'exercise') warn(`threads/${t.id}.yml`, `"${sid}" is not an exercise`);
+        else if (!['exercise', 'lesson'].includes(items.get(sid)!.meta.type)) warn(`threads/${t.id}.yml`, `"${sid}" is not an exercise or lesson`);
       }
   for (const t of threads) t.steps = t.steps.map((s) => s.filter(known)).filter((s) => s.length > 0);
   for (const t of threads)

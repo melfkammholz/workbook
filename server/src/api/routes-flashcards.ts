@@ -23,7 +23,7 @@ const bodies = {
   }),
   source: z.object({ source: z.string().max(1_000_000) }),
   card: z.object({
-    kind: z.enum(['basic', 'both', 'cloze']),
+    kind: z.enum(['basic', 'both', 'cloze', 'quiz']),
     front: z.string().max(20_000),
     back: z.string().max(20_000).default(''),
     /** The exercise it is made in, in the open course. */
@@ -34,7 +34,7 @@ const bodies = {
     /** Written as is, e.g. for the second half of a split card. `exercise` wins. */
     from: z.string().max(300).nullable().default(null),
   }),
-  edit: z.object({ kind: z.enum(['basic', 'both', 'cloze']), front: z.string().max(20_000), back: z.string().max(20_000).default(''), tags: z.array(z.string().max(100)).max(30).default([]) }),
+  edit: z.object({ kind: z.enum(['basic', 'both', 'cloze', 'quiz']), front: z.string().max(20_000), back: z.string().max(20_000).default(''), tags: z.array(z.string().max(100)).max(30).default([]) }),
   move: z.object({ direction: z.union([z.literal(-1), z.literal(1)]) }),
   rate: z.object({ key: z.string().max(100), rating: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]) }),
   key: z.object({ key: z.string().max(100) }),

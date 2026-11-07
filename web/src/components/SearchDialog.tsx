@@ -5,6 +5,7 @@ import { indexItems, search, useOutline, useState_, type SearchResponse } from '
 import { focusOf, itemInFocus } from '@/lib/focus';
 import { useT } from '@/lib/i18n';
 import { Dialog } from './ui';
+import { Title } from '@/components/Title';
 
 export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT();
@@ -73,7 +74,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
                 <li key={i.id}>
                   <button type="button" onClick={() => go(i.href)} className="w-full rounded-md px-2 py-2 text-left text-sm hover:bg-sunk">
                     <span className="flex items-baseline gap-2">
-                      <span className="min-w-0 font-medium">{i.title}</span>
+                      <span className="min-w-0 font-medium"><Title text={i.title} /></span>
                       {outside(i.id) ? <span className="ml-auto shrink-0 text-xs text-ink-3">{t.outsideFocus}</span> : null}
                     </span>
                     {i.snippet ? <Snippet text={i.snippet} /> : null}

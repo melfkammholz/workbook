@@ -13,6 +13,7 @@ import { Button, Empty, ResizeHandle, Spinner, clsx } from '@/components/ui';
 import { api, indexItems, keys, neighbours, postReflection, recordHints, recordOpen, resetTimer, saveOpenQuestion, statusOf, useItem, useOutline, useSetStatus, useSettings, useState_, useWork, whatsNext, type Work } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useActiveTime, useMediaQuery } from '@/lib/useActiveTime';
+import { plainTitle } from '@/components/Title';
 
 export function ItemPage({ id }: { id: string }) {
   const t = useT();
@@ -67,7 +68,7 @@ function Loaded({ id }: { id: string }) {
 
   useEffect(() => {
     void recordOpen(id).then(() => qc.invalidateQueries({ queryKey: keys.state }));
-    document.title = `${meta.title} · ${outline.title}`;
+    document.title = `${plainTitle(meta.title)} · ${outline.title}`;
     return () => {
       document.title = outline.title;
     };
@@ -144,7 +145,8 @@ function Loaded({ id }: { id: string }) {
     if (statusOf(qc.getQueryData<{ state: NonNullable<typeof state> }>(keys.state)?.state, id) === 'todo') setStatus.mutate({ id, status: 'in_progress' });
   }, [id, qc, setStatus]);
 
-  if (work.isPending && ex) {
+  const lesson = meta.type === 'lesson';
+  if (work.isPending && (ex || lesson)) {
     return (
       <div className="grid h-full place-items-center">
         <Spinner />
@@ -164,7 +166,8 @@ function Loaded({ id }: { id: string }) {
   };
 
   const task = (
-    <div className="h-full overflow-y-auto">
+    // A container, so wide widgets in a lesson know how much room the page has.
+    <div className="@container h-full overflow-y-auto">
       <TaskColumn
         detail={detail}
         outline={outline}
@@ -176,7 +179,35 @@ function Loaded({ id }: { id: string }) {
     </div>
   );
 
-  if (!ex || !w) return task; // information pages have no workspace
+  // Information pages have no workspace. A lesson has the bar: time, a card, and saying it is done.
+  if (!ex || !w) {
+    if (!lesson || !w) return task;
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <ExerciseBar
+          status={status}
+          onStatus={(s) => void changeStatus(s)}
+          confidenceLabel={null}
+          onRate={() => undefined}
+          seconds={seconds}
+          showTimer={settings?.showTimer ?? true}
+          finished={status === 'done'}
+          onResetTimer={() => setConfirmTimer(true)}
+          paused={paused}
+          onTogglePause={togglePaused}
+          previous={around.previous}
+          next={around.next}
+          onMakeCard={flashcardsOn ? () => setMakingCard(true) : undefined}
+        />
+        {status === 'done' && upNext ? <ContinueBanner next={upNext} /> : null}
+        <div className="min-h-0 flex-1">{task}</div>
+        {flashcardsOn ? <MakeCardDialog open={makingCard} onClose={() => setMakingCard(false)} exerciseId={id} /> : null}
+        <ConfirmDialog open={confirmTimer} onClose={() => setConfirmTimer(false)} title={t.confirmResetTimer} confirmLabel={t.resetTimerButton} onConfirm={restartTimer}>
+          {t.resetTimerBody}
+        </ConfirmDialog>
+      </div>
+    );
+  }
 
   const submitReflection = async ({ confidence, how, comment }: ReflectionInput) => {
     const review = reflecting === 'review';
@@ -249,7 +280,7 @@ function Loaded({ id }: { id: string }) {
       open={reflecting !== null}
       mode={reflecting ?? 'done'}
       onClose={() => setReflecting(null)}
-      title={meta.title}
+      title={plainTitle(meta.title)}
       suggestedHow={lastReflection?.how.length ? lastReflection.how : suggestedHow}
       initialComment={w.openQuestion?.content ?? ''}
       onSubmit={(input) => void submitReflection(input)}

@@ -1,8 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useOutline } from '@/lib/api';
 import { highlightToHtml } from '@/lib/highlight';
 import { useT } from '@/lib/i18n';
 import { clsx } from './ui';
+import { Widget, takeWidgets, type WidgetHost } from './widgets';
 
 /**
  * Renders server-sanitised Typst HTML. Code is highlighted here (the server
@@ -16,13 +18,18 @@ export function Prose({ html, css, className, lang: langProp }: { html: string; 
   const courseLang = useOutline().data?.language;
   const lang = langProp ?? courseLang;
   useTypstCss(css);
+  const [widgets, setWidgets] = useState<WidgetHost[]>([]);
 
   useEffect(() => {
     const root = ref.current;
     if (!root) return;
+    // Widgets first: their parts are rendered by a Prose of their own, and highlighted there.
+    setWidgets(takeWidgets(root));
     const cleanups: (() => void)[] = [];
-    root.querySelectorAll<HTMLElement>('code[data-lang]').forEach((code) => {
+    // Once per element: highlighting again would start from text whose gap marks are already spans.
+    root.querySelectorAll<HTMLElement>('code[data-lang]:not([data-hl])').forEach((code) => {
       if (code.closest('pre')) return;
+      code.dataset.hl = '';
       const h = highlightToHtml(code.textContent ?? '', code.getAttribute('data-lang') ?? '');
       if (h !== null) code.innerHTML = h;
     });
@@ -31,8 +38,11 @@ export function Prose({ html, css, className, lang: langProp }: { html: string; 
       const code = pre.querySelector('code') ?? pre;
       const text = code.textContent ?? '';
       const lang = code.getAttribute('data-lang') ?? pre.getAttribute('data-lang') ?? '';
-      const h = lang ? highlightToHtml(text, lang) : null;
-      if (h !== null) code.innerHTML = h;
+      if (!code.hasAttribute('data-hl')) {
+        code.dataset.hl = '';
+        const h = lang ? highlightToHtml(text, lang) : null;
+        if (h !== null) code.innerHTML = h;
+      }
 
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -58,7 +68,12 @@ export function Prose({ html, css, className, lang: langProp }: { html: string; 
     return () => cleanups.forEach((c) => c());
   }, [html, copyLabel]);
 
-  return <div ref={ref} {...(lang ? { lang } : {})} className={clsx('prose-task', className)} dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <>
+      <div ref={ref} {...(lang ? { lang } : {})} className={clsx('prose-task', className)} dangerouslySetInnerHTML={{ __html: html }} />
+      {widgets.map((w) => createPortal(<Widget host={w} />, w.el, w.key))}
+    </>
+  );
 }
 
 const GAP_CLOSE = 0xe0ff;

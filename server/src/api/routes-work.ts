@@ -32,6 +32,7 @@ const bodies = {
       setupDone: z.boolean(),
       noteFormat: z.enum(['typst', 'markdown']),
       showTimer: z.boolean(),
+      showLessonOutline: z.boolean(),
       helpAfterMinutes: z.number().int().min(0).max(1440),
       showAchievements: z.boolean(),
       showFlashcards: z.boolean(),

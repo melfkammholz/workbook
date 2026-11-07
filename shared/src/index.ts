@@ -74,13 +74,20 @@ export interface PageMeta extends ItemCommon {
   type: 'page';
 }
 
+/** An explanation with widgets to try things out. Students mark it done; the widgets start fresh on every visit. */
+export interface LessonMeta extends ItemCommon {
+  type: 'lesson';
+  /** Extra material: only in the focus "everything", like an extra exercise. */
+  extra: boolean;
+}
+
 /** Questions about a whole chapter or section, placed by the author. Answers do not count as exercises done. */
 export interface ChecklistMeta extends ItemCommon {
   type: 'checklist';
   questionCount: number;
 }
 
-export type ItemMeta = ExerciseMeta | PageMeta | ChecklistMeta;
+export type ItemMeta = ExerciseMeta | PageMeta | LessonMeta | ChecklistMeta;
 
 export interface SectionMeta {
   id: string;
@@ -314,6 +321,8 @@ export interface Settings {
   noteFormat: NoteFormat;
   /** Show the running time of an exercise. */
   showTimer: boolean;
+  /** Under an open lesson, the outline lists its sections. */
+  showLessonOutline: boolean;
   /** Ask whether help is needed after this many active minutes. 0 turns it off. */
   helpAfterMinutes: number;
   /** Opt-in. While false, no achievements, plants or celebrations appear anywhere. */
@@ -333,6 +342,7 @@ export const DEFAULT_SETTINGS: Settings = {
   setupDone: false,
   noteFormat: 'typst',
   showTimer: true,
+  showLessonOutline: true,
   helpAfterMinutes: 30,
   showAchievements: false,
   showFlashcards: false,
@@ -548,8 +558,8 @@ export interface ReviewChecklistEntry {
 
 // ───────────────────────── flashcards ─────────────────────────
 
-/** `basic`: front and back. `both`: also asked the other way round. `cloze`: a text with gaps. */
-export type CardKind = 'basic' | 'both' | 'cloze';
+/** `basic`: front and back. `both`: also asked the other way round. `cloze`: a text with gaps. `quiz`: a question with answers to choose from, written like `#quiz` in a lesson. */
+export type CardKind = 'basic' | 'both' | 'cloze' | 'quiz';
 /** Again, Hard, Good, Easy. */
 export type CardRating = 1 | 2 | 3 | 4;
 

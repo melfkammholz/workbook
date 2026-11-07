@@ -2,7 +2,8 @@ import type { CardKind } from './index';
 
 /**
  * A deck is Typst text, and that text is the deck. This finds the cards in it
- * without compiling: `#flashcard(...)[front][back]` and `#cloze(...)[… {{gap}} …]`.
+ * without compiling: `#flashcard(...)[front][back]`, `#cloze(...)[… {{gap}} …]` and
+ * `#quiz(id: …, [question], choice[…][…], …)`, whose content is all inside the parentheses.
  * Shared, so the editor in the browser sees the same cards as the server.
  *
  * The scanner knows just enough Typst to find where a call ends: escapes, comments,
@@ -120,7 +121,7 @@ class Scanner {
         i = Math.min(close + 1, s.length);
       }
     }
-    if ((name === 'flashcard' || name === 'cloze') && (args || bodies.length)) {
+    if (((name === 'flashcard' || name === 'cloze') && (args || bodies.length)) || (name === 'quiz' && args)) {
       const argText = args ? s.slice(args.from + 1, args.to) : '';
       const idMatch = /(?:^|[\s,])id\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(argText);
       const fromMatch = /(?:^|[\s,])from\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(argText);
@@ -135,7 +136,7 @@ class Scanner {
       }
       const pos = this.position(start);
       this.cards.push({
-        kind: name === 'cloze' ? 'cloze' : both ? 'both' : 'basic',
+        kind: name === 'cloze' ? 'cloze' : name === 'quiz' ? 'quiz' : both ? 'both' : 'basic',
         start,
         nameEnd,
         args,
