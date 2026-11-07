@@ -155,17 +155,22 @@ describe('content: shared files', () => {
   it('warns about a checklist without questions, places checklists in order, and reads tag descriptions', () => {
     const c = course({
       'tags.yml': 'hard: { label: Hart, description: Nur für Mutige. }\n',
-      'chapters/c/chapter.yml': 'title: C\nitems:\n  - section: S\n  - id: a\n    tags: [hard]\n  - checklist: q\n',
+      'chapters/c/chapter.yml': 'title: C\nitems:\n  - section: S\n  - id: a\n    tags: [hard]\n  - checklist: q\n  - section: T\n  - id: b\n  - checklist: r\n',
       'chapters/c/a.typ': 'Text',
+      'chapters/c/b.typ': 'Text',
       'chapters/c/q.typ': 'Nur Text.',
+      'chapters/c/r.typ': '#question[Alles klar?]',
     });
     expect(c.outline.problems.map((p) => p.message).join()).toContain('has no #question');
     const items = c.outline.chapters[0]!.items;
-    expect(items.map((i) => i.type)).toEqual(['exercise', 'checklist']);
+    expect(items.map((i) => i.type)).toEqual(['exercise', 'checklist', 'exercise', 'checklist']);
+    // One after a section belongs to it, the one that ends the chapter to none.
     expect(items[1]!.sectionId).toBe(items[0]!.sectionId);
+    expect(items[2]!.sectionId).not.toBe(items[0]!.sectionId);
+    expect(items[3]!.sectionId).toBeNull();
     expect(items[1]!.title).toBe('Self-evaluation');
     expect(c.outline.tags[0]!.description).toBe('Nur für Mutige.');
-    expect(c.outline.chapters[0]!.items.filter((i) => i.type === 'exercise')).toHaveLength(1);
+    expect(c.outline.chapters[0]!.items.filter((i) => i.type === 'exercise')).toHaveLength(2);
   });
 });
 

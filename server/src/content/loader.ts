@@ -449,6 +449,9 @@ export function loadContent(dir: string): Content {
       chapter.items.push(meta);
       items.set(e.id, { meta, typst, typstRel: textRel, chapterRel: rel(chapterDir), codeLanguage: code?.language ?? scratch, code });
     });
+    // A checklist that ends the chapter is about all of it, not about its last section.
+    const last = chapter.items.at(-1);
+    if (last?.type === 'checklist') last.sectionId = null;
     chapters.push(chapter);
   }
 

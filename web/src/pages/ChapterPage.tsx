@@ -51,10 +51,14 @@ export function ChapterPage({ id }: { id: string }) {
         ) : null}
         <ol className="mt-8 divide-y divide-line overflow-hidden rounded-lg border border-line bg-sheet">
           {chapter.items.map((item, i) => {
-            const section = item.sectionId !== (chapter.items[i - 1]?.sectionId ?? null) ? chapter.sections.find((s) => s.id === item.sectionId) : undefined;
+            const before = chapter.items[i - 1]?.sectionId ?? null;
+            const section = item.sectionId !== before ? chapter.sections.find((s) => s.id === item.sectionId) : undefined;
+            // Leaving the sections (the checklist that ends the chapter): a break without a title, so it does not look like part of the last one.
+            const leaving = item.sectionId === null && before !== null;
             return (
               <Fragment key={item.id}>
                 {section ? <SectionRow title={section.title} adventure={adventureOfSection(outline, chapter, section.id)} /> : null}
+                {leaving ? <li aria-hidden className="h-2 bg-paper/60" /> : null}
                 <li>
                   <ItemRow item={item} state={state} />
                 </li>

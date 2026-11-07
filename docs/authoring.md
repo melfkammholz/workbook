@@ -204,7 +204,8 @@ Not supported: page-level things (`#set page`, headers, page breaks), `image` si
 ## Checklists
 
 Ask over-arching questions about a chapter or section with a checklist. It is an entry in `items`, so you decide where
-it goes: after a section, at the end of a chapter, or not at all.
+it goes: after a section, at the end of a chapter, or not at all. One after a section belongs to that section. The last
+item of a chapter belongs to none, so a checklist there stands apart from the last section and covers the whole chapter.
 
 ```yaml
 items:

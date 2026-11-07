@@ -195,10 +195,18 @@ function ChapterBlock({
         <ol className="pb-1">
           {items.map((item, i) => {
             // A section's title goes above its first visible item, so a filtered list has no empty sections.
-            const section = item.sectionId !== (items[i - 1]?.sectionId ?? null) ? chapter.sections.find((s) => s.id === item.sectionId) : undefined;
+            const before = items[i - 1]?.sectionId ?? null;
+            const section = item.sectionId !== before ? chapter.sections.find((s) => s.id === item.sectionId) : undefined;
+            // Leaving the sections (the checklist that ends the chapter): a gap, so it does not look like part of the last one.
+            const leaving = item.sectionId === null && before !== null;
             return (
               <Fragment key={item.id}>
                 {section ? <SectionLabel title={section.title} adventure={adventureOfSection(outline, chapter, section.id)} {...(onNavigate ? { onNavigate } : {})} /> : null}
+                {leaving ? (
+                  <li aria-hidden className="relative h-3">
+                    <span className="absolute inset-y-0 left-[21px] w-px bg-line-strong" />
+                  </li>
+                ) : null}
                 <Row item={item} status={statusOf(state, item.id)} answered={Object.keys(state?.checklists[item.id] ?? {}).length > 0} current={item.id === currentId} first={i === 0 && !section} last={i === items.length - 1} onNavigate={onNavigate} />
               </Fragment>
             );
