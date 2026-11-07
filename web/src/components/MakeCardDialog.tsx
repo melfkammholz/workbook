@@ -1,9 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query';
+import type { DeckDoc } from '@wb/shared';
+import { Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
 import { addCard, cardKeys, createDeck, useFlashcards } from '@/lib/flashcards';
 import { useT } from '@/lib/i18n';
-import { CardForm } from './CardForm';
+import { useMediaQuery } from '@/lib/useActiveTime';
+import { CardForm, ROOMY, useCardLayout } from './CardForm';
 import { Dialog } from './ui';
 
 /**
@@ -16,7 +19,10 @@ export function MakeCardDialog({ open, onClose, exerciseId }: { open: boolean; o
   const list = useFlashcards();
   const decks = list.data?.decks ?? [];
   const [deckId, setDeckId] = useState<string | null>(null);
-  const [added, setAdded] = useState<{ deckId: string; title: string } | null>(null);
+  const [added, setAdded] = useState<{ deckId: string; cardId: string; title: string; cards: number } | null>(null);
+  const [layout] = useCardLayout();
+  const roomy = useMediaQuery(ROOMY);
+  const side = layout === 'side' && roomy;
 
   // The deck last added to, unless the student picks another.
   useEffect(() => {
@@ -30,16 +36,36 @@ export function MakeCardDialog({ open, onClose, exerciseId }: { open: boolean; o
   const big = deck && deck.settings.maxCards > 0 && deck.cards >= deck.settings.maxCards;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()} title={t.makeCard} description={t.makeCardHint} width="max-w-xl">
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()} title={t.makeCard} description={t.makeCardHint} width={side ? 'max-w-5xl' : 'max-w-xl'}>
+      {added ? (
+        // Keyed by card, so each new card is greeted again.
+        <div key={added.cardId} role="status" className="settle mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-done/30 bg-done-soft px-3 py-2.5">
+          <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-full bg-sheet text-done">
+            <Check size={14} strokeWidth={2.5} />
+          </span>
+          <p className="min-w-0 flex-1 text-[13px]">
+            <span className="font-medium text-ink">{t.cardAdded}</span> <span className="text-ink-2">{t.cardAddedTo(added.title, added.cards)}</span>
+          </p>
+          <Link
+            href={`/flashcards/deck/${added.deckId}`}
+            onClick={onClose}
+            className="inline-flex h-7 shrink-0 items-center rounded-md border border-line-strong bg-sheet px-2.5 text-[13px] font-medium text-ink hover:bg-sunk"
+          >
+            {t.openDeck}
+          </Link>
+        </div>
+      ) : null}
       <CardForm
         autoFocus
         submitLabel={t.addCard}
         onSubmit={async (f) => {
           // The first deck is made on the way, and belongs to the course it was made in.
           const target = deckId ?? (await createDeck(t.defaultDeckTitle, true)).id;
-          await addCard(target, { ...f, exercise: exerciseId });
+          const r = await addCard(target, { ...f, exercise: exerciseId });
           setDeckId(target);
-          setAdded({ deckId: target, title: deck?.title ?? t.defaultDeckTitle });
+          setAdded({ deckId: target, cardId: r.cardId, title: deck?.title ?? t.defaultDeckTitle, cards: r.cards.length });
+          // The deck, if it was open before, already has the card when it is opened again.
+          qc.setQueryData<DeckDoc>(cardKeys.deck(target), (d) => (d ? { ...d, source: r.source, cards: r.cards } : d));
           void qc.invalidateQueries({ queryKey: cardKeys.all });
         }}
         footer={
@@ -62,14 +88,6 @@ export function MakeCardDialog({ open, onClose, exerciseId }: { open: boolean; o
       {big ? (
         <p className="mt-3 rounded-md bg-review-soft px-3 py-2 text-[13px] text-review" role="status">
           {t.deckIsBig(deck.cards, deck.settings.maxCards)}
-        </p>
-      ) : null}
-      {added ? (
-        <p className="mt-3 text-sm text-done" role="status">
-          {t.cardAdded(added.title)}{' '}
-          <Link href={`/flashcards/deck/${added.deckId}`} onClick={onClose} className="font-medium text-accent hover:underline">
-            {t.openDeck}
-          </Link>
         </p>
       ) : null}
     </Dialog>

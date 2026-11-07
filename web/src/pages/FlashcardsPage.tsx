@@ -1,13 +1,14 @@
 import { useQueryClient } from '@tanstack/react-query';
 import type { DeckSummary } from '@wb/shared';
-import { CircleHelp, Pencil, Plus, TriangleAlert } from 'lucide-react';
+import { Pencil, Plus, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { CardConfidenceBar } from '@/components/CardConfidenceBar';
-import { Button, Empty, Segmented, Spinner } from '@/components/ui';
+import { Button, Empty, IconButton, Segmented, Spinner } from '@/components/ui';
 import { readPref, writePref } from '@/lib/shell';
 import { useOutline } from '@/lib/api';
 import { cardKeys, createDeck, useFlashcards } from '@/lib/flashcards';
+import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 
 const SORTS = ['order', 'shaky', 'due'] as const;
@@ -88,7 +89,10 @@ export function FlashcardsPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="settle mx-auto max-w-3xl px-6 pb-24 pt-10 sm:px-8">
+      <div className="settle mx-auto max-w-3xl px-6 pb-24 pt-8 sm:px-8">
+        <BackLink fallback="/" label={t.back} className="mb-3">
+          {t.back}
+        </BackLink>
         <h1 className="text-[1.75rem] font-semibold tracking-[-0.02em]">{t.flashcards}</h1>
         <p className="mt-2 max-w-prose text-ink-2">{t.flashcardsIntro}</p>
 
@@ -143,16 +147,18 @@ export function FlashcardsPage() {
               placeholder={t.deckTitlePlaceholder}
               className="h-8.5 min-w-0 flex-1 rounded-md border border-line-strong bg-paper px-3 text-sm focus:border-accent focus:outline-none"
             />
-            <Button type="submit" variant="primary" disabled={!title.trim() || busy}>
-              <Plus size={15} /> {t.createDeck}
-            </Button>
+            <button
+              type="submit"
+              disabled={!title.trim() || busy}
+              aria-label={t.createDeck}
+              title={t.createDeck}
+              className="inline-flex size-8.5 shrink-0 items-center justify-center rounded-md bg-accent text-accent-ink hover:brightness-110 disabled:opacity-40"
+            >
+              <Plus size={17} />
+            </button>
           </div>
           {course ? <p className="mt-1.5 text-[12.5px] text-ink-3">{t.newDeckForCourse(course.title)}</p> : null}
         </form>
-
-        <Link href="/help/flashcards" className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline">
-          <CircleHelp size={15} /> {t.guideTitle}
-        </Link>
       </div>
     </div>
   );
@@ -177,9 +183,9 @@ function DeckRow({ deck: d, picked, onPick, onEdit }: { deck: DeckSummary; picke
         </div>
         <CardConfidenceBar value={d.confidence} legend className="mt-2 max-w-md" />
       </div>
-      <Button size="sm" variant="ghost" onClick={onEdit}>
-        <Pencil size={13} /> {t.editCard}
-      </Button>
+      <IconButton label={t.editCard} onClick={onEdit} className="shrink-0">
+        <Pencil size={15} />
+      </IconButton>
     </li>
   );
 }

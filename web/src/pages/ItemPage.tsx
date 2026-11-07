@@ -73,12 +73,20 @@ function Loaded({ id }: { id: string }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+  const makeCardRef = useRef<(() => void) | null>(null);
+  makeCardRef.current = flashcardsOn ? () => setMakingCard(true) : null;
   // Alt+, and Alt+. move through the course. By key position, so it works on every keyboard layout.
   const [, navigate] = useLocation();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!e.altKey || e.ctrlKey || e.metaKey || (e.code !== 'Comma' && e.code !== 'Period')) return;
-      if (document.querySelector('[role=dialog]')) return;
+      if (!e.altKey || e.ctrlKey || e.metaKey || document.querySelector('[role=dialog]')) return;
+      // Alt+C: a card, whenever something is worth remembering.
+      if (e.code === 'KeyC' && !e.shiftKey && makeCardRef.current) {
+        e.preventDefault();
+        makeCardRef.current();
+        return;
+      }
+      if (e.code !== 'Comma' && e.code !== 'Period') return;
       const target = neighbours(outline, id, qc.getQueryData<{ state: NonNullable<typeof state> }>(keys.state)?.state)[e.code === 'Comma' ? 'previous' : 'next'];
       if (!target) return;
       e.preventDefault();

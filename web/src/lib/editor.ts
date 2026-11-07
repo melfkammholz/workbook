@@ -49,7 +49,34 @@ const variants: Record<EditorVariant, Extension> = {
   }),
 };
 
-export function baseExtensions(opts: { language?: string | null; lineNumbers?: boolean; placeholder?: string; wrap?: boolean; variant?: EditorVariant; completions?: CompletionSource }): Extension[] {
+/** The next or previous thing to focus after `from`, in document order, inside the same dialog if there is one. */
+function focusNeighbour(from: HTMLElement, direction: 1 | -1): boolean {
+  const root = from.closest<HTMLElement>('[role=dialog]') ?? document.body;
+  const all = [...root.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [contenteditable=true], [tabindex]:not([tabindex="-1"])')].filter(
+    (el) => el.offsetParent !== null || el === from,
+  );
+  const target = all[all.indexOf(from) + direction];
+  if (!target) return false;
+  target.focus();
+  return true;
+}
+
+/** Tab and Shift+Tab leave the editor, as in a form. For small fields, where indenting is rare. */
+const tabLeaves = keymap.of([
+  { key: 'Tab', run: (v) => focusNeighbour(v.contentDOM, 1) },
+  { key: 'Shift-Tab', run: (v) => focusNeighbour(v.contentDOM, -1) },
+]);
+
+export function baseExtensions(opts: {
+  language?: string | null;
+  lineNumbers?: boolean;
+  placeholder?: string;
+  wrap?: boolean;
+  variant?: EditorVariant;
+  completions?: CompletionSource;
+  /** Tab goes to the next field instead of indenting. */
+  tabMovesFocus?: boolean;
+}): Extension[] {
   const lang = opts.language ? languageFor(opts.language) : null;
   return [
     common,
@@ -69,6 +96,7 @@ export function baseExtensions(opts: { language?: string | null; lineNumbers?: b
     opts.wrap ? EditorView.lineWrapping : [],
     opts.placeholder ? placeholder(opts.placeholder) : [],
     EditorState.tabSize.of(2),
-    keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
+    keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, ...(opts.tabMovesFocus ? [] : [indentWithTab])]),
+    opts.tabMovesFocus ? tabLeaves : [],
   ];
 }

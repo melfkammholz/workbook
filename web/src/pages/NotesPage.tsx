@@ -3,6 +3,7 @@ import { Link } from 'wouter';
 import { RenderedText } from '@/components/RenderedText';
 import { Empty, Spinner } from '@/components/ui';
 import { useOutline, useReviewData } from '@/lib/api';
+import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 
 /** Every note in one place and in the order of the course, for going over them before an exam. */
@@ -31,7 +32,10 @@ export function NotesPage() {
   }
   return (
     <div className="h-full overflow-y-auto">
-      <div className="settle mx-auto max-w-3xl px-6 pb-24 pt-10 sm:px-8">
+      <div className="settle mx-auto max-w-3xl px-6 pb-24 pt-8 sm:px-8">
+        <BackLink fallback="/review" label={t.back} className="mb-3">
+          {t.back}
+        </BackLink>
         <h1 className="text-[1.75rem] font-semibold tracking-[-0.02em]">{t.allNotes}</h1>
         {count + orphans.length === 0 ? (
           <Empty title={t.noNotesYet}>{t.noNotesYetBody}</Empty>

@@ -2,7 +2,7 @@ import { EditorSelection, Transaction } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { DeckCard, DeckDoc, DeckSaved, DeckSettings, DeckWarning, Diagnostic, RenderedCard } from '@wb/shared';
-import { ArrowDown, ArrowLeft, ArrowUp, Check, CircleHelp, Copy, ExternalLink, Pencil, Plus, Settings2, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, CircleHelp, Copy, ExternalLink, Pencil, Plus, Settings2, Sparkles, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { CHATS } from '@/components/AiPanel';
@@ -17,6 +17,10 @@ import { addCard, cardKeys, deckPrompt, deleteCard, deleteDeck, editCard, moveCa
 import { useLang, useT } from '@/lib/i18n';
 import { readPref, writePref } from '@/lib/shell';
 import { useDebouncedCallback } from '@/lib/useDebounced';
+import { cursorCard } from '@/lib/currentCard';
+import { BackLink } from '@/lib/history';
+import { usePageKeys } from '@/lib/keys';
+import { tagLabel } from '@/lib/typst';
 
 const VIEWS = ['cards', 'text'] as const;
 type View = (typeof VIEWS)[number];
@@ -82,14 +86,13 @@ function DeckEditor({ deck, focusCard }: { deck: DeckDoc; focusCard: string | nu
   };
 
   const big = deck.settings.maxCards > 0 && deck.cards.length > deck.settings.maxCards;
+  usePageKeys({ t: () => setView(view === 'cards' ? 'text' : 'cards') });
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-b border-line bg-sheet px-4 py-3 sm:px-6">
         <div className="flex flex-wrap items-center gap-2">
-          <Link href="/flashcards" className="inline-flex size-8 items-center justify-center rounded-md text-ink-2 hover:bg-sunk hover:text-ink" aria-label={t.backToDecks} title={t.backToDecks}>
-            <ArrowLeft size={17} />
-          </Link>
+          <BackLink fallback="/flashcards" label={t.back} />
           {renaming ? (
             <input
               autoFocus
@@ -181,6 +184,13 @@ function CardList({ deck, focusCard, onSaved }: { deck: DeckDoc; focusCard: stri
   const rendered = useQuery({ queryKey: ['flashcards', 'preview', deck.source], queryFn: () => previewDeck(deck.source), staleTime: Infinity, placeholderData: (p) => p });
   const byId = useMemo(() => new Map((rendered.data?.cards ?? []).map((c) => [c.id, c])), [rendered.data]);
   const warnings = rendered.data?.warnings ?? [];
+  usePageKeys({
+    n: () => {
+      setEditing(null);
+      setAdding(true);
+      requestAnimationFrame(() => document.getElementById('wb-new-card')?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+    },
+  });
 
   useEffect(() => {
     if (!focusCard) return;
@@ -224,7 +234,7 @@ function CardList({ deck, focusCard, onSaved }: { deck: DeckDoc; focusCard: stri
         </ol>
         <div className="mt-4">
           {adding ? (
-            <div className="rounded-xl border border-line bg-sheet p-4">
+            <div id="wb-new-card" className="rounded-xl border border-line bg-sheet p-4">
               <CardForm
                 autoFocus={deck.cards.length > 0}
                 submitLabel={t.addCard}
@@ -233,7 +243,7 @@ function CardList({ deck, focusCard, onSaved }: { deck: DeckDoc; focusCard: stri
               />
             </div>
           ) : (
-            <Button onClick={() => setAdding(true)}>
+            <Button onClick={() => setAdding(true)} title={`${t.addCard} (n)`}>
               <Plus size={15} /> {t.addCard}
             </Button>
           )}
@@ -281,7 +291,7 @@ function CardRow({
         {card.kind === 'both' ? <span>{t.cardKind.both}</span> : null}
         {card.tags.map((tag) => (
           <span key={tag} className="rounded-full bg-sunk px-2 py-0.5">
-            {tag}
+            {tagLabel(tag)}
           </span>
         ))}
         {warnings.map((w, i) => (
@@ -330,6 +340,9 @@ function TextView({ deck, focusCard, onSaved }: { deck: DeckDoc; focusCard: stri
   const [warnings, setWarnings] = useState<DeckWarning[]>([]);
   const [saved, setSaved] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const view = useRef<EditorView | null>(null);
+  // Typed here and not saved yet: then the text here is newer than the deck's.
+  const dirty = useRef(false);
+  const adopted = useRef<string | null>(null);
 
   const persist = useDebouncedCallback((value: string) => {
     setSaved('saving');
@@ -337,6 +350,7 @@ function TextView({ deck, focusCard, onSaved }: { deck: DeckDoc; focusCard: stri
       (r) => {
         setSaved('saved');
         setWarnings(r.warnings);
+        if (view.current?.state.doc.toString() === value) dirty.current = false;
         onSaved(r);
         // New cards got their ids, written in where they belong: not an edit to undo.
         // If the text changed meanwhile, the next save hands them out again.
@@ -348,6 +362,38 @@ function TextView({ deck, focusCard, onSaved }: { deck: DeckDoc; focusCard: stri
       () => setSaved('error'),
     );
   }, 700);
+
+  // Cards added elsewhere (the quick way, the card view) show up here, unless something typed here is still on its way.
+  useEffect(() => {
+    if (dirty.current || deck.source === text) return;
+    adopted.current = deck.source;
+    setText(deck.source);
+    // Only when the deck changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deck.source]);
+
+  // The card the cursor is in is marked in the preview, also after each new render.
+  const [cardIndex, setCardIndex] = useState<number | null>(null);
+  const cardExtension = useMemo(() => cursorCard(setCardIndex), []);
+  const wrap = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const root = wrap.current;
+    if (!root) return;
+    let marked: Element | null = null;
+    const mark = (scroll: boolean) => {
+      const cards = root.querySelectorAll('.prose-deck aside[data-wb="card"]');
+      const card = cardIndex === null ? null : (cards[cardIndex] ?? null);
+      if (card === marked && card?.classList.contains('wb-current-card')) return;
+      root.querySelectorAll('.wb-current-card').forEach((el) => el.classList.remove('wb-current-card'));
+      card?.classList.add('wb-current-card');
+      if (card && scroll) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      marked = card;
+    };
+    mark(true);
+    const observer = new MutationObserver(() => mark(false));
+    observer.observe(root, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [cardIndex]);
 
   const render = useCallback(
     (source: string) =>
@@ -381,36 +427,42 @@ function TextView({ deck, focusCard, onSaved }: { deck: DeckDoc; focusCard: stri
   );
 
   return (
-    <TypstEditor
-      variant="notes"
-      value={text}
-      onChange={(v) => {
-        setText(v);
-        persist.call(v);
-      }}
-      label={t.deckEditor}
-      placeholder={t.deckPlaceholder}
-      status={saved === 'saving' ? t.saving : saved === 'saved' ? t.saved : saved === 'error' ? t.couldNotSave : ''}
-      render={render}
-      diagnostics={diagnostics}
-      onView={onView}
-      previewClassName="prose-deck"
-      previewHeader={
-        warnings.length ? (
-          <details className="mb-3 rounded-md bg-review-soft px-3 py-2 text-[13px] text-review">
-            <summary className="cursor-pointer font-medium">{t.deckWarningsCount(warnings.length)}</summary>
-            <ul className="mt-1">
-              {warnings.map((w, i) => (
-                <li key={i}>
-                  {t.lineN(w.line)}
-                  {t.deckWarning(w.code, w.detail)}
-                </li>
-              ))}
-            </ul>
-          </details>
-        ) : null
-      }
-    />
+    <div ref={wrap} className="h-full">
+      <TypstEditor
+        variant="notes"
+        value={text}
+        onChange={(v) => {
+          setText(v);
+          if (v === adopted.current) return;
+          adopted.current = null;
+          dirty.current = true;
+          persist.call(v);
+        }}
+        extensions={cardExtension}
+        label={t.deckEditor}
+        placeholder={t.deckPlaceholder}
+        status={saved === 'saving' ? t.saving : saved === 'saved' ? t.saved : saved === 'error' ? t.couldNotSave : ''}
+        render={render}
+        diagnostics={diagnostics}
+        onView={onView}
+        previewClassName="prose-deck"
+        previewHeader={
+          warnings.length ? (
+            <details className="mb-3 rounded-md bg-review-soft px-3 py-2 text-[13px] text-review">
+              <summary className="cursor-pointer font-medium">{t.deckWarningsCount(warnings.length)}</summary>
+              <ul className="mt-1">
+                {warnings.map((w, i) => (
+                  <li key={i}>
+                    {t.lineN(w.line)}
+                    {t.deckWarning(w.code, w.detail)}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null
+        }
+      />
+    </div>
   );
 }
 

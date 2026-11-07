@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import type { ExerciseMeta, ReviewData } from '@wb/shared';
 import { CodeBlock } from '@/components/Dialogs';
-import { CardsOverview } from '@/components/CardsOverview';
 import { ConfidenceOverview } from '@/components/ConfidenceOverview';
 import { Prose } from '@/components/Prose';
 import { RenderedText } from '@/components/RenderedText';
@@ -12,6 +11,7 @@ import { Button, Chip, Empty, Spinner, StatusMark, clsx } from '@/components/ui'
 import { FLAGS, cellFor, formatDuration, urgency, type Cell, type Flag } from '@/lib/attention';
 import { isExercise, keys, saveOpenQuestion, useOutline, useReviewData, useSettings } from '@/lib/api';
 import { useCourseCards } from '@/lib/flashcards';
+import { BackLink } from '@/lib/history';
 import { useLang, useT } from '@/lib/i18n';
 
 type Exercise = ExerciseMeta & { chapter: string };
@@ -30,7 +30,10 @@ export function ReviewPage() {
   const cards = useCourseCards(flashcardsOn).data;
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-5xl px-6 pb-24 pt-10 sm:px-8">
+      <div className="mx-auto max-w-5xl px-6 pb-24 pt-8 sm:px-8">
+        <BackLink fallback="/" label={t.back} className="mb-3">
+          {t.back}
+        </BackLink>
         <h1 className="text-[1.75rem] font-semibold tracking-[-0.02em]">{t.reviewTitle}</h1>
         <p className="mt-4 max-w-prose text-ink-2">{t.mineIntro}</p>
         <Link href="/notes" className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline">
@@ -38,8 +41,7 @@ export function ReviewPage() {
         </Link>
         {mine.data ? (
           <>
-            {outline ? <ConfidenceOverview outline={outline} data={mine.data} /> : null}
-            {outline && flashcardsOn && cards ? <CardsOverview outline={outline} cards={cards} /> : null}
+            {outline ? <ConfidenceOverview outline={outline} data={mine.data} cards={flashcardsOn ? (cards ?? null) : null} /> : null}
 
             <WeakChecklistAnswers data={mine.data} />
             <Attention data={mine.data} />

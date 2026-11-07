@@ -5,6 +5,7 @@ import { Legend } from '@/components/Legend';
 import { withCode } from '@/components/withCode';
 import { clsx } from '@/components/ui';
 import { useSettings } from '@/lib/api';
+import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 
 /**
@@ -76,16 +77,24 @@ export function HelpPage({ section }: { section?: string }) {
       id: 'keys',
       title: t.helpKeysTitle,
       body: (
-        <dl className="space-y-1">
-          {t.helpKeys.map(([key, what]) => (
-            <div key={key} className="flex flex-wrap items-baseline gap-x-3">
-              <dt>
-                <kbd className="rounded border border-line bg-sheet px-1.5 py-0.5 font-sans text-xs">{key}</kbd>
-              </dt>
-              <dd>{what}</dd>
+        <>
+          <p>{t.helpKeysIntro}</p>
+          {t.helpKeys.map(([where, keys]) => (
+            <div key={where} className="mt-4">
+              <h3 className="mb-1.5 font-semibold text-ink">{where}</h3>
+              <dl className="divide-y divide-line rounded-lg border border-line bg-sheet">
+                {keys.map(([key, what]) => (
+                  <div key={key} className="grid items-baseline gap-x-4 gap-y-1 px-3 py-1.5 sm:grid-cols-[11rem_1fr]">
+                    <dt>
+                      <kbd className="rounded border border-line bg-paper px-1.5 py-0.5 font-sans text-xs">{key}</kbd>
+                    </dt>
+                    <dd>{what}</dd>
+                  </div>
+                ))}
+              </dl>
             </div>
           ))}
-        </dl>
+        </>
       ),
     },
     { id: 'data', title: t.helpDataTitle, body: <p>{t.helpData}</p> },
@@ -97,12 +106,13 @@ export function HelpPage({ section }: { section?: string }) {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex max-w-5xl gap-10 px-6 pb-24 pt-10 sm:px-8">
-        <nav aria-label={t.help} className="sticky top-6 hidden w-48 shrink-0 self-start lg:block">
+      <div className="mx-auto flex max-w-5xl gap-10 px-6 pb-24 pt-6 sm:px-8">
+        {/* Starts on the line of the heading next to it, below the way back. */}
+        <nav aria-label={t.help} className="sticky top-12 mt-12 hidden w-48 shrink-0 self-start lg:block">
           <ul className="space-y-0.5 text-sm">
             {sections.map((s) => (
               <li key={s.id}>
-                <Link href={`/help/${s.id}`} className={clsx('block rounded-md px-2 py-1', section === s.id ? 'bg-sunk text-ink' : 'text-ink-2 hover:bg-sunk hover:text-ink')}>
+                <Link href={`/help/${s.id}`} replace className={clsx('block rounded-md px-2 py-1', section === s.id ? 'bg-sunk text-ink' : 'text-ink-2 hover:bg-sunk hover:text-ink')}>
                   {s.title}
                 </Link>
               </li>
@@ -110,13 +120,19 @@ export function HelpPage({ section }: { section?: string }) {
           </ul>
         </nav>
         <div className="min-w-0 max-w-2xl flex-1">
+          {/* Where the other pages have it, and it stays in reach however far down the help goes. */}
+          <div className="sticky top-0 z-10 -mx-2 mb-1 bg-paper px-2 py-2">
+            <BackLink fallback="/" label={t.back}>
+              {t.back}
+            </BackLink>
+          </div>
           <h1 className="text-[1.75rem] font-semibold tracking-[-0.02em]">{t.help}</h1>
           <p className="mt-2 text-ink-2">{t.helpIntro}</p>
           <div className="mt-6">
             <Legend />
           </div>
           {sections.map((s) => (
-            <section key={s.id} id={`help-${s.id}`} className="mt-10 scroll-mt-6 text-[14.5px] leading-relaxed text-ink-2">
+            <section key={s.id} id={`help-${s.id}`} className="mt-10 scroll-mt-12 text-[14.5px] leading-relaxed text-ink-2">
               <h2 className="mb-2 text-lg font-semibold text-ink">{s.title}</h2>
               {s.body}
             </section>

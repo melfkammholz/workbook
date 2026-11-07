@@ -5,6 +5,7 @@ import { describeEvent } from '@/components/Celebration';
 import { Plant } from '@/components/Plant';
 import { Empty, clsx } from '@/components/ui';
 import { useAchievements, useOutline, useSettings } from '@/lib/api';
+import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 
 /** Everything earned in this course. It only ever grows. */
@@ -26,7 +27,10 @@ export function AchievementsPage() {
   const hiddenLeft = ACHIEVEMENTS.filter((a) => a.hidden && !has.has(a.id)).length;
   return (
     <div className="h-full overflow-y-auto">
-      <div className="settle mx-auto max-w-3xl px-6 pb-24 pt-10 sm:px-8">
+      <div className="settle mx-auto max-w-3xl px-6 pb-24 pt-8 sm:px-8">
+        <BackLink fallback="/" label={t.back} className="mb-3">
+          {t.back}
+        </BackLink>
         <h1 className="text-[1.75rem] font-semibold tracking-[-0.02em]">{t.achievements}</h1>
         <p className="mt-2 max-w-prose text-ink-2">{t.achievementsIntro}</p>
 

@@ -1,15 +1,45 @@
 import type { CardKind, RenderedCard } from '@wb/shared';
-import { X } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { Columns2, PanelBottom, X } from 'lucide-react';
+import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { ApiError } from '@/lib/api';
 import { cardText, previewDeck, type CardFields } from '@/lib/flashcards';
 import { useT } from '@/lib/i18n';
-import { typstContext } from '@/lib/typst';
+import { modKey } from '@/lib/keys';
+import { readPref, writePref } from '@/lib/shell';
+import { useMediaQuery } from '@/lib/useActiveTime';
+import { tagLabel, typstContext } from '@/lib/typst';
 import { CardFace } from './CardFace';
 import { CodeEditor } from './CodeEditor';
-import { Button, Segmented } from './ui';
+import { Button, IconButton, Segmented, clsx } from './ui';
 
 const KINDS: CardKind[] = ['basic', 'both', 'cloze'];
+
+// ───────────────────────── where the preview goes ─────────────────────────
+
+const LAYOUTS = ['below', 'side'] as const;
+export type CardLayout = (typeof LAYOUTS)[number];
+const LAYOUT_KEY = 'wb-card-preview';
+/** Side by side needs room; on a narrow screen the preview goes below, and the choice is kept. */
+export const ROOMY = '(min-width: 900px)';
+let layoutNow: CardLayout = readPref(LAYOUT_KEY, LAYOUTS, 'below');
+const layoutListeners = new Set<() => void>();
+
+/** Below or beside the inputs: one choice for every card form, and the dialog around one widens with it. */
+export function useCardLayout(): [CardLayout, (l: CardLayout) => void] {
+  const value = useSyncExternalStore(
+    (cb) => {
+      layoutListeners.add(cb);
+      return () => layoutListeners.delete(cb);
+    },
+    () => layoutNow,
+  );
+  const set = useCallback((l: CardLayout) => {
+    layoutNow = l;
+    writePref(LAYOUT_KEY, l);
+    layoutListeners.forEach((cb) => cb());
+  }, []);
+  return [value, set];
+}
 
 /**
  * One card as a form: kind, front and back in small Typst editors, tags, and a
@@ -42,6 +72,9 @@ export function CardForm({
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ card: RenderedCard; css: string } | null>(null);
   const [revealed, setRevealed] = useState(false);
+  const [layout, setLayout] = useCardLayout();
+  const roomy = useMediaQuery(ROOMY);
+  const side = layout === 'side' && roomy;
 
   const ready = front.trim() !== '' && (kind === 'cloze' || back.trim() !== '');
 
@@ -91,12 +124,6 @@ export function CardForm({
       <div
         className="mt-1 overflow-hidden rounded-md border border-line-strong bg-sheet focus-within:border-accent"
         style={{ height: `${rows * 1.6 + 1.9}em` }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-            e.preventDefault();
-            void submit();
-          }
-        }}
         ref={(el) => {
           if (focus && el && !el.dataset.focused) {
             el.dataset.focused = '1';
@@ -104,37 +131,84 @@ export function CardForm({
           }
         }}
       >
-        <CodeEditor value={value} onChange={set} language="typst" variant="notes" wrap lineNumbers={false} label={label} />
+        <CodeEditor value={value} onChange={set} language="typst" variant="notes" wrap lineNumbers={false} label={label} tabMovesFocus />
       </div>
     </label>
   );
 
-  return (
-    <div className="space-y-4 text-sm">
+  const previewBox = preview ? (
+    <div>
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-[12.5px] font-medium text-ink-3">{t.preview}</span>
+        {kind === 'cloze' ? (
+          <button type="button" className="text-[12.5px] text-accent hover:underline" onClick={() => setRevealed(!revealed)}>
+            {revealed ? t.hideGap : t.showAnswer}
+          </button>
+        ) : null}
+      </div>
+      <div className="overflow-hidden rounded-lg border border-line bg-sheet">
+        <CardFace html={preview.card.front} css={preview.css} gap={kind === 'cloze' ? 1 : null} revealed={revealed} className="px-4 py-3" />
+        {kind !== 'cloze' ? <CardFace html={preview.card.back} css={preview.css} gap={null} revealed className="border-t border-line bg-paper px-4 py-3" /> : null}
+      </div>
+    </div>
+  ) : side ? (
+    // Beside the inputs the place stays, so nothing jumps when the first preview comes.
+    <div>
+      <span className="mb-1 block text-[12.5px] font-medium text-ink-3">{t.preview}</span>
+      <p className="grid min-h-32 place-items-center rounded-lg border border-dashed border-line-strong px-4 text-center text-[13px] text-ink-3">{t.previewHere}</p>
+    </div>
+  ) : null;
+
+  const inputs = (
+    <>
       <div>
-        <Segmented value={kind} onChange={setKind} options={KINDS.map((k) => [k, t.cardKind[k]])} />
+        <div className="flex items-center justify-between gap-3">
+          <Segmented value={kind} onChange={setKind} options={KINDS.map((k) => [k, t.cardKind[k]])} />
+          {roomy ? (
+            <div className="flex items-center" role="group" aria-label={t.cardPreviewPlace}>
+              {(
+                [
+                  ['below', PanelBottom, t.cardPreviewBelow],
+                  ['side', Columns2, t.cardPreviewBeside],
+                ] as const
+              ).map(([l, Icon, name]) => (
+                <IconButton key={l} label={name} aria-pressed={layout === l} onClick={() => setLayout(l)} className={clsx('size-7', layout === l && 'bg-sunk text-ink')}>
+                  <Icon size={15} />
+                </IconButton>
+              ))}
+            </div>
+          ) : null}
+        </div>
         <p className="mt-1.5 text-[12.5px] text-ink-3">{t.cardKindHint[kind]}</p>
       </div>
-      {field(kind === 'cloze' ? t.clozeText : t.cardFront, front, setFront, kind === 'cloze' ? 5 : 3, !!autoFocus)}
-      {kind !== 'cloze' ? field(t.cardBack, back, setBack, 3, false) : null}
+      {field(kind === 'cloze' ? t.clozeText : t.cardFront, front, setFront, kind === 'cloze' ? 8 : 5, !!autoFocus)}
+      {kind !== 'cloze' ? field(t.cardBack, back, setBack, 5, false) : null}
       <TagPicker tags={tags} onChange={setTags} />
+    </>
+  );
 
-      {preview ? (
-        <div>
-          <div className="mb-1 flex items-center justify-between">
-            <span className="text-[12.5px] font-medium text-ink-3">{t.preview}</span>
-            {kind === 'cloze' ? (
-              <button type="button" className="text-[12.5px] text-accent hover:underline" onClick={() => setRevealed(!revealed)}>
-                {revealed ? t.hideGap : t.showAnswer}
-              </button>
-            ) : null}
-          </div>
-          <div className="overflow-hidden rounded-lg border border-line bg-sheet">
-            <CardFace html={preview.card.front} css={preview.css} gap={kind === 'cloze' ? 1 : null} revealed={revealed} className="px-4 py-3" />
-            {kind !== 'cloze' ? <CardFace html={preview.card.back} css={preview.css} gap={null} revealed className="border-t border-line bg-paper px-4 py-3" /> : null}
-          </div>
+  return (
+    <div
+      className="space-y-4 text-sm"
+      // Ctrl+Enter saves from anywhere in the form, the tags included.
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          void submit();
+        }
+      }}
+    >
+      {side ? (
+        <div className="grid grid-cols-2 items-start gap-5">
+          <div className="min-w-0 space-y-4">{inputs}</div>
+          <div className="sticky top-0 min-w-0">{previewBox}</div>
         </div>
-      ) : null}
+      ) : (
+        <>
+          {inputs}
+          {previewBox}
+        </>
+      )}
 
       <div className="flex flex-wrap items-end gap-3">
         {footer ?? <span className="flex-1" />}
@@ -143,7 +217,7 @@ export function CardForm({
             {t.cancel}
           </Button>
         ) : null}
-        <Button variant="primary" disabled={!ready || busy} onClick={() => void submit()}>
+        <Button variant="primary" disabled={!ready || busy} onClick={() => void submit()} title={`${submitLabel} (${modKey}+Enter)`}>
           {submitLabel}
         </Button>
       </div>
@@ -161,7 +235,7 @@ function TagPicker({ tags, onChange }: { tags: string[]; onChange: (t: string[])
   const t = useT();
   const [draft, setDraft] = useState('');
   const known = typstContext.tags;
-  const labelOf = (id: string) => known.find((k) => k.id === id)?.label ?? id;
+  const labelOf = tagLabel;
   const add = (raw: string) => {
     const value = raw.trim();
     if (!value) return;

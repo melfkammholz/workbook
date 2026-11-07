@@ -1,9 +1,8 @@
-import { ArrowLeft } from 'lucide-react';
 import { useState } from 'react';
-import { Link } from 'wouter';
 import { StrugglingCardView } from '@/components/StrugglingCardView';
 import { Empty, Spinner } from '@/components/ui';
 import { useStruggling } from '@/lib/flashcards';
+import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 
 /** The meta review: cards that keep being forgotten, one deck or all. */
@@ -14,9 +13,9 @@ export function StrugglingPage({ deckId }: { deckId: string | null }) {
   return (
     <div className="h-full overflow-y-auto">
       <div className="settle mx-auto max-w-3xl px-6 pb-24 pt-8 sm:px-8">
-        <Link href={deckId ? `/flashcards/deck/${deckId}` : '/flashcards'} className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-2 hover:text-ink">
-          <ArrowLeft size={15} /> {t.backToDecks}
-        </Link>
+        <BackLink fallback={deckId ? `/flashcards/deck/${deckId}` : '/flashcards'} label={t.back} className="mb-4">
+          {t.back}
+        </BackLink>
         <h1 className="text-[1.75rem] font-semibold tracking-[-0.02em]">{t.cardsToLookAt}</h1>
         <p className="mt-2 max-w-prose text-ink-2">{t.cardsToLookAtIntro}</p>
         {!list.data ? (

@@ -1,5 +1,5 @@
 import { setDiagnostics, type Diagnostic as CmDiagnostic } from '@codemirror/lint';
-import { EditorState, Prec } from '@codemirror/state';
+import { EditorState, Prec, type Extension } from '@codemirror/state';
 import { EditorView, hoverTooltip, keymap } from '@codemirror/view';
 import { vim } from '@replit/codemirror-vim';
 import type { Diagnostic, TypeInfo } from '@wb/shared';
@@ -26,6 +26,10 @@ interface Props {
   variant?: EditorVariant;
   /** The CodeMirror view, for changes that must keep the cursor where it is. Null when it goes. */
   onView?: (view: EditorView | null) => void;
+  /** Tab goes to the next field instead of indenting, as in a form. */
+  tabMovesFocus?: boolean;
+  /** More behaviour, e.g. decorations. Read once, when the editor is made. */
+  extensions?: Extension;
 }
 
 /** The name or operator at a column, if there is one. */
@@ -38,7 +42,7 @@ function tokenAt(text: string, column: number): { from: number; to: number } | n
 }
 
 /** Thin wrapper around a CodeMirror view. `value` is the source of truth: when it differs from the document the document is replaced. */
-export function CodeEditor({ value, onChange, language, diagnostics, readOnly, lineNumbers, wrap, placeholder, onSubmit, label, variant, typeOf, onView }: Props) {
+export function CodeEditor({ value, onChange, language, diagnostics, readOnly, lineNumbers, wrap, placeholder, onSubmit, label, variant, typeOf, onView, tabMovesFocus, extensions }: Props) {
   const t = useT();
   const vimKeys = useSettings().data?.editorKeys === 'vim' && !readOnly;
   const host = useRef<HTMLDivElement>(null);
@@ -71,7 +75,9 @@ export function CodeEditor({ value, onChange, language, diagnostics, readOnly, l
             ...(variant ? { variant } : {}),
             ...(placeholder ? { placeholder } : {}),
             ...(language === 'typst' ? { completions: typstCompletions(() => labelsRef.current) } : {}),
+            ...(tabMovesFocus ? { tabMovesFocus } : {}),
           }),
+          extensions ?? [],
           Prec.highest(
             keymap.of([
               {
@@ -133,7 +139,7 @@ export function CodeEditor({ value, onChange, language, diagnostics, readOnly, l
     };
     // The view is created once per mount; props that change later are applied below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language, readOnly, lineNumbers, wrap, variant, vimKeys]);
+  }, [language, readOnly, lineNumbers, wrap, variant, vimKeys, tabMovesFocus]);
 
   useEffect(() => {
     const v = view.current;

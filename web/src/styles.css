@@ -241,6 +241,9 @@ body {
   display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 10px;
   background: var(--sheet); overflow: hidden; margin-block: 0.75em;
 }
+.prose-deck aside[data-wb="card"] { transition: border-color 0.15s, box-shadow 0.15s; }
+/* The card the cursor is in, in the text next to it. */
+.prose-deck aside[data-wb="card"].wb-current-card { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); box-shadow: 0 1px 6px color-mix(in srgb, var(--accent) 10%, transparent); }
 .prose-deck aside[data-wb="card"] > [data-side] { padding: 0.7em 0.9em; min-width: 0; }
 .prose-deck aside[data-wb="card"] > [data-side="back"] { border-left: 1px solid var(--line); background: var(--paper); }
 .prose-deck aside[data-wb="card"] > [data-side="text"] { grid-column: 1 / -1; }

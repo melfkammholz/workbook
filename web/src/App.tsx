@@ -1,7 +1,7 @@
 import { ArrowLeft, CircleHelp, ClipboardList, Layers, Menu, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Route, Router, Switch, useLocation, useRoute } from 'wouter';
-import { useHashLocation } from 'wouter/use-hash-location';
+import { useAppLocation } from '@/lib/history';
 import { Celebration } from '@/components/Celebration';
 import { AddCourseForm, CourseDialog } from '@/components/CourseDialog';
 import { CourseMenu, FocusQuestion } from '@/components/Focus';
@@ -16,6 +16,8 @@ import { useFlashcards } from '@/lib/flashcards';
 import { useFilters } from '@/lib/filters';
 import { focusExercises } from '@/lib/focus';
 import { useDocumentLang, useT } from '@/lib/i18n';
+import { canGoBack } from '@/lib/history';
+import { modKey, scrollPage, usePageKeys } from '@/lib/keys';
 import { applyTheme } from '@/lib/theme';
 import { useMediaQuery } from '@/lib/useActiveTime';
 import { AchievementsPage } from '@/pages/AchievementsPage';
@@ -35,7 +37,7 @@ import { ReviewPage } from '@/pages/ReviewPage';
 
 export function App() {
   return (
-    <Router hook={useHashLocation}>
+    <Router hook={useAppLocation}>
       <Shell />
     </Router>
   );
@@ -110,8 +112,17 @@ function flashcardRoutes() {
 
 function NoCourse() {
   const t = useT();
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const flashcardsOn = !!useSettings().data?.showFlashcards;
+  usePageKeys({
+    h: () => canGoBack() && history.back(),
+    l: () => history.forward(),
+    j: (e) => scrollPage(1, e.repeat),
+    k: (e) => scrollPage(-1, e.repeat),
+    '?': () => navigate('/help/keys'),
+    'g h': () => navigate('/'),
+    'g f': flashcardsOn ? () => navigate('/flashcards') : undefined,
+  });
   if (location.startsWith('/flashcards') || location.startsWith('/help')) {
     return (
       <div className="flex h-full flex-col">
@@ -200,6 +211,21 @@ function CourseShell() {
     return () => removeEventListener('keydown', onKey);
   }, []);
 
+  // Single keys, as on many sites; `?` lists them all.
+  usePageKeys({
+    h: () => canGoBack() && history.back(),
+    l: () => history.forward(),
+    j: (e) => scrollPage(1, e.repeat),
+    k: (e) => scrollPage(-1, e.repeat),
+    '/': () => setSearching(true),
+    '?': () => navigate('/help/keys'),
+    'g h': () => navigate('/'),
+    'g r': () => navigate('/review'),
+    'g n': () => navigate('/notes'),
+    'g f': flashcardsOn ? () => navigate('/flashcards') : undefined,
+    'g m': achievementsOn ? () => navigate('/achievements') : undefined,
+  });
+
   useEffect(() => {
     if (outline.data) document.title = outline.data.title;
   }, [outline.data]);
@@ -280,7 +306,7 @@ function CourseShell() {
             className="hidden h-8 items-center gap-2 rounded-md border border-line bg-paper px-3 text-[13px] text-ink-3 hover:border-line-strong sm:inline-flex"
           >
             <Search size={14} /> {t.search}
-            <kbd className="ml-4 rounded border border-line bg-sheet px-1.5 font-sans text-[11px]">{/Mac|iPhone/.test(navigator.platform) ? '⌘' : 'Ctrl'} K</kbd>
+            <kbd className="ml-4 rounded border border-line bg-sheet px-1.5 font-sans text-[11px]">{modKey} K</kbd>
           </button>
           <IconButton label={t.search} className="sm:hidden" onClick={() => setSearching(true)}>
             <Search size={18} />

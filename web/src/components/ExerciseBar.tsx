@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { ItemMeta, Status } from '@wb/shared';
 import { formatClock } from '@/lib/attention';
 import { useT } from '@/lib/i18n';
+import { altKey } from '@/lib/keys';
 import { Button, IconButton, clsx } from './ui';
 import { StatusControl } from './StatusControl';
 
@@ -64,15 +65,16 @@ export function ExerciseBar({
           {paused ? <Play size={13} /> : <Pause size={13} />}
         </IconButton>
       ) : null}
-      {showTimer && seconds > 0 ? (
-        <IconButton label={t.resetTimer} className="size-7" onClick={onResetTimer}>
+      {/* Always there, so nothing moves when the first second is counted. */}
+      {showTimer ? (
+        <IconButton label={t.resetTimer} disabled={seconds === 0} className="size-7 disabled:opacity-30" onClick={onResetTimer}>
           <RotateCcw size={13} />
         </IconButton>
       ) : null}
       {onMakeCard ? (
         <>
           {showTimer ? <span aria-hidden className="mx-1 h-4 w-px bg-line" /> : null}
-          <button type="button" onClick={onMakeCard} title={t.makeCard} className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[13px] text-ink-3 hover:bg-sunk hover:text-ink">
+          <button type="button" onClick={onMakeCard} title={`${t.makeCard} (${altKey}+C)`} className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[13px] text-ink-3 hover:bg-sunk hover:text-ink">
             <Layers size={14} /> <span className="hidden sm:inline">{t.makeCard}</span>
           </button>
         </>

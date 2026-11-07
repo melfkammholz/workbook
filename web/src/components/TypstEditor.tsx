@@ -1,6 +1,7 @@
 import { Columns2, PanelTop, Square } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Group, Panel } from 'react-resizable-panels';
+import type { Extension } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import type { Diagnostic } from '@wb/shared';
 import { previewNote, type NotePreview } from '@/lib/api';
@@ -34,6 +35,7 @@ export function TypstEditor({
   onView,
   previewHeader,
   previewClassName = 'prose-note',
+  extensions,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -50,6 +52,8 @@ export function TypstEditor({
   /** Before the preview, e.g. a summary of warnings. */
   previewHeader?: ReactNode;
   previewClassName?: string;
+  /** More editor behaviour, read once when the editor is made. */
+  extensions?: Extension;
 }) {
   const t = useT();
   const [layout, setLayoutState] = useState<Layout>(() => readPref(KEY, LAYOUTS, 'stacked'));
@@ -157,7 +161,7 @@ export function TypstEditor({
   }, [errors, preview]);
 
   const editor = (
-    <CodeEditor variant={variant} language="typst" value={value} onChange={onChange} label={label} wrap lineNumbers={false} placeholder={placeholder} {...(diagnostics ? { diagnostics } : {})} {...(onView ? { onView } : {})} />
+    <CodeEditor variant={variant} language="typst" value={value} onChange={onChange} label={label} wrap lineNumbers={false} placeholder={placeholder} {...(diagnostics ? { diagnostics } : {})} {...(onView ? { onView } : {})} {...(extensions ? { extensions } : {})} />
   );
   const pane = (
     <div ref={paneRef} className="h-full min-h-0 overflow-y-auto bg-paper/40 p-4" aria-label={t.preview}>

@@ -1,6 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
 import type { CardRating, ReviewNext, StrugglingCard } from '@wb/shared';
-import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { CardFace } from '@/components/CardFace';
@@ -8,6 +7,7 @@ import { StrugglingCardView } from '@/components/StrugglingCardView';
 import { Button, Chip, Dialog, Spinner, clsx } from '@/components/ui';
 import { api } from '@/lib/api';
 import { buryCard, cardKeys, nextCard, rateCard } from '@/lib/flashcards';
+import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 
 const RATINGS: CardRating[] = [1, 2, 3, 4];
@@ -102,9 +102,7 @@ export function FlashcardReview({ deckIds }: { deckIds: string[] }) {
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       <div className="mx-auto flex w-full max-w-2xl items-center gap-2 px-6 pt-5 text-sm text-ink-2 sm:px-8">
-        <Link href={back} className="inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk hover:text-ink" aria-label={t.backToDecks} title={t.backToDecks}>
-          <ArrowLeft size={17} />
-        </Link>
+        <BackLink fallback={back} label={t.back} />
         <span className="truncate font-medium text-ink">{card?.deckTitle ?? t.flashcards}</span>
         {next && card ? <span className="ml-auto tabular-nums">{t.reviewLeft(next.due, next.fresh)}</span> : null}
       </div>

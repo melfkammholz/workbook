@@ -28,6 +28,7 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
   const errors = rendered.diagnostics.filter((d) => d.severity === 'error');
   const adventures = outline.threads.filter((x) => x.adventure && x.steps.some((step) => step.includes(meta.id)));
   const { previous, next } = neighbours(outline, meta.id, state);
+  const chapter = outline.chapters.find((c) => c.items.some((i) => i.id === meta.id));
   const courses = useCourses().data;
   const repository = courses?.courses.find((c) => c.id === courses.activeId)?.url ?? null;
   const report = issueLink(outline.issues, repository, t.issueTitle(meta.title), t.issueBody(meta.id, meta.title));
@@ -35,6 +36,12 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
   return (
     <article className="settle mx-auto flex max-w-[46rem] flex-col px-6 pb-24 pt-7 sm:px-8">
       <header className="mb-6">
+        {chapter ? (
+          // The way up, to the chapter this belongs to.
+          <Link href={`/chapter/${chapter.id}`} className="mb-2 inline-flex max-w-full items-center gap-1 text-[13px] text-ink-3 hover:text-ink">
+            <ArrowLeft size={13} className="shrink-0" /> <span className="truncate">{chapter.title}</span>
+          </Link>
+        ) : null}
         <h1 className="text-balance text-[1.75rem] font-semibold leading-tight tracking-[-0.02em]">
           {ex?.startHere && ex.emoji ? (
             <span className="mr-2" role="img" aria-label={t.recommendedFirst}>

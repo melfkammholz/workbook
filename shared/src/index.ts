@@ -758,3 +758,4 @@ Antworte auf Deutsch, in reinem Text ohne Markdown.
 {deck}
 </deck>`,
 };
+export * from './cards';
