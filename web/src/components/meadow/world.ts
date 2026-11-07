@@ -25,7 +25,8 @@ export const unit = (y: number, size: number) => 2.1 * depth(y) * size;
 
 export const POND: Ellipse = { cx: 1460, cy: 230, rx: 118, ry: 36 };
 export const POOL: Ellipse = { cx: 2590, cy: 252, rx: 72, ry: 22 };
-export const FLOE: Ellipse = { cx: 3260, cy: 150, rx: 78, ry: 12 };
+/** In front, near the beach: the far band along the horizon belongs to the whales. */
+export const FLOE: Ellipse = { cx: 3200, cy: 228, rx: 78, ry: 12 };
 export const PATH: readonly (readonly [number, number])[] = [
   [-30, 262], [180, 238], [400, 208], [640, 214], [900, 198], [1120, 186], [1300, 176], [1460, 168], [1640, 182],
   [1900, 206], [2150, 196], [2400, 184], [2600, 200], [2800, 226], [2960, 244],

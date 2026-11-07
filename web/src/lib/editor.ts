@@ -13,7 +13,7 @@ import { classHighlighter, languageFor } from './highlight';
  * search, undo history, bracket matching. Colours come from CSS variables so
  * the theme switch needs no reconfiguration.
  */
-export type EditorVariant = 'code' | 'prose' | 'notes';
+export type EditorVariant = 'code' | 'notes';
 
 const common = EditorView.theme({
   '&': { height: '100%', backgroundColor: 'var(--sheet)', color: 'var(--ink)' },
@@ -40,13 +40,7 @@ const common = EditorView.theme({
 
 const variants: Record<EditorVariant, Extension> = {
   code: EditorView.theme({ '&': { fontFamily: 'var(--font-mono)', fontSize: 'var(--editor-font-size, 13.5px)' }, '.cm-scroller': { fontFamily: 'inherit' }, '.cm-content': { padding: '12px 0' } }),
-  // Free-text answers read like the task text: same typeface, wide leading, limited measure.
-  prose: EditorView.theme({
-    '&': { fontFamily: 'var(--font-sans)', fontSize: 'calc(var(--editor-font-size, 13.5px) + 1.5px)' },
-    '.cm-scroller': { fontFamily: 'inherit', lineHeight: '1.65', fontFeatureSettings: 'normal' },
-    '.cm-content': { padding: '16px 20px', maxWidth: '70ch' },
-    '&.cm-editor .cm-activeLine': { backgroundColor: 'transparent' },
-  }),
+  // Notes and text answers: both are Typst a student writes, so they look and feel the same.
   notes: EditorView.theme({
     '&': { fontFamily: 'var(--font-mono)', fontSize: 'var(--editor-font-size, 13.5px)' },
     '.cm-scroller': { fontFamily: 'inherit' },

@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useRoute } from 'wouter';
 import type { ChapterMeta, ExerciseKind, ItemMeta, Outline as OutlineT, PartMeta, Status, StudentState, ThreadInfo } from '@wb/shared';
 import { isExercise, statusOf } from '@/lib/api';
-import { adventureOfSection } from '@/lib/sections';
+import { adventureOfSection, isChapterWide } from '@/lib/sections';
 import { useT } from '@/lib/i18n';
 import { activeCount, matches, type Filters } from '@/lib/filters';
 import { Plant } from './Plant';
@@ -164,9 +164,9 @@ function ChapterBlock({
   if (items.length === 0 && forceOpen) return null;
 
   return (
-    <section className="pt-1">
-      {/* Stays in sight while the chapter's rows scroll by, and leaves with the last of them. */}
-      <div className="group sticky top-0 z-10 flex w-full items-center gap-1 bg-sheet pl-1.5 pr-3 hover:bg-paper">
+    <section className="pb-1.5">
+      {/* Stays in sight while the chapter's rows scroll by, and leaves with the last of them. Its own ground marks where a chapter starts. */}
+      <div className="group sticky top-0 z-10 flex w-full items-center gap-1 border-y border-line bg-[color-mix(in_srgb,var(--paper)_45%,var(--sheet))] pl-1.5 pr-3 hover:bg-paper">
         <button type="button" onClick={() => setOpen(!open)} aria-expanded={expanded} aria-label={expanded ? t.collapseChapter(chapter.title) : t.expandChapter(chapter.title)} className="shrink-0 rounded p-1 text-ink-3 hover:text-ink">
           <ChevronDown size={15} className={clsx('transition-transform', !expanded && '-rotate-90')} />
         </button>
@@ -195,19 +195,15 @@ function ChapterBlock({
         <ol className="pb-1">
           {items.map((item, i) => {
             // A section's title goes above its first visible item, so a filtered list has no empty sections.
-            const before = items[i - 1]?.sectionId ?? null;
-            const section = item.sectionId !== before ? chapter.sections.find((s) => s.id === item.sectionId) : undefined;
-            // Leaving the sections (the checklist that ends the chapter): a gap, so it does not look like part of the last one.
-            const leaving = item.sectionId === null && before !== null;
+            const section = item.sectionId !== (items[i - 1]?.sectionId ?? null) ? chapter.sections.find((s) => s.id === item.sectionId) : undefined;
+            // The checklist that ends the chapter stands off the thread, below a short rule, so it does not look like part of the last section.
+            const wide = isChapterWide(chapter, item);
+            const next = items[i + 1];
+            const endsThread = i === items.length - 1 || (!!next && isChapterWide(chapter, next));
             return (
               <Fragment key={item.id}>
                 {section ? <SectionLabel title={section.title} adventure={adventureOfSection(outline, chapter, section.id)} {...(onNavigate ? { onNavigate } : {})} /> : null}
-                {leaving ? (
-                  <li aria-hidden className="relative h-3">
-                    <span className="absolute inset-y-0 left-[21px] w-px bg-line-strong" />
-                  </li>
-                ) : null}
-                <Row item={item} status={statusOf(state, item.id)} answered={Object.keys(state?.checklists[item.id] ?? {}).length > 0} current={item.id === currentId} first={i === 0 && !section} last={i === items.length - 1} onNavigate={onNavigate} />
+                <Row item={item} status={statusOf(state, item.id)} answered={Object.keys(state?.checklists[item.id] ?? {}).length > 0} current={item.id === currentId} first={i === 0 && !section} last={endsThread} wide={wide} onNavigate={onNavigate} />
               </Fragment>
             );
           })}
@@ -236,7 +232,7 @@ function SectionLabel({ title, adventure, onNavigate }: { title: string; adventu
   );
 }
 
-function Row({ item, status, answered, current, first, last, onNavigate }: { item: ItemMeta; status: Status; answered: boolean; current: boolean; first: boolean; last: boolean; onNavigate?: (() => void) | undefined }) {
+function Row({ item, status, answered, current, first, last, wide, onNavigate }: { item: ItemMeta; status: Status; answered: boolean; current: boolean; first: boolean; last: boolean; wide: boolean; onNavigate?: (() => void) | undefined }) {
   const t = useT();
   const ex = item.type === 'exercise' ? item : null;
   const done = status === 'done';
@@ -246,18 +242,23 @@ function Row({ item, status, answered, current, first, last, onNavigate }: { ite
     if (current) row.current?.scrollIntoView({ block: 'nearest' });
   }, [current]);
   return (
-    <li ref={row} className="relative scroll-mt-10">
+    <li ref={row} className={clsx('relative scroll-mt-10', wide && 'mt-1.5')}>
       {/* The thread: one segment per row so finished stretches can be coloured. */}
-      <span
-        aria-hidden
-        className={clsx('absolute left-[21px] w-px', first ? 'top-1/2' : 'top-0', last ? 'bottom-1/2' : 'bottom-0', done ? 'bg-done' : 'bg-line-strong')}
-      />
+      {/* A short rule inside the chapter, not across the pane, so it does not read as the start of the next chapter. */}
+      {wide ? <span aria-hidden className="absolute left-[14px] right-3 top-0 h-px bg-line" /> : null}
+      {wide ? null : (
+        <span
+          aria-hidden
+          className={clsx('absolute left-[21px] w-px', first ? 'top-1/2' : 'top-0', last ? 'bottom-1/2' : 'bottom-0', done ? 'bg-done' : 'bg-line-strong')}
+        />
+      )}
       <Link
         href={`/item/${item.id}`}
         onClick={onNavigate}
         aria-current={current ? 'page' : undefined}
         className={clsx(
-          'relative flex items-center gap-2.5 py-[7px] pl-[14px] pr-3 text-[13.5px] leading-snug transition-colors',
+          'relative flex items-center gap-2.5 py-[7px] text-[13.5px] leading-snug transition-colors',
+          'pl-[14px] pr-3',
           current ? 'bg-accent-soft font-medium text-ink' : 'text-ink-2 hover:bg-paper/70 hover:text-ink',
         )}
       >

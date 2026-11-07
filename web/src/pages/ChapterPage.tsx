@@ -8,7 +8,7 @@ import { Empty } from '@/components/ui';
 import { isExercise, statusOf, useOutline, useState_ } from '@/lib/api';
 import type { ThreadInfo } from '@wb/shared';
 import { useT } from '@/lib/i18n';
-import { adventureOfSection } from '@/lib/sections';
+import { adventureOfSection, isChapterWide } from '@/lib/sections';
 
 /** Where a chapter starts: what it is about, how far along it is, and what is in it. */
 export function ChapterPage({ id }: { id: string }) {
@@ -28,6 +28,10 @@ export function ChapterPage({ id }: { id: string }) {
   const done = exercises.filter((e) => statusOf(state, e.id) === 'done').length;
   const upNext = exercises.find((e) => statusOf(state, e.id) === 'in_progress') ?? exercises.find((e) => statusOf(state, e.id) !== 'done');
   const started = exercises.some((e) => statusOf(state, e.id) !== 'todo');
+  // The checklist that ends a chapter is about all of it, so it gets a box of its own below the sections.
+  const last = chapter.items.at(-1);
+  const closing = last && isChapterWide(chapter, last) ? last : null;
+  const listed = closing ? chapter.items.slice(0, -1) : chapter.items;
   return (
     <div className="h-full overflow-y-auto">
       <article className="settle mx-auto max-w-[46rem] px-6 pb-24 pt-10 sm:px-8">
@@ -50,15 +54,11 @@ export function ChapterPage({ id }: { id: string }) {
           </div>
         ) : null}
         <ol className="mt-8 divide-y divide-line overflow-hidden rounded-lg border border-line bg-sheet">
-          {chapter.items.map((item, i) => {
-            const before = chapter.items[i - 1]?.sectionId ?? null;
-            const section = item.sectionId !== before ? chapter.sections.find((s) => s.id === item.sectionId) : undefined;
-            // Leaving the sections (the checklist that ends the chapter): a break without a title, so it does not look like part of the last one.
-            const leaving = item.sectionId === null && before !== null;
+          {listed.map((item, i) => {
+            const section = item.sectionId !== (listed[i - 1]?.sectionId ?? null) ? chapter.sections.find((s) => s.id === item.sectionId) : undefined;
             return (
               <Fragment key={item.id}>
                 {section ? <SectionRow title={section.title} adventure={adventureOfSection(outline, chapter, section.id)} /> : null}
-                {leaving ? <li aria-hidden className="h-2 bg-paper/60" /> : null}
                 <li>
                   <ItemRow item={item} state={state} />
                 </li>
@@ -66,6 +66,12 @@ export function ChapterPage({ id }: { id: string }) {
             );
           })}
         </ol>
+        {closing ? (
+          <section aria-label={t.wholeChapterHeading} className="mt-4 overflow-hidden rounded-lg border border-line bg-sheet">
+            <h2 className="border-b border-line bg-paper/60 px-4 py-2 text-[13px] font-semibold">{t.wholeChapterHeading}</h2>
+            <ItemRow item={closing} state={state} />
+          </section>
+        ) : null}
       </article>
     </div>
   );

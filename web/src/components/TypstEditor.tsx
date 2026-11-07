@@ -6,7 +6,6 @@ import type { EditorVariant } from '@/lib/editor';
 import { useT } from '@/lib/i18n';
 import { readPref, writePref } from '@/lib/shell';
 import { useMediaQuery } from '@/lib/useActiveTime';
-import { useDebouncedCallback } from '@/lib/useDebounced';
 import { CodeEditor } from './CodeEditor';
 import { Prose } from './Prose';
 import { IconButton, ResizeHandle, clsx } from './ui';
@@ -17,8 +16,9 @@ const KEY = 'wb-typst-layout';
 
 /**
  * A Typst source with a live preview, rendered by the server with the same
- * renderer as the exercises, so math and code look identical. The preview trails
- * a little behind, so it never blocks typing. Used for notes and text answers.
+ * renderer as the exercises, so math and code look identical. It follows every
+ * change (a render takes the server milliseconds) without ever blocking typing.
+ * Used for notes and text answers.
  */
 export function TypstEditor({
   value,
@@ -38,8 +38,10 @@ export function TypstEditor({
 }) {
   const t = useT();
   const [layout, setLayoutState] = useState<Layout>(() => readPref(KEY, LAYOUTS, 'stacked'));
+  // The last render that compiled. It stays up while the text in between does not, like a half-typed `$…$`.
   const [preview, setPreview] = useState<NotePreview | null>(null);
-  const seq = useRef(0);
+  const [errors, setErrors] = useState<NotePreview['diagnostics']>([]);
+  const [showErrors, setShowErrors] = useState(false);
   // Side by side does not fit a phone. The choice is kept for when there is room again.
   const roomy = useMediaQuery('(min-width: 900px)');
   const effective: Layout = layout === 'side' && !roomy ? 'stacked' : layout;
@@ -49,30 +51,68 @@ export function TypstEditor({
     writePref(KEY, l);
   };
 
-  const render = useDebouncedCallback((v: string) => {
-    const mine = ++seq.current;
-    previewNote(v).then(
-      (p) => mine === seq.current && setPreview(p),
-      () => undefined,
-    );
-  }, 450);
+  // Rendering takes the server a few milliseconds, so every change goes out at once.
+  // Only one request is on its way at a time; what is typed meanwhile waits, and only the newest text.
+  const inFlight = useRef(false);
+  const waiting = useRef<string | null>(null);
+  const generation = useRef(0);
+  const send = (v: string) => {
+    inFlight.current = true;
+    const mine = generation.current;
+    previewNote(v)
+      .then(
+        (p) => {
+          if (mine !== generation.current) return;
+          const errs = p.diagnostics.filter((d) => d.severity === 'error');
+          setErrors(errs);
+          if (!errs.length) setPreview(p);
+        },
+        () => undefined,
+      )
+      .finally(() => {
+        inFlight.current = false;
+        const next = waiting.current;
+        waiting.current = null;
+        if (next !== null) send(next);
+      });
+  };
 
   useEffect(() => {
-    if (value.trim()) render.call(value);
-    else {
-      seq.current++;
+    if (value.trim()) {
+      if (inFlight.current) waiting.current = value;
+      else send(value);
+    } else {
+      // Nothing to show: drop what is on its way.
+      generation.current++;
+      waiting.current = null;
       setPreview(null);
+      setErrors([]);
     }
     // Also runs when the text is replaced from outside: a restored version, a reset.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
-  const errors = preview?.diagnostics.filter((d) => d.severity === 'error') ?? [];
+  // An answer that arrives after the editor is gone has nowhere to go.
+  useEffect(
+    () => () => {
+      generation.current++;
+      waiting.current = null;
+    },
+    [],
+  );
+
+  // Errors come and go while typing. They only show once they have stayed for a moment, or when there is nothing else to show.
+  useEffect(() => {
+    if (!errors.length) return setShowErrors(false);
+    if (!preview) return setShowErrors(true);
+    const timer = setTimeout(() => setShowErrors(true), 800);
+    return () => clearTimeout(timer);
+  }, [errors, preview]);
 
   const editor = <CodeEditor variant={variant} value={value} onChange={onChange} label={label} wrap lineNumbers={false} placeholder={placeholder} />;
   const pane = (
     <div className="h-full min-h-0 overflow-y-auto bg-paper/40 p-4" aria-label={t.preview}>
-      {errors.length ? (
+      {showErrors && errors.length ? (
         <ul className="mb-3 rounded-md bg-danger-soft px-3 py-2 text-[13px] text-danger">
           {errors.map((e, i) => (
             <li key={i}>
@@ -82,8 +122,8 @@ export function TypstEditor({
           ))}
         </ul>
       ) : null}
-      {preview && !errors.length ? (
-        <Prose html={preview.html} css={preview.css} className="prose-note" />
+      {preview ? (
+        <Prose html={preview.html} css={preview.css} className={clsx('prose-note transition-opacity', showErrors && errors.length > 0 && 'opacity-60')} />
       ) : !errors.length ? (
         <p className="text-sm text-ink-3">{value.trim() ? t.rendering : t.previewHere}</p>
       ) : null}

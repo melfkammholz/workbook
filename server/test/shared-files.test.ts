@@ -89,6 +89,12 @@ describe('content: shared files', () => {
     expect(a.fullSolution['Expr.hs']).toContain('simplify (Add a b)');
   });
 
+  it('tells the browser which of the shared files an exercise works in', () => {
+    expect(example.exercise('rechner-auswerten')!.meta.code!.edits).toEqual(['Expr.hs']);
+    expect(example.exercise('rechner-anzeigen')!.meta.code!.edits).toEqual(['Pretty.hs']);
+    expect(example.exercise('binary-exponentiation')!.meta.code!.edits).toEqual(['BinaryExponentiation.hs']);
+  });
+
   it('marks a thread with a page as an adventure, and leaves others as paths', () => {
     const byId = new Map(example.outline.threads.map((t) => [t.id, t]));
     expect(byId.get('taschenrechner')!.adventure).toBe(true);

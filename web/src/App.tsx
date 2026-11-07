@@ -1,4 +1,4 @@
-import { ChevronsUpDown, CircleHelp, ClipboardList, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon, X } from 'lucide-react';
+import { ChevronsUpDown, CircleHelp, ClipboardList, Menu, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Route, Router, Switch, useLocation, useRoute } from 'wouter';
 import { useHashLocation } from 'wouter/use-hash-location';
@@ -223,6 +223,18 @@ function CourseShell() {
               <span className="block h-full rounded-full bg-done transition-[width]" style={{ width: `${totals.total ? (totals.done / totals.total) * 100 : 0}%` }} />
             </span>
           </div>
+          {/* The meadow is worth coming back to, so it is one click away from anywhere. */}
+          {achievementsOn ? (
+            <Link
+              href="/achievements"
+              className={clsx('inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk hover:text-ink', location === '/achievements' ? 'bg-sunk text-ink' : 'text-ink-2')}
+              aria-label={t.achievementsAndFriends}
+              aria-current={location === '/achievements' ? 'page' : undefined}
+              title={t.achievementsAndFriends}
+            >
+              <PawPrint size={18} />
+            </Link>
+          ) : null}
           <Link href="/review" className="inline-flex size-8 items-center justify-center rounded-md text-ink-2 hover:bg-sunk hover:text-ink" aria-label={t.review} title={t.review}>
             <ClipboardList size={18} />
           </Link>

@@ -146,10 +146,13 @@ export function createMeadow(o: MeadowOptions): Meadow {
     if (y < HZ + 6 || y > H - 3) return false;
     const pond = inPond(x, y, 1.02), sea = inSea(x + 4, y);
     switch (a.move) {
-      case 'swim':
+      case 'swim': {
         if (a.water === 'pond') return inEll(POND, x, y, 0.95);
-        if (a.water === 'far') return inSea(x - 160, y) && y < HZ + 56 && !inFloe(x, y, 1.4);
-        return inSea(x - 14, y) && !inFloe(x, y, 1.15);
+        // the whole body, not just its middle, keeps clear of the ice
+        const fx = (x - FLOE.cx) / (FLOE.rx + half(a, y) * 0.9), fy = (y - FLOE.cy) / (FLOE.ry + deep(a, y) + 10);
+        if (fx * fx + fy * fy < 1) return false;
+        return a.water === 'far' ? inSea(x - 160, y) && y < HZ + 56 : inSea(x - 14, y);
+      }
       case 'amph': return a.water === 'sea' ? !pond && x > shoreX(y) - 75 : !sea;
       case 'wade': return !pond && !inSea(x - 45, y);
       default:

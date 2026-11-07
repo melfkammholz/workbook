@@ -1,5 +1,5 @@
 import * as Popover from '@radix-ui/react-popover';
-import { ChevronDown, ChevronUp, Clock, Download, GitCompare, History, MoreHorizontal, Repeat, RotateCcw, Eye, Lock } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clock, Download, GitCompare, History, MoreHorizontal, Repeat, RotateCcw, Eye, Lock, PencilLine } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Panel, usePanelRef } from 'react-resizable-panels';
 import type { CheckRun, ExerciseMeta, ItemDetail } from '@wb/shared';
@@ -52,7 +52,9 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
   const language = code?.language ?? meta.scratch ?? null;
   const runnable = code ? code.runnable : !!meta.scratch;
   const slots = code?.files ?? ['text'];
-  const [slot, setSlot] = useState(slots[0]!);
+  // In shared files, only some are this exercise's to change. Marked only when that is a real choice.
+  const edits = code && code.edits.length > 0 && code.edits.length < slots.length ? new Set(code.edits) : null;
+  const [slot, setSlot] = useState(code?.edits[0] ?? slots[0]!);
   // A support file is only looked at, so it stays apart from `slot`, which everything that saves relies on.
   const supportFiles = Object.keys(detail.support);
   const [viewing, setViewing] = useState<string | null>(null);
@@ -110,19 +112,22 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCode]);
 
+  // A text answer rarely needs the interpreter, so there it always starts collapsed, and opening it there is not remembered.
+  const rememberPanel = isCode;
+  const startCollapsed = !isCode || readPref(COLLAPSED_KEY, ['open', 'collapsed'], 'open') === 'collapsed';
   // Only an explicit choice is remembered: the panel also reports sizes while it mounts.
   const toggleBottom = () => {
     const expand = panel.current?.isCollapsed();
     if (expand) panel.current?.expand();
     else panel.current?.collapse();
-    writePref(COLLAPSED_KEY, expand ? 'open' : 'collapsed');
+    if (rememberPanel) writePref(COLLAPSED_KEY, expand ? 'open' : 'collapsed');
   };
   /** Opening a tab should show it. */
   const showBottom = (b: BottomTab) => {
     setBottom(b);
     if (panel.current?.isCollapsed()) {
       panel.current.expand();
-      writePref(COLLAPSED_KEY, 'open');
+      if (rememberPanel) writePref(COLLAPSED_KEY, 'open');
     }
   };
 
@@ -262,11 +267,11 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
           variant="code"
         />
       ) : (
-        <TypstEditor key={fresh} value={text} onChange={change} label={t.yourAnswer} placeholder={t.answerPlaceholder} variant="prose" />
+        <TypstEditor key={fresh} value={text} onChange={change} label={t.yourAnswer} placeholder={t.answerPlaceholder} variant="notes" status={savedLabel} />
       ),
     // `check` closes over text; the editor itself only needs to be rebuilt when these change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [text, change, isCode, language, inThisFile, slot, code?.hasCheck, t, fresh, viewing, detail.support],
+    [text, change, isCode, language, inThisFile, slot, code?.hasCheck, t, fresh, viewing, detail.support, savedLabel],
   );
 
   return (
@@ -288,9 +293,12 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
         </div>
         {tab === 'answer' && viewing === null ? (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-ink-3" aria-live="polite">
-              {savedLabel}
-            </span>
+            {/* A text answer shows this in its editor's toolbar, like notes do. */}
+            {isCode ? (
+              <span className="text-xs text-ink-3" aria-live="polite">
+                {savedLabel}
+              </span>
+            ) : null}
             <IconButton label={isCode ? t.downloadCode : t.downloadAnswer} onClick={download}>
               <Download size={16} />
             </IconButton>
@@ -312,19 +320,28 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
         <div role="tablist" aria-label={t.files} className="flex shrink-0 gap-1 overflow-x-auto border-b border-line bg-paper/60 px-2 py-1">
           {slots.map((s) => {
             const errors = diagnostics?.filter((d) => d.file === s && d.severity === 'error').length ?? 0;
+            const mine = edits?.has(s);
+            const selected = viewing === null && slot === s;
             return (
               <button
                 key={s}
                 role="tab"
-                aria-selected={viewing === null && slot === s}
+                aria-selected={selected}
+                title={edits ? (mine ? t.editsFile : t.otherFile) : undefined}
                 onClick={() => {
                   save.flush();
                   setSlot(s);
                   setViewing(null);
                 }}
-                className={clsx('whitespace-nowrap rounded px-2 py-1 font-mono text-[12px]', viewing === null && slot === s ? 'bg-sheet font-medium text-ink shadow-sm' : 'text-ink-3 hover:text-ink-2')}
+                className={clsx(
+                  'inline-flex items-center gap-1 whitespace-nowrap rounded px-2 py-1 font-mono text-[12px]',
+                  selected ? 'bg-sheet font-medium text-ink shadow-sm' : mine ? 'text-ink-2 hover:text-ink' : 'text-ink-3 hover:text-ink-2',
+                  edits && !mine && !selected && 'opacity-70',
+                )}
               >
+                {mine ? <PencilLine size={11} className="text-accent" aria-hidden /> : null}
                 {s}
+                {edits ? <span className="sr-only">{` (${mine ? t.editsFile : t.otherFile})`}</span> : null}
                 {errors ? <span className="ml-1.5 rounded-full bg-danger-soft px-1.5 font-sans text-danger">{errors}</span> : null}
               </button>
             );
@@ -346,6 +363,13 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
               <span className="sr-only">{` (${t.readOnlyFile})`}</span>
             </button>
           ))}
+        </div>
+      ) : null}
+
+      {edits && !edits.has(slot) && viewing === null && tab === 'answer' ? (
+        <div className="flex shrink-0 items-center gap-2 border-b border-line bg-paper/60 px-4 py-2 text-[13px] text-ink-2">
+          <PencilLine size={14} className="shrink-0 text-accent" aria-hidden />
+          <span className="min-w-0">{t.notThisFile([...edits].join(', '))}</span>
         </div>
       ) : null}
 
@@ -372,8 +396,8 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
             <ResizeHandle direction="column" />
             <Panel
               panelRef={panel}
-              // A collapsed panel stays collapsed across exercises.
-              defaultSize={readPref(COLLAPSED_KEY, ['open', 'collapsed'], 'open') === 'collapsed' ? TAB_ROW_PX : '38'}
+              // A collapsed panel stays collapsed across exercises with code.
+              defaultSize={startCollapsed ? TAB_ROW_PX : '38'}
               minSize="15"
               collapsible
               collapsedSize={TAB_ROW_PX}

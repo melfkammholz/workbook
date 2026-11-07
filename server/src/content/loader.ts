@@ -418,6 +418,8 @@ export function loadContent(dir: string): Content {
             runnable: code.runnable,
             files: Object.keys(code.files),
             shared: code.shared,
+            // `#ifdef TEMPLATE <ids>` says which parts of a shared file are whose.
+            edits: code.shared ? Object.keys(code.reveal) : Object.keys(code.files),
             hasCheck: code.check !== null,
             hasSolution: Object.keys(code.reveal).length > 0,
             options: code.options,

@@ -148,6 +148,7 @@ const en = {
 
   // achievements
   achievements: 'Achievements',
+  achievementsAndFriends: 'Achievements and friends',
   showAchievements: 'Show achievements',
   showAchievementsBody: 'Achievements, animal friends, a plant that grows with each chapter, and small celebrations. Optional, and you can change it any time.',
   achievementsIntro: 'For good habits, not for speed. Once earned, they stay yours.',
@@ -234,9 +235,13 @@ const en = {
   checklistRating: 'How confident are you?',
   checklistNote: 'Anything you want to add? Optional.',
   checklistsHeading: 'From your self-evaluations',
+  wholeChapterHeading: 'Looking back on the whole chapter',
   // shared files
   files: 'Files',
   readOnlyFile: 'Read-only',
+  editsFile: 'Your work for this exercise goes here',
+  otherFile: 'Shared with the other exercises, nothing to change here for this one',
+  notThisFile: (files: string) => `Nothing to change here for this exercise. Your work goes in ${files}.`,
   resetsSharedFile: (file: string) => `This resets all of ${file}, including what you wrote there for other exercises.`,
   // issues
   reportProblem: 'Report a problem with this',
@@ -720,6 +725,7 @@ const de: Strings = {
   explainErrorHint: 'Öffnet den Haskell Error Index, auf Englisch, mit Beispielen für diesen Fehler und wie man ihn behebt.',
 
   achievements: 'Erfolge',
+  achievementsAndFriends: 'Erfolge und Freunde',
   showAchievements: 'Erfolge anzeigen',
   showAchievementsBody: 'Erfolge, tierische Freunde, eine Pflanze, die mit jedem Kapitel wächst, und kleine Feiermomente. Freiwillig, und du kannst es jederzeit ändern.',
   achievementsIntro: 'Für gute Gewohnheiten, nicht für Geschwindigkeit. Einmal verdient, bleiben sie dir.',
@@ -803,8 +809,12 @@ const de: Strings = {
   checklistRating: 'Wie sicher bist du dir?',
   checklistNote: 'Möchtest du etwas ergänzen? Optional.',
   checklistsHeading: 'Aus deinen Selbstevaluationen',
+  wholeChapterHeading: 'Rückblick auf das ganze Kapitel',
   files: 'Dateien',
   readOnlyFile: 'Nur zum Lesen',
+  editsFile: 'Hier arbeitest du in dieser Aufgabe',
+  otherFile: 'Gehört auch zu den anderen Aufgaben, hier änderst du für diese nichts',
+  notThisFile: (files) => `Für diese Aufgabe änderst du hier nichts. Deine Arbeit gehört in ${files}.`,
   resetsSharedFile: (file) => `Das setzt ganz ${file} zurück, auch was du dort für andere Aufgaben geschrieben hast.`,
   reportProblem: 'Ein Problem hiermit melden',
   issueTitle: (title) => `Problem mit „${title}“`,

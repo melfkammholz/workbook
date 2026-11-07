@@ -19,6 +19,8 @@ export interface CodeSpec {
   files: string[];
   /** The adventure or thread whose files these are; the work in them is shared with its other exercises. */
   shared: string | null;
+  /** The files this exercise's own work goes in: all of `files`, or for shared files those with a part for it. */
+  edits: string[];
   hasCheck: boolean;
   hasSolution: boolean;
   /** Extra interpreter flags, e.g. ["-XLambdaCase"]. */
