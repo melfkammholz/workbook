@@ -23,6 +23,8 @@ course is a git repository that you add in the app.
 * **Exercises with a place to work next to them.** Written answers go into an answer field with a preview.
   Programming exercises get an editor, and the code is loaded into a running interpreter (`ghci` or SWI-Prolog) every
   time you change it, so you can try expressions or queries right away.
+* **A wide layout.** For exercises with code, the task can fold into a strip, so that the editor takes the middle and
+  feedback moves to the right. For an SLD tree that is where its picture is drawn as you write.
 * **Tests on demand.** If an exercise comes with tests, you can run them whenever you like. Passing tests never mark
   an exercise as done. You decide that.
 * **Hints and reference solutions.** You open hints one by one, and the solution only when you ask for it.

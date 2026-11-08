@@ -1,5 +1,7 @@
 // Types shared by server and web. Keep this file free of runtime dependencies.
 
+import type { SldTree } from './sld';
+
 // ───────────────────────── content model ─────────────────────────
 
 /**
@@ -563,7 +565,14 @@ export type ReplClientMessage =
 export type ReplServerMessage =
   | { type: 'ready' }
   | { type: 'output'; text: string }
-  | { type: 'loaded'; ok: boolean; diagnostics: Diagnostic[]; durationMs: number }
+  | {
+      type: 'loaded';
+      ok: boolean;
+      diagnostics: Diagnostic[];
+      durationMs: number;
+      /** SLD trees: the tree as written (the editor's preview). Null when it cannot be read or there is none yet, absent when sldcheck cannot say. */
+      sldTree?: SldTree | null;
+    }
   | { type: 'busy'; busy: boolean }
   | { type: 'exit'; reason: string }
   /** Null when there is no answer: not a term, not compiled, or the interpreter is busy. */
@@ -808,3 +817,4 @@ Antworte auf Deutsch, in reinem Text ohne Markdown.
 </deck>`,
 };
 export * from './cards';
+export * from './sld';

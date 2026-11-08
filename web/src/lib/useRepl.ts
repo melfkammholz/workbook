@@ -1,4 +1,4 @@
-import type { Diagnostic, ReplClientMessage, ReplServerMessage, TypeInfo } from '@wb/shared';
+import type { Diagnostic, ReplClientMessage, ReplServerMessage, SldTree, TypeInfo } from '@wb/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface TypeSpan {
@@ -24,6 +24,10 @@ export interface ReplState {
   loading: boolean;
   log: LogLine[];
   exitReason: string | null;
+  /** SLD trees: the last tree that could be read. Null: none yet. Undefined: sldcheck cannot print trees. */
+  sldTree: SldTree | null | undefined;
+  /** The text now cannot be read, so `sldTree` is from before. */
+  sldStale: boolean;
 }
 
 const MAX_LOG_CHARS = 200_000;
@@ -33,7 +37,7 @@ const MAX_LOG_CHARS = 200_000;
  * every change: the server coalesces, and only the newest version is compiled.
  */
 export function useRepl(exerciseId: string, enabled: boolean) {
-  const [state, setState] = useState<ReplState>({ connection: 'connecting', busy: false, loaded: null, loading: false, log: [], exitReason: null });
+  const [state, setState] = useState<ReplState>({ connection: 'connecting', busy: false, loaded: null, loading: false, log: [], exitReason: null, sldTree: undefined, sldStale: false });
   const ws = useRef<WebSocket | null>(null);
   const latest = useRef<Record<string, string> | null>(null);
   const outstanding = useRef(0);
@@ -45,7 +49,7 @@ export function useRepl(exerciseId: string, enabled: boolean) {
 
   useEffect(() => {
     if (!enabled) return;
-    setState({ connection: 'connecting', busy: false, loaded: null, loading: false, log: [], exitReason: null });
+    setState({ connection: 'connecting', busy: false, loaded: null, loading: false, log: [], exitReason: null, sldTree: undefined, sldStale: false });
     outstanding.current = 0;
     ready.current = false;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -73,8 +77,12 @@ export function useRepl(exerciseId: string, enabled: boolean) {
             return { ...s, log: appendOut(s.log, m.text) };
           case 'busy':
             return { ...s, busy: m.busy };
-          case 'loaded':
-            return { ...s, loaded: { ok: m.ok, diagnostics: m.diagnostics, durationMs: m.durationMs }, loading: outstanding.current > 0 };
+          case 'loaded': {
+            // A text that cannot be read has no tree: the one from before stays, marked, until it can be read again.
+            const unreadable = m.sldTree === null && !m.ok;
+            const sldTree = m.sldTree === undefined || unreadable ? s.sldTree : m.sldTree;
+            return { ...s, loaded: { ok: m.ok, diagnostics: m.diagnostics, durationMs: m.durationMs }, sldTree, sldStale: unreadable, loading: outstanding.current > 0 };
+          }
           case 'exit':
             return { ...s, connection: 'closed', busy: false, loading: false, exitReason: m.reason };
         }

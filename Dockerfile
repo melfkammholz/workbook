@@ -64,7 +64,7 @@ RUN case "${TARGETARCH:-amd64}" in amd64) t=x86_64;; arm64) t=aarch64;; *) echo 
 # sldcheck checks the SLD trees students draw (https://github.com/melfkammholz/sldcheck). It needs nothing but the
 # libraries that come with GHC, so ghc builds it directly. A tag, so that a rebuild gives the same checker; its own
 # example is the test that it works.
-ARG SLDCHECK_REF=v0.2.0.0
+ARG SLDCHECK_REF=v0.3.0.0
 RUN git clone --quiet --depth 1 --branch ${SLDCHECK_REF} https://github.com/melfkammholz/sldcheck /tmp/sldcheck \
  && ghc -O1 -i/tmp/sldcheck/src -outputdir /tmp/sldcheck-build /tmp/sldcheck/app/Main.hs -o /usr/local/bin/sldcheck \
  && sldcheck /tmp/sldcheck/examples/member.sld /tmp/sldcheck/examples/member.pl \

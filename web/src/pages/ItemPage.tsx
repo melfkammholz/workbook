@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
+import { BookOpen } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Group, Panel } from 'react-resizable-panels';
+import { Group, Panel, usePanelRef } from 'react-resizable-panels';
 import { useLocation } from 'wouter';
 import type { HowSolved, Status } from '@wb/shared';
 import { ConfirmDialog } from '@/components/Dialogs';
@@ -9,10 +10,11 @@ import { ExerciseView } from '@/components/ExerciseView';
 import { MakeCardDialog } from '@/components/MakeCardDialog';
 import { ReflectionDialog, type ReflectionInput, type ReflectionMode } from '@/components/ReflectionDialog';
 import { TaskColumn } from '@/components/TaskColumn';
-import { Button, Empty, ResizeHandle, Spinner, clsx } from '@/components/ui';
+import { Button, Empty, IconButton, ResizeHandle, Spinner, clsx } from '@/components/ui';
 import { api, indexItems, itemHref, keys, neighbours, postReflection, recordHints, recordOpen, resetTimer, saveOpenQuestion, statusOf, useItem, useOutline, useSetStatus, useSettings, useState_, useWork, whatsNext, type Work } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useActiveTime, useMediaQuery } from '@/lib/useActiveTime';
+import { useWorkLayout } from '@/lib/workLayout';
 import { plainTitle } from '@/components/Title';
 
 export function ItemPage({ id, group = null }: { id: string; group?: string | null }) {
@@ -37,6 +39,9 @@ export function ItemPage({ id, group = null }: { id: string; group?: string | nu
   return <Loaded key={id} id={id} group={group} />;
 }
 
+/** The width of the strip the task folds into, in the wide layout. */
+const TASK_STRIP_PX = 44;
+
 function Loaded({ id, group }: { id: string; group: string | null }) {
   const t = useT();
   const qc = useQueryClient();
@@ -48,6 +53,17 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
   const setStatus = useSetStatus();
   const { map } = useMemo(() => indexItems(outline), [outline]);
   const wide = useMediaQuery('(min-width: 1024px)');
+  // The wide layout folds the task into a strip; it opens over the editor, for as long as it is needed.
+  const [workLayout] = useWorkLayout();
+  const [taskOpen, setTaskOpen] = useState(false);
+  const taskPanel = usePanelRef();
+  useEffect(() => setTaskOpen(false), [id]);
+  useEffect(() => {
+    if (!taskOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setTaskOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [taskOpen]);
   const [pane, setPane] = useState<'task' | 'work'>('task');
   const [reflecting, setReflecting] = useState<ReflectionMode | null>(null);
   const [suggestedHow, setSuggestedHow] = useState<HowSolved[]>(['alone']);
@@ -62,6 +78,14 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
 
   const meta = detail.meta;
   const ex = meta.type === 'exercise' ? meta : null;
+  // The wide layout is the same panels with the task folded into a strip, so that nothing in the workspace is rebuilt.
+  const strip = wide && workLayout === 'wide' && !!ex?.code?.runnable;
+  useEffect(() => {
+    const p = taskPanel.current;
+    if (!p) return;
+    if (strip) p.collapse();
+    else if (p.isCollapsed()) p.expand();
+  }, [strip, taskPanel]);
   const status = statusOf(state, id);
   // Until the status is known, an already finished exercise must not start counting.
   const stateUnknown = state === undefined;
@@ -271,6 +295,7 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
         onHint={() => {
           revealHint(revealed + 1);
           setPane('task');
+          setTaskOpen(true);
           // After the new hint has rendered.
           requestAnimationFrame(() => document.getElementById('wb-hints')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
         }}
@@ -332,16 +357,34 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
       {bar}
       {banner}
       {invitation}
-      <div className="min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1">
         <Group orientation="horizontal" className="h-full">
-          <Panel defaultSize="46" minSize="28">
-            {task}
+          <Panel panelRef={taskPanel} defaultSize={strip ? TASK_STRIP_PX : '46'} minSize="28" collapsible collapsedSize={TASK_STRIP_PX}>
+            {strip ? (
+              <div className="flex h-full flex-col items-center gap-3 bg-sheet py-2">
+                <IconButton label={taskOpen ? t.hideTask : t.showTask} aria-pressed={taskOpen} onClick={() => setTaskOpen((open) => !open)}>
+                  <BookOpen size={17} />
+                </IconButton>
+                <span className="rotate-180 select-none text-xs font-medium tracking-wide text-ink-3 [writing-mode:vertical-rl]">{t.taskRail}</span>
+              </div>
+            ) : (
+              task
+            )}
           </Panel>
-          <ResizeHandle direction="row" />
+          <ResizeHandle direction="row" disabled={strip} />
           <Panel defaultSize="54" minSize="28">
             {workspace}
           </Panel>
         </Group>
+        {strip && taskOpen ? (
+          // The task opens over the editor for as long as it is needed.
+          <>
+            <button type="button" aria-label={t.hideTask} className="absolute inset-y-0 right-0 z-20 cursor-default bg-ink/20" style={{ left: TASK_STRIP_PX }} onClick={() => setTaskOpen(false)} />
+            <div role="dialog" aria-label={t.taskRail} className="absolute inset-y-0 z-30 w-[min(42rem,88%)] border-r border-line-strong bg-sheet shadow-[var(--shadow)]" style={{ left: TASK_STRIP_PX }}>
+              {task}
+            </div>
+          </>
+        ) : null}
       </div>
       {dialog}
     </div>

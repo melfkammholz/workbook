@@ -12,6 +12,19 @@ export function hasSldcheck(bin: string): boolean {
   return spawnSync(bin, ['--version'], { stdio: 'ignore' }).status === 0;
 }
 
+/** The version `sldcheck --version` prints, as numbers; null if it cannot say. */
+export function sldcheckVersion(bin: string): number[] | null {
+  const r = spawnSync(bin, ['--version'], { encoding: 'utf8' });
+  const m = r.status === 0 ? /(\d+(?:\.\d+)*)/.exec(r.stdout) : null;
+  return m ? m[1]!.split('.').map(Number) : null;
+}
+
+/** sldcheck 0.3 or newer: the first that prints the tree as JSON (`--tree`). */
+export function hasSldcheckTree(bin: string): boolean {
+  const v = sldcheckVersion(bin);
+  return v !== null && (v[0]! > 0 || v[1]! >= 3);
+}
+
 export function hasBinary(bin: string): boolean {
   try {
     execFileSync(bin, ['--version'], { stdio: 'ignore' });

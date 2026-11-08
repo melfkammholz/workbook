@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import type { Diagnostic, TypeInfo } from '@wb/shared';
+import type { Diagnostic, SldTree, TypeInfo } from '@wb/shared';
 import { loadSucceeded, parseGhcDiagnostics } from './diagnostics.js';
 import { syncFiles } from './files.js';
 import { PipeRepl } from './repl.js';
@@ -22,6 +22,8 @@ export interface LoadResult {
   ok: boolean;
   diagnostics: Diagnostic[];
   durationMs: number;
+  /** SLD trees only: the tree as written, for the preview. Null when there is none to show, absent when sldcheck cannot say. */
+  sldTree?: SldTree | null;
 }
 
 /** Only names go to `:doc`: it is the one place where text from the editor reaches the interpreter. */

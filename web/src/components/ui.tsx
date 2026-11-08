@@ -251,9 +251,9 @@ export function Spinner({ className }: { className?: string }) {
 }
 
 /** The handle between two resizable panels. A wide invisible hit area around a thin line. */
-export function ResizeHandle({ direction }: { direction: 'row' | 'column' }) {
+export function ResizeHandle({ direction, disabled }: { direction: 'row' | 'column'; disabled?: boolean }) {
   return (
-    <Separator className={clsx('relative shrink-0 bg-line transition-colors hover:bg-accent data-[separator=active]:bg-accent', direction === 'row' ? 'w-px' : 'h-px')}>
+    <Separator disabled={disabled} className={clsx('relative shrink-0 bg-line transition-colors', !disabled && 'hover:bg-accent data-[separator=active]:bg-accent', direction === 'row' ? 'w-px' : 'h-px')}>
       <span className={clsx('absolute', direction === 'row' ? 'inset-y-0 -inset-x-1.5' : 'inset-x-0 -inset-y-1.5')} />
     </Separator>
   );

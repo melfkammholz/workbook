@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
-import { SLD_TREE_TEST, type CheckRun, type Diagnostic } from '@wb/shared';
+import { SLD_TREE_TEST, type CheckRun, type Diagnostic, type SldNode, type SldStepKind, type SldTree } from '@wb/shared';
 import type { ServerCode } from '../content/loader.js';
 import { syncFiles } from './files.js';
 import { runProcess } from './haskell-check.js';
@@ -13,8 +13,9 @@ import type { ReplEvents } from './repl.js';
  * `sldcheck` (https://github.com/melfkammholz/sldcheck, version 0.2 or newer) checks an SLD tree written in its
  * notation against a Prolog program. `sldcheck --json TREE PROGRAM` prints a JSON object `{ version, diagnostics:
  * [{ severity, code, file, line, column, endLine, endColumn, message }] }` and exits with 0 (no errors) or 1 (errors).
- * A syntax error is a diagnostic too (`S001` in the tree, `S002` in the program), with exit status 2. `--syntax` only
- * reads the tree, which is all the live check needs.
+ * A syntax error is a diagnostic too (`S001` in the tree, `S002` in the program), with exit status 2. `--tree TREE`
+ * (0.3 or newer) prints the tree it read as JSON, which is what the live check needs: the syntax errors, and the picture.
+ * Before that, `--syntax` was all it could do.
  */
 
 interface Finding {
@@ -55,6 +56,38 @@ export function parseFindings(stdout: string): Finding[] | null {
   return out;
 }
 
+const STEP_KINDS: readonly string[] = ['resolve', 'builtin', 'cut', 'negation', 'negation-fails', 'pruned', 'no-rule', 'builtin-fails', 'fails'];
+const isObject = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
+const isBindings = (x: unknown): boolean => Array.isArray(x) && x.every((b) => isObject(b) && typeof b.var === 'string' && typeof b.term === 'string');
+
+function isNode(x: unknown): x is SldNode {
+  if (!isObject(x) || typeof x.line !== 'number' || typeof x.column !== 'number' || typeof x.goal !== 'string') return false;
+  if (x.name !== null && typeof x.name !== 'string') return false;
+  if (x.answer !== null && !isBindings(x.answer)) return false;
+  return Array.isArray(x.steps) && x.steps.every(isStep);
+}
+
+function isStep(x: unknown): boolean {
+  if (!isObject(x) || typeof x.line !== 'number' || typeof x.column !== 'number' || !STEP_KINDS.includes(x.kind as SldStepKind)) return false;
+  for (const key of ['rule', 'tree', 'predicate', 'by', 'ref'])
+    if (x[key] !== undefined && typeof x[key] !== 'string') return false;
+  if (x.clause !== undefined && typeof x.clause !== 'number') return false;
+  if (x.subst !== undefined && !isBindings(x.subst)) return false;
+  return x.child === null || isNode(x.child);
+}
+
+/** The tree of `--tree`, or null when the output is not what is expected. */
+export function parseSldTree(stdout: string): SldTree | null {
+  let json: unknown;
+  try {
+    json = JSON.parse(stdout);
+  } catch {
+    return null;
+  }
+  if (!isObject(json) || !(json.tree === null || isNode(json.tree)) || !Array.isArray(json.negations) || !json.negations.every(isNode)) return null;
+  return { tree: json.tree, negations: json.negations };
+}
+
 /** A syntax error that came as a diagnostic: `S001` is in the tree, `S002` in the program. */
 function inputProblemOf(findings: Finding[]): InputProblem | null {
   const f = findings.find((x) => x.code === 'S001' || x.code === 'S002');
@@ -81,21 +114,35 @@ function diagnostic(file: string, tree: string, f: { severity: 'error' | 'warnin
 
 export type SldOutcome =
   | { kind: 'findings'; findings: Finding[] }
+  | { kind: 'tree'; tree: SldTree }
   | { kind: 'syntax'; problem: InputProblem }
   | { kind: 'program'; problem: InputProblem }
   | { kind: 'failed'; message: string }
   | { kind: 'stopped' };
 
 /** Writes the tree and the program into `dir` and runs `sldcheck` there. */
-export async function runSldcheck(o: { bin: string; dir: string; code: ServerCode; tree: string; timeoutMs: number; signal?: AbortSignal; syntaxOnly?: boolean }): Promise<SldOutcome> {
+/** The versions of sldcheck that do not know `--tree`, by command, found out the first time. */
+const withoutTreeOutput = new Set<string>();
+
+export async function runSldcheck(o: { bin: string; dir: string; code: ServerCode; tree: string; timeoutMs: number; signal?: AbortSignal; live?: boolean }): Promise<SldOutcome> {
   const { code, dir } = o;
   if (code.program === null) return { kind: 'failed', message: 'This exercise has no program to check the tree against.' };
   syncFiles(dir, { ...code.support, [code.studentPath]: o.tree });
-  // `--syntax` reads the tree and nothing else, which is quicker. `./`: a file name that starts with a dash must not be taken for an option.
-  const r = await runProcess(o.bin, ['--json', ...(o.syntaxOnly ? ['--syntax'] : []), `./${code.studentPath}`, `./${code.program}`], dir, o.timeoutMs, o.signal);
+  // Live, the tree is only read, which is quicker than checking it. `./`: a file name that starts with a dash must not be taken for an option.
+  const treeOutput = o.live === true && !withoutTreeOutput.has(o.bin);
+  const flags = treeOutput ? ['--tree'] : o.live ? ['--json', '--syntax'] : ['--json'];
+  const r = await runProcess(o.bin, [...flags, `./${code.studentPath}`, `./${code.program}`], dir, o.timeoutMs, o.signal);
+  if (treeOutput && r.code === 2 && r.stderr.includes('unknown option --tree')) {
+    withoutTreeOutput.add(o.bin);
+    return runSldcheck(o);
+  }
   if (r.stopped) return { kind: 'stopped' };
   if (r.spawnError) return { kind: 'failed', message: `Could not start ${o.bin}: ${r.spawnError}` };
   if (r.timedOut) return { kind: 'failed', message: 'The check took too long and was stopped.' };
+  if (treeOutput && r.code === 0) {
+    const tree = parseSldTree(r.stdout);
+    return tree ? { kind: 'tree', tree } : { kind: 'failed', message: `${o.bin} printed something unexpected:\n${r.stdout.slice(0, 400)}` };
+  }
   if (r.code === 0 || r.code === 1) {
     const findings = parseFindings(r.stdout);
     return findings ? { kind: 'findings', findings } : { kind: 'failed', message: `${o.bin} printed something unexpected:\n${r.stdout.slice(0, 400)}` };
@@ -135,6 +182,8 @@ export async function runSldChecks(o: RunSldOptions): Promise<CheckRun> {
         return { ...empty(), stopped: true };
       case 'failed':
         return { ...empty(), runnerError: outcome.message };
+      case 'tree':
+        return { ...empty(), runnerError: 'sldcheck answered with a tree, not with what the tests need.' };
       case 'program':
         return { ...empty(), runnerError: `The program of this exercise has an error (a problem with the exercise, not with your tree):\n${outcome.problem.message}` };
       case 'syntax': {
@@ -186,11 +235,18 @@ export class SldSession extends EventEmitter<ReplEvents> {
     const t0 = Date.now();
     const { code, dir, bin } = this.opts;
     const tree = files[code.studentPath] ?? '';
-    const done = (diagnostics: Diagnostic[]): LoadResult => ({ ok: diagnostics.length === 0, diagnostics, durationMs: Date.now() - t0 });
-    if (this.dead || isBlank(tree)) return done([]);
-    const outcome = await runSldcheck({ bin, dir, code, tree, timeoutMs: 10_000, syntaxOnly: true });
-    if (outcome.kind !== 'syntax') return done([]);
-    return done([diagnostic(code.studentPath, tree, { severity: 'error', code: null, ...outcome.problem })]);
+    const done = (diagnostics: Diagnostic[], sldTree?: SldTree | null): LoadResult => ({
+      ok: diagnostics.length === 0,
+      diagnostics,
+      durationMs: Date.now() - t0,
+      ...(sldTree !== undefined ? { sldTree } : {}),
+    });
+    if (this.dead || isBlank(tree)) return done([], null);
+    const outcome = await runSldcheck({ bin, dir, code, tree, timeoutMs: 10_000, live: true });
+    if (outcome.kind === 'tree') return done([], outcome.tree);
+    // No tree while it cannot be read: the editor keeps showing the last one it had.
+    if (outcome.kind === 'syntax') return done([diagnostic(code.studentPath, tree, { severity: 'error', code: null, ...outcome.problem })], null);
+    return done([]);
   }
 
   /** Nothing to type into. */

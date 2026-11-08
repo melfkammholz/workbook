@@ -5,11 +5,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { SLD_TREE_TEST } from '@wb/shared';
 import { loadContent, type ServerCode } from '../src/content/loader.js';
 import { runChecks } from '../src/runners/checks.js';
-import { SldSession, isBlank, parseFindings } from '../src/runners/sldcheck.js';
-import { EXAMPLE_CONTENT, hasSldcheck } from './helpers.js';
+import { SldSession, isBlank, parseFindings, parseSldTree } from '../src/runners/sldcheck.js';
+import { EXAMPLE_CONTENT, hasSldcheck, hasSldcheckTree } from './helpers.js';
 
 const bin = process.env.SLDCHECK_BIN ?? 'sldcheck';
 const haveSldcheck = hasSldcheck(bin);
+const haveTree = hasSldcheckTree(bin);
 
 describe('reading what sldcheck prints', () => {
   it('reads the diagnostics and refuses anything else', () => {
@@ -26,6 +27,17 @@ describe('reading what sldcheck prints', () => {
     expect(parseFindings('not json')).toBeNull();
     expect(parseFindings('[]')).toBeNull();
     expect(parseFindings('{"diagnostics":[{"severity":"error"}]}')).toBeNull();
+  });
+
+  it('reads the tree of --tree, and refuses anything that is not one', () => {
+    const node = '{"line":2,"column":1,"goal":"p(X)","name":null,"answer":null,"steps":[{"line":3,"column":3,"kind":"resolve","rule":"p(a)","subst":[{"var":"X","term":"a"}],"child":{"line":5,"column":3,"goal":"true","name":"c","answer":[{"var":"X","term":"a"}],"steps":[]}},{"line":6,"column":3,"kind":"pruned","predicate":"p/1","clause":2,"by":"c","child":null}]}';
+    const tree = parseSldTree(`{"version":"0.3.0.0","tree":${node},"negations":[],"diagnostics":[]}`);
+    expect(tree?.tree).toMatchObject({ goal: 'p(X)', steps: [{ kind: 'resolve', rule: 'p(a)', child: { goal: 'true', name: 'c' } }, { kind: 'pruned', clause: 2, child: null }] });
+    expect(parseSldTree('{"tree":null,"negations":[],"diagnostics":[]}')).toEqual({ tree: null, negations: [] });
+    expect(parseSldTree('{"tree":{"line":1},"negations":[]}')).toBeNull();
+    expect(parseSldTree('{"tree":null}')).toBeNull();
+    expect(parseSldTree(`{"tree":${node.replace('"resolve"', '"teleport"')},"negations":[]}`)).toBeNull();
+    expect(parseSldTree('not json')).toBeNull();
   });
 
   it('does not count comments as a tree', () => {
@@ -155,6 +167,27 @@ describe.skipIf(!haveSldcheck)('SldSession', () => {
   it('locates a syntax error where the problem is, when only the syntax is read', async () => {
     const s = open();
     expect(await s.load({ 'member.sld': '?- member(X, [1, 2])\n' })).toMatchObject({ ok: false, diagnostics: [{ line: 1, column: 21, message: expect.stringContaining('end dot') }] });
+  });
+
+  it.skipIf(!haveTree)('sends the tree as written, so that the editor can draw it', async () => {
+    const s = open();
+    const loaded = await s.load({ 'member.sld': code.solution! });
+    expect(loaded).toMatchObject({ ok: true, diagnostics: [], sldTree: { negations: [], tree: { goal: 'member(X, [1, 2]), Y is X + 1', steps: [{ kind: 'resolve' }, { kind: 'resolve' }] } } });
+    // The tree is drawn from what is written, wrong or not: a tree that has only the query is a tree.
+    expect(await s.load({ 'member.sld': code.starter })).toMatchObject({ ok: true, sldTree: { tree: { steps: [] } } });
+  });
+
+  it.skipIf(!haveTree)('has no tree for a syntax error, and none yet for an empty file', async () => {
+    const s = open();
+    expect(await s.load({ 'member.sld': '?- member(X, [1, 2])\n' })).toMatchObject({ ok: false, sldTree: null });
+    expect(await s.load({ 'member.sld': '% nothing yet\n' })).toMatchObject({ ok: true, sldTree: null });
+  });
+
+  it.skipIf(haveTree)('works without a tree with an sldcheck that cannot print it', async () => {
+    const s = open();
+    const loaded = await s.load({ 'member.sld': code.solution! });
+    expect(loaded).toMatchObject({ ok: true, diagnostics: [] });
+    expect('sldTree' in loaded).toBe(false);
   });
 
   it('is not bothered by an empty file', async () => {

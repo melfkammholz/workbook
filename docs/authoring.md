@@ -510,12 +510,21 @@ Students see the program as a read-only tab next to their tree.
 * **While they write**, the first tab of the panel ("Syntax") reports syntax errors with their position, and the editor
   marks the line. Nothing else is shown yet: the missing branches of a tree that is half drawn would give away what the
   exercise asks for.
+* **The picture:** the tree is drawn from what the student wrote, as they write it: goals as boxes, steps as edges with
+  the renamed rule and the substitution, pruned alternatives and failures dashed, the trees of negations below. It shows
+  the tree as it is written, wrong or not, and never completes it. The node at the cursor is marked, a click goes to its
+  line, and the problems found by "Run tests" are marked red or amber. It zooms and pans, and can be saved as SVG. It
+  needs `sldcheck` 0.3 or newer, which prints the tree (`--tree`).
 * **"Run tests"** checks the tree against the program and reports *every* problem found, each with a code (`E022`) and
   what is wrong, marked in the editor. The test is all or nothing: "The tree is correct" passes when there is no error.
   Warnings, for example for a missing answer at a leaf, do not fail it. sldcheck's messages are in English.
 * **`lint --solutions`** checks the reference solution the same way: it must have no error. The starter is not checked.
 * **Hints and samples** are written like in any exercise. Because the checker accepts any correct tree, a tree can differ
   from your reference solution in the names of variables and in which most general unifier it uses.
+
+Students can choose a **wide layout** for any exercise with code (the button in the editor's toolbar): the task folds
+into a strip on the left and opens over the editor when needed, the editor takes the middle, and feedback, with the
+picture of an SLD tree above it, moves to the right.
 
 `check:` does not go with `sld` (the program is the test), and `program:` goes with nothing else. sldcheck handles the
 cut, negation as failure, the built-ins `is`, `=`, `==`, `<` and the like, and trees split into parts; it does not handle

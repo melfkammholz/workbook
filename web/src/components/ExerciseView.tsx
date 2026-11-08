@@ -1,12 +1,15 @@
 import * as Popover from '@radix-ui/react-popover';
-import { ChevronDown, ChevronUp, Clock, Download, GitCompare, History, MoreHorizontal, Repeat, RotateCcw, Eye, Lock, PencilLine } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clock, Columns3, Download, GitCompare, History, MoreHorizontal, PanelLeft, Repeat, RotateCcw, Eye, Lock, PencilLine } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { EditorView } from '@codemirror/view';
 import { Group, Panel, usePanelRef } from 'react-resizable-panels';
 import { SLD_TREE_TEST, type CheckRun, type ExerciseMeta, type ItemDetail } from '@wb/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { fetchSample, fetchSolution, fetchVersions, keys, runChecks, saveAnswer, stopChecks, useSettings, type Work } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { readPref, writePref } from '@/lib/shell';
+import { useMediaQuery } from '@/lib/useActiveTime';
+import { useWorkLayout } from '@/lib/workLayout';
 import { useDebouncedCallback } from '@/lib/useDebounced';
 import { useRepl, type TypeSpan } from '@/lib/useRepl';
 import { AiPanel } from './AiPanel';
@@ -17,13 +20,14 @@ import { AttemptDialog, ConfirmDialog, HistoryDialog, SolutionDialog } from './D
 import { SampleDialog } from './SampleDialog';
 import { NotesPanel } from './NotesPanel';
 import { ReplView } from './Repl';
+import { SldTreeView } from './SldTreeView';
 import { TestsPanel } from './TestsPanel';
 import { TypstEditor } from './TypstEditor';
 import { Button, IconButton, ResizeHandle, clsx } from './ui';
 import { useRewards } from '@/lib/rewards';
 
 type TopTab = 'answer' | 'notes' | 'ai';
-type BottomTab = 'interpreter' | 'tests';
+type BottomTab = 'interpreter' | 'tests' | 'preview';
 
 /** The tab row of the bottom panel, which stays visible when the panel is collapsed. */
 const TAB_ROW_PX = 37;
@@ -57,6 +61,11 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
   const runnable = code ? code.runnable : !!meta.scratch;
   // SLD trees have no interpreter: the first tab of the panel is about the syntax, and the tests say if the tree is right.
   const isSld = language === 'sld';
+  // The wide layout: the task folds away, the editor takes the middle and feedback (and the picture of an SLD tree)
+  // moves to the right. Only where there is room, and only for code.
+  const [layout, setLayout] = useWorkLayout();
+  const roomy = useMediaQuery('(min-width: 1024px)');
+  const side = !!code && runnable && roomy && layout === 'wide';
   const slots = code?.files ?? ['text'];
   // In shared files, only some are this exercise's to change. Marked only when that is a real choice.
   const edits = code && code.edits.length > 0 && code.edits.length < slots.length ? new Set(code.edits) : null;
@@ -104,6 +113,22 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
   // Only the first time the tests of this exercise all pass.
   const passedBefore = useRef(work.stats.checkPasses > 0);
   const repl = useRepl(meta.id, runnable);
+  // SLD trees: the line of the cursor (the picture marks what is written there), and a way to go to a line.
+  const [cursorLine, setCursorLine] = useState(1);
+  const editorView = useRef<EditorView | null>(null);
+  const cursorLineRef = useRef(1);
+  const cursorExtension = useMemo(
+    () =>
+      EditorView.updateListener.of((u) => {
+        if (!u.selectionSet && !u.docChanged) return;
+        const line = u.state.doc.lineAt(u.state.selection.main.head).number;
+        if (line !== cursorLineRef.current) {
+          cursorLineRef.current = line;
+          setCursorLine(line);
+        }
+      }),
+    [],
+  );
   const touched = useRef(false);
 
   const save = useDebouncedCallback((file: string, value: string) => {
@@ -255,15 +280,15 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
   const diagnostics = repl.loaded?.diagnostics;
   const errorCount = diagnostics?.filter((d) => d.severity === 'error').length ?? 0;
   // The problems the tests found in a tree stay in the editor as long as the text is the one they looked at.
+  const found = useMemo(() => (isSld && run && ranWith && ranWith[slot] === text ? run.diagnostics : []), [isSld, run, ranWith, slot, text]);
   const inThisFile = useMemo(() => {
-    const found = isSld && run && ranWith && ranWith[slot] === text ? run.diagnostics : [];
     if (!diagnostics && found.length === 0) return undefined;
     const seen = new Set<string>();
     return [...(diagnostics ?? []), ...found].filter((d) => {
       const key = `${d.line}:${d.column}:${d.message}`;
       return d.file === slot && !seen.has(key) && !!seen.add(key);
     });
-  }, [diagnostics, slot, isSld, run, ranWith, text]);
+  }, [diagnostics, slot, found]);
   // With several files, the AI should know which is which.
   const answerForAi = slots.length > 1 ? slots.map((s) => `--- ${s} ---\n${texts[s] ?? ''}`).join('\n\n') : text;
   const prompt = PROMPT[language ?? 'haskell'] ?? '>';
@@ -285,6 +310,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
           label={t.codeLabel(slot)}
           {...(code?.hasCheck ? { onSubmit: () => void check() } : {})}
           {...(runnable && language === 'haskell' ? { typeOf: (span: Omit<TypeSpan, 'file'>) => repl.typeAt({ file: slot, ...span }) } : {})}
+          {...(isSld ? { extensions: cursorExtension, onView: (v: EditorView | null) => (editorView.current = v) } : {})}
           variant="code"
         />
       ) : (
@@ -292,7 +318,87 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
       ),
     // `check` closes over text; the editor itself only needs to be rebuilt when these change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [text, change, isCode, language, inThisFile, slot, code?.hasCheck, t, fresh, viewing, detail.support, savedLabel],
+    [text, change, isCode, language, inThisFile, slot, code?.hasCheck, t, fresh, viewing, detail.support, savedLabel, isSld, cursorExtension],
+  );
+
+  /** The picture of an SLD tree was clicked: go to what it shows. */
+  const jumpTo = (line: number) => {
+    if (viewing !== null) return setViewing(null);
+    const v = editorView.current;
+    if (!v) return;
+    const at = v.state.doc.line(Math.min(Math.max(line, 1), v.state.doc.lines));
+    v.dispatch({ selection: { anchor: at.from }, scrollIntoView: true });
+    v.focus();
+  };
+  const preview = isSld ? <SldTreeView tree={repl.loaded ? repl.sldTree : null} stale={repl.sldStale} problems={found} cursorLine={viewing === null ? cursorLine : 0} onSelectLine={jumpTo} /> : null;
+
+  // The tabs under (or, in the wide layout, beside) the editor: what the interpreter or the reader says, and the tests.
+  // For an SLD tree the picture is a tab too, unless the wide layout gives it a place of its own.
+  const collapsible = !side || isSld;
+  const previewTab = isSld && !side;
+  // Wide layout after the preview was a tab: back to the first tab.
+  const shown: BottomTab = bottom === 'preview' && !previewTab ? 'interpreter' : bottom;
+  const feedback = (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center justify-between border-b border-line bg-sheet px-2" style={{ height: TAB_ROW_PX }}>
+        <div role="tablist" aria-label={t.feedback} className="flex">
+          <PanelTab on={shown === 'interpreter'} onClick={() => showBottom('interpreter')}>
+            {isSld ? t.syntax : t.interpreter}
+            {errorCount > 0 ? <span className="ml-1.5 rounded-full bg-danger-soft px-1.5 text-xs font-medium text-danger">{errorCount}</span> : null}
+            {repl.loading ? <span className="ml-1.5 inline-block size-1.5 animate-pulse rounded-full bg-accent" aria-label={t.loadingCode} /> : null}
+          </PanelTab>
+          {code?.hasCheck ? (
+            <PanelTab on={shown === 'tests'} onClick={() => showBottom('tests')}>
+              {t.tests}
+              {run?.compiled && run.results.length ? (
+                <span className={clsx('ml-1.5 text-xs tabular-nums', run.results.every((r) => r.status === 'pass') ? 'text-done' : 'text-ink-3')}>
+                  {run.results.filter((r) => r.status === 'pass').length}/{run.results.length}
+                </span>
+              ) : null}
+            </PanelTab>
+          ) : null}
+          {previewTab ? (
+            <PanelTab on={shown === 'preview'} onClick={() => showBottom('preview')}>
+              {t.preview}
+            </PanelTab>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-1">
+          {repl.loaded && shown === 'interpreter' && code ? (
+            <span className={clsx('inline-flex items-center gap-1 whitespace-nowrap text-xs', repl.loaded.ok ? 'text-done' : 'text-danger')}>{isSld ? (repl.loaded.ok ? t.syntaxOk : t.syntaxError) : repl.loaded.ok ? t.loadedIn(repl.loaded.durationMs) : t.doesNotCompile}</span>
+          ) : null}
+          {collapsible ? (
+            <IconButton label={collapsed ? t.expandPanel : t.collapsePanel} aria-expanded={!collapsed} onClick={toggleBottom} className="size-7">
+              {collapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </IconButton>
+          ) : null}
+        </div>
+      </div>
+      <div className="min-h-0 flex-1">
+        {shown === 'preview' ? (
+          preview
+        ) : shown === 'interpreter' ? (
+          isSld ? (
+            <SyntaxPanel repl={repl} multi={slots.length > 1} />
+          ) : diagnostics && diagnostics.length > 0 ? (
+            // Problems and the session can each be given the room they need.
+            <Group orientation="vertical" className="h-full">
+              <Panel defaultSize="35" minSize="10">
+                <Problems diagnostics={diagnostics} multi={slots.length > 1} />
+              </Panel>
+              <ResizeHandle direction="column" />
+              <Panel defaultSize="65" minSize="25">
+                <ReplView repl={session} prompt={prompt} language={language ?? ''} />
+              </Panel>
+            </Group>
+          ) : (
+            <ReplView repl={session} prompt={prompt} language={language ?? ''} />
+          )
+        ) : (
+          <TestsPanel tree={isSld} run={run} running={running} error={runError} onRun={() => void check()} onStop={() => void stopChecks(meta.id)} firstRun={!run} />
+        )}
+      </div>
+    </div>
   );
 
   return (
@@ -319,6 +425,11 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
               <span className="text-xs text-ink-3" aria-live="polite">
                 {savedLabel}
               </span>
+            ) : null}
+            {code && runnable && roomy ? (
+              <IconButton label={layout === 'wide' ? t.layoutStandard : t.layoutWide} aria-pressed={layout === 'wide'} onClick={() => setLayout(layout === 'wide' ? 'standard' : 'wide')}>
+                {layout === 'wide' ? <PanelLeft size={16} /> : <Columns3 size={16} />}
+              </IconButton>
             ) : null}
             <IconButton label={isCode ? t.downloadCode : t.downloadAnswer} onClick={download}>
               <Download size={16} />
@@ -410,73 +521,48 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
         ) : tab === 'ai' && aiOn ? (
           <AiPanel id={meta.id} answer={answerForAi} tests={run?.compiled ? run.results.map(({ name, status, message }) => ({ name: name === SLD_TREE_TEST ? t.treeCorrect : name, status, message })) : null} />
         ) : runnable ? (
-          <Group orientation="vertical" className="h-full">
-            <Panel defaultSize="62" minSize="20">
-              {editor}
-            </Panel>
-            <ResizeHandle direction="column" />
-            <Panel
-              panelRef={panel}
-              // A collapsed panel stays collapsed across exercises with code.
-              defaultSize={startCollapsed ? TAB_ROW_PX : '38'}
-              minSize="15"
-              collapsible
-              collapsedSize={TAB_ROW_PX}
-              onResize={() => setCollapsed(panel.current?.isCollapsed() ?? false)}
-            >
-              <div className="flex h-full min-h-0 flex-col">
-                <div className="flex shrink-0 items-center justify-between border-b border-line bg-sheet px-2" style={{ height: TAB_ROW_PX }}>
-                  <div role="tablist" aria-label={t.feedback} className="flex">
-                    <PanelTab on={bottom === 'interpreter'} onClick={() => showBottom('interpreter')}>
-                      {isSld ? t.syntax : t.interpreter}
-                      {errorCount > 0 ? <span className="ml-1.5 rounded-full bg-danger-soft px-1.5 text-xs font-medium text-danger">{errorCount}</span> : null}
-                      {repl.loading ? <span className="ml-1.5 inline-block size-1.5 animate-pulse rounded-full bg-accent" aria-label={t.loadingCode} /> : null}
-                    </PanelTab>
-                    {code?.hasCheck ? (
-                      <PanelTab on={bottom === 'tests'} onClick={() => showBottom('tests')}>
-                        {t.tests}
-                        {run?.compiled && run.results.length ? (
-                          <span className={clsx('ml-1.5 text-xs tabular-nums', run.results.every((r) => r.status === 'pass') ? 'text-done' : 'text-ink-3')}>
-                            {run.results.filter((r) => r.status === 'pass').length}/{run.results.length}
-                          </span>
-                        ) : null}
-                      </PanelTab>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {repl.loaded && bottom === 'interpreter' && code ? (
-                      <span className={clsx('inline-flex items-center gap-1 whitespace-nowrap text-xs', repl.loaded.ok ? 'text-done' : 'text-danger')}>{isSld ? (repl.loaded.ok ? t.syntaxOk : t.syntaxError) : repl.loaded.ok ? t.loadedIn(repl.loaded.durationMs) : t.doesNotCompile}</span>
-                    ) : null}
-                    <IconButton label={collapsed ? t.expandPanel : t.collapsePanel} aria-expanded={!collapsed} onClick={toggleBottom} className="size-7">
-                      {collapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    </IconButton>
-                  </div>
-                </div>
-                <div className="min-h-0 flex-1">
-                  {bottom === 'interpreter' ? (
-                    isSld ? (
-                      <SyntaxPanel repl={repl} multi={slots.length > 1} />
-                    ) : diagnostics && diagnostics.length > 0 ? (
-                      // Problems and the session can each be given the room they need.
-                      <Group orientation="vertical" className="h-full">
-                        <Panel defaultSize="35" minSize="10">
-                          <Problems diagnostics={diagnostics} multi={slots.length > 1} />
-                        </Panel>
-                        <ResizeHandle direction="column" />
-                        <Panel defaultSize="65" minSize="25">
-                          <ReplView repl={session} prompt={prompt} language={language ?? ''} />
-                        </Panel>
-                      </Group>
-                    ) : (
-                      <ReplView repl={session} prompt={prompt} language={language ?? ''} />
-                    )
-                  ) : (
-                    <TestsPanel tree={isSld} run={run} running={running} error={runError} onRun={() => void check()} onStop={() => void stopChecks(meta.id)} firstRun={!run} />
-                  )}
-                </div>
-              </div>
-            </Panel>
-          </Group>
+          side ? (
+            <Group orientation="horizontal" className="h-full">
+              <Panel defaultSize="42" minSize="25">
+                {editor}
+              </Panel>
+              <ResizeHandle direction="row" />
+              <Panel defaultSize="58" minSize="25">
+                {isSld ? (
+                  // The picture on top, as large as the tree needs; what the code says about itself below it.
+                  <Group orientation="vertical" className="h-full">
+                    <Panel defaultSize="62" minSize="15">
+                      {preview}
+                    </Panel>
+                    <ResizeHandle direction="column" />
+                    <Panel panelRef={panel} defaultSize={startCollapsed ? TAB_ROW_PX : '38'} minSize="15" collapsible collapsedSize={TAB_ROW_PX} onResize={() => setCollapsed(panel.current?.isCollapsed() ?? false)}>
+                      {feedback}
+                    </Panel>
+                  </Group>
+                ) : (
+                  feedback
+                )}
+              </Panel>
+            </Group>
+          ) : (
+            <Group orientation="vertical" className="h-full">
+              <Panel defaultSize="62" minSize="20">
+                {editor}
+              </Panel>
+              <ResizeHandle direction="column" />
+              <Panel
+                panelRef={panel}
+                // A collapsed panel stays collapsed across exercises with code.
+                defaultSize={startCollapsed ? TAB_ROW_PX : '38'}
+                minSize="15"
+                collapsible
+                collapsedSize={TAB_ROW_PX}
+                onResize={() => setCollapsed(panel.current?.isCollapsed() ?? false)}
+              >
+                {feedback}
+              </Panel>
+            </Group>
+          )
         ) : (
           <div className="flex h-full min-h-0 flex-col">
             {isCode ? <p className="shrink-0 border-b border-line bg-paper/60 px-4 py-2 text-[13px] text-ink-2">{t.noRunner(language ?? '')}</p> : null}
