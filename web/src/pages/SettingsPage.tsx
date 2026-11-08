@@ -4,7 +4,8 @@ import type { Settings, UiLanguage } from '@wb/shared';
 import { api, keys, useSaveSettings, useSettings } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { applyTheme } from '@/lib/theme';
-import { Button, Dialog, Segmented } from './ui';
+import { Button, Segmented } from '@/components/ui';
+import { BackLink } from '@/lib/history';
 
 const inputClass = 'h-9 w-full rounded-md border border-line bg-paper px-3 text-sm placeholder:text-ink-3 focus:border-accent focus:outline-none';
 
@@ -35,7 +36,7 @@ function SavedInput({ value, onSave, ...p }: { value: string; onSave: (v: string
 function Toggle({ checked, onChange, title, body }: { checked: boolean; onChange: (v: boolean) => void; title: string; body?: string }) {
   return (
     <label className="flex items-start gap-3">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-1 size-4 accent-[var(--accent)]" />
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-1 size-4 shrink-0 accent-[var(--accent)]" />
       <span>
         <span className="block text-sm font-medium">{title}</span>
         {body ? <span className="block text-[13px] text-ink-2">{body}</span> : null}
@@ -93,7 +94,8 @@ function StartOver() {
   );
 }
 
-export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+/** The settings, on a page of their own: there are enough of them to be read, not just flicked through. */
+export function SettingsPage() {
   const t = useT();
   const settings = useSettings().data;
   const save = useSaveSettings();
@@ -103,7 +105,12 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
   const set = (p: Partial<Settings>) => save.mutate(p);
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()} title={t.settings} width="max-w-xl">
+    <div className="h-full overflow-y-auto">
+      <div className="settle mx-auto max-w-2xl px-6 pb-24 pt-8 sm:px-8">
+        <BackLink fallback="/" label={t.back} className="mb-3">
+          {t.back}
+        </BackLink>
+        <h1 className="mb-6 text-[1.75rem] font-semibold tracking-[-0.02em]">{t.settings}</h1>
       <section className="space-y-4">
         <label className="block">
           <span className="mb-1 block text-sm font-medium">{t.yourName}</span>
@@ -165,6 +172,18 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
       <section className="mt-6 space-y-3 border-t border-line pt-5">
         <h3 className="text-sm font-semibold">{t.optionalFeatures}</h3>
         <Toggle checked={settings.showAchievements} onChange={(v) => set({ showAchievements: v })} title={t.showAchievements} body={t.showAchievementsBody} />
+        {settings.showAchievements ? (
+          <div className="ml-7 space-y-2.5">
+            <fieldset>
+              <legend className="mb-1 text-sm font-medium">{t.rewardsWhat}</legend>
+              <Segmented<'all' | 'zoo'> value={settings.rewards} options={[['all', t.rewardsAll], ['zoo', t.rewardsZoo]]} onChange={(v) => set({ rewards: v })} />
+            </fieldset>
+            <fieldset>
+              <legend className="mb-1 text-sm font-medium">{t.rewardIconTitle}</legend>
+              <Segmented<'trophy' | 'paw'> value={settings.rewardIcon} options={[['trophy', t.rewardIconTrophy], ['paw', t.rewardIconPaw]]} onChange={(v) => set({ rewardIcon: v })} />
+            </fieldset>
+          </div>
+        ) : null}
         <Toggle checked={settings.showFlashcards} onChange={(v) => set({ showFlashcards: v })} title={t.showFlashcards} body={t.showFlashcardsBody} />
         <Toggle checked={settings.showAi} onChange={(v) => set({ showAi: v })} title={t.showAi} body={t.showAiBody} />
       </section>
@@ -172,6 +191,7 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
       <StartOver />
 
       {info.data?.typst === 'unavailable' ? <p className="mt-6 border-t border-line pt-4 text-xs text-ink-3">{t.typstMissing}</p> : null}
-    </Dialog>
+      </div>
+    </div>
   );
 }

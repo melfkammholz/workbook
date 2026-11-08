@@ -4,6 +4,8 @@ import type { AchievementEvent, EarnedEvent } from '@wb/shared';
 import { acknowledgeAchievements, useAchievements } from '@/lib/api';
 import { useT, type Strings } from '@/lib/i18n';
 import { PLANTS } from './Plant';
+import { Title } from './Title';
+import { useRewards } from '@/lib/rewards';
 
 const CONFETTI_EVENT = 'wb-confetti';
 const SHOW_MS = 7000;
@@ -50,8 +52,8 @@ const NEWS_ORDER: AchievementEvent['kind'][] = ['achievement', 'comeback', 'adve
  * should read as the headline of another. Next to other news each row is kept short.
  * A plant that has only just started says too little to announce; it still shows in the outline.
  */
-function cardFor(t: Strings, events: EarnedEvent[]): Card | null {
-  const news = events.filter((e) => !(e.event.kind === 'plant' && e.event.stage === 1)).sort((a, b) => NEWS_ORDER.indexOf(a.event.kind) - NEWS_ORDER.indexOf(b.event.kind));
+function cardFor(t: Strings, events: EarnedEvent[], zooOnly = false): Card | null {
+  const news = events.filter((e) => !(e.event.kind === 'plant' && e.event.stage === 1) && (!zooOnly || e.event.kind === 'animal')).sort((a, b) => NEWS_ORDER.indexOf(a.event.kind) - NEWS_ORDER.indexOf(b.event.kind));
   if (news.length === 0) return null;
   const single = news.length === 1;
   const rows = news.map((e): Row => {
@@ -67,6 +69,7 @@ function cardFor(t: Strings, events: EarnedEvent[]): Card | null {
 /** Says what was just earned, in a corner, without getting in the way. */
 export function Celebration() {
   const t = useT();
+  const { zooOnly } = useRewards();
   const { data } = useAchievements();
   const [shown, setShown] = useState<Card[]>([]);
   const [burst, setBurst] = useState(0);
@@ -89,7 +92,7 @@ export function Celebration() {
       if (waiting.current.length === 0 || document.querySelector('[role=dialog]')) return;
       const fresh = waiting.current.splice(0);
       void acknowledgeAchievements();
-      const card = cardFor(t, fresh);
+      const card = cardFor(t, fresh, zooOnly);
       if (!card) return;
       setShown((s) => [...s, card]);
       // Reaching a milestone gets the burst; every small step would get tiresome.
@@ -122,8 +125,8 @@ export function Celebration() {
               <ul className="min-w-0 flex-1 space-y-1.5 text-sm">
                 {card.rows.map((row) => (
                   <li key={row.key}>
-                    <span className="block font-semibold">{row.title}</span>
-                    {row.body ? <span className="block text-ink-2">{row.body}</span> : null}
+                    <span className="block font-semibold"><Title text={row.title} /></span>
+                    {row.body ? <span className="block text-ink-2"><Title text={row.body} /></span> : null}
                   </li>
                 ))}
               </ul>

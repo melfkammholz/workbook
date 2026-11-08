@@ -1,4 +1,4 @@
-import { ArrowLeft, CircleHelp, ClipboardList, Layers, Menu, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon, X } from 'lucide-react';
+import { ArrowLeft, CircleHelp, ClipboardList, Layers, Menu, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon, Trophy, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Route, Router, Switch, useLocation, useRoute } from 'wouter';
 import { useAppLocation } from '@/lib/history';
@@ -7,7 +7,7 @@ import { AddCourseForm, CourseDialog } from '@/components/CourseDialog';
 import { CourseMenu, FocusQuestion } from '@/components/Focus';
 import { OutlinePanel } from '@/components/Outline';
 import { SearchDialog } from '@/components/SearchDialog';
-import { SettingsDialog } from '@/components/SettingsDialog';
+import { SettingsPage } from '@/pages/SettingsPage';
 import { SetupDialog } from '@/components/SetupDialog';
 import { Empty, IconButton, Spinner, clsx } from '@/components/ui';
 import { useQueryClient } from '@tanstack/react-query';
@@ -17,7 +17,7 @@ import { useFilters } from '@/lib/filters';
 import { focusExercises } from '@/lib/focus';
 import { useDocumentLang, useT } from '@/lib/i18n';
 import { canGoBack } from '@/lib/history';
-import { modKey, scrollPage, usePageKeys } from '@/lib/keys';
+import { scrollPage, scrollToEdge, usePageKeys } from '@/lib/keys';
 import { applyTheme } from '@/lib/theme';
 import { useMediaQuery } from '@/lib/useActiveTime';
 import { AchievementsPage } from '@/pages/AchievementsPage';
@@ -34,6 +34,8 @@ import { LandingPage } from '@/pages/LandingPage';
 import { NotesPage } from '@/pages/NotesPage';
 import { ItemPage } from '@/pages/ItemPage';
 import { ReviewPage } from '@/pages/ReviewPage';
+import { KindPage } from '@/pages/KindPage';
+import { THREAD_KINDS, type ThreadKind } from '@wb/shared';
 
 export function App() {
   return (
@@ -162,6 +164,7 @@ function CourseShell() {
   const courses = useCourses().data;
   const stateQuery = useState_();
   const achievementsOn = !!useSettings().data?.showAchievements;
+  const rewardIcon = useSettings().data?.rewardIcon ?? 'trophy';
   const flashcardsOn = !!useSettings().data?.showFlashcards;
   const state = useState_().data?.state;
   const { filters, patch, reset } = useFilters();
@@ -176,8 +179,19 @@ function CourseShell() {
     }
   });
   const [drawer, setDrawer] = useState(false);
+  /** `b`: the outline in or out of sight, as the button next to the course's name does; the drawer on a narrow screen. */
+  const toggleOutline = () => {
+    if (!matchMedia('(min-width: 1024px)').matches) return setDrawer((d) => !d);
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem('wb-outline-collapsed', c ? '0' : '1');
+      } catch {
+        /* it just is not remembered */
+      }
+      return !c;
+    });
+  };
   const [searching, setSearching] = useState(false);
-  const [configuring, setConfiguring] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [location, navigate] = useLocation();
 
@@ -217,6 +231,9 @@ function CourseShell() {
     l: () => history.forward(),
     j: (e) => scrollPage(1, e.repeat),
     k: (e) => scrollPage(-1, e.repeat),
+    'g g': () => scrollToEdge('top'),
+    G: () => scrollToEdge('bottom'),
+    b: () => toggleOutline(),
     '/': () => setSearching(true),
     '?': () => navigate('/help/keys'),
     'g h': () => navigate('/'),
@@ -306,7 +323,6 @@ function CourseShell() {
             className="hidden h-8 items-center gap-2 rounded-md border border-line bg-paper px-3 text-[13px] text-ink-3 hover:border-line-strong sm:inline-flex"
           >
             <Search size={14} /> {t.search}
-            <kbd className="ml-4 rounded border border-line bg-sheet px-1.5 font-sans text-[11px]">{modKey} K</kbd>
           </button>
           <IconButton label={t.search} className="sm:hidden" onClick={() => setSearching(true)}>
             <Search size={18} />
@@ -328,7 +344,7 @@ function CourseShell() {
               aria-current={location === '/achievements' ? 'page' : undefined}
               title={t.achievementsAndFriends}
             >
-              <PawPrint size={18} />
+              {rewardIcon === 'paw' ? <PawPrint size={18} /> : <Trophy size={18} />}
             </Link>
           ) : null}
           {flashcardsOn ? <FlashcardsLink active={location.startsWith('/flashcards')} /> : null}
@@ -344,7 +360,7 @@ function CourseShell() {
           >
             <CircleHelp size={18} />
           </Link>
-          <IconButton label={t.settings} onClick={() => setConfiguring(true)}>
+          <IconButton label={t.settings} onClick={() => navigate('/settings')}>
             <SettingsIcon size={18} />
           </IconButton>
         </div>
@@ -357,11 +373,13 @@ function CourseShell() {
             <Route path="/" component={Dashboard} />
             <Route path="/item/:id">{(p) => <ItemPage id={p.id} />}</Route>
             <Route path="/review" component={ReviewPage} />
+            <Route path="/settings" component={SettingsPage} />
             <Route path="/welcome" component={LandingPage} />
             <Route path="/achievements" component={AchievementsPage} />
             <Route path="/notes" component={NotesPage} />
             {flashcardRoutes()}
             <Route path="/chapter/:id">{(p) => <ChapterPage key={p.id} id={p.id} />}</Route>
+            <Route path="/kind/:kind">{(p) => (THREAD_KINDS.includes(p.kind as ThreadKind) ? <KindPage key={p.kind} kind={p.kind as ThreadKind} /> : null)}</Route>
             <Route path="/adventure/:id">{(p) => <AdventurePage key={p.id} id={p.id} />}</Route>
             <Route>
               <Empty title={t.pageNotFound}>{t.pageNotFoundBody}</Empty>
@@ -388,7 +406,6 @@ function CourseShell() {
       <SearchDialog open={searching} onClose={() => setSearching(false)} />
       {achievementsOn ? <Celebration /> : null}
       <CourseDialog open={switching} onClose={() => setSwitching(false)} />
-      <SettingsDialog open={configuring} onClose={() => setConfiguring(false)} />
       <SetupDialog />
       <FocusQuestion />
     </div>

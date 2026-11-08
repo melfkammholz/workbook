@@ -1,7 +1,7 @@
 import { Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
-import { indexItems, search, useOutline, useState_, type SearchResponse } from '@/lib/api';
+import { indexItems, search, useOutline, useSettings, useState_, type SearchResponse } from '@/lib/api';
 import { focusOf, itemInFocus } from '@/lib/focus';
 import { useT } from '@/lib/i18n';
 import { Dialog } from './ui';
@@ -48,7 +48,30 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
     onClose();
     nav(href);
   };
-  const first = res?.items[0]?.href ?? (res?.mine[0] ? `/item/${res.mine[0].exerciseId}` : undefined);
+  const flashcards = !!useSettings().data?.showFlashcards;
+  // Lessons are not exercises: a group of their own. Pages and the rest stay with the exercises.
+  const isLesson = (id: string) => map.get(id)?.type === 'lesson';
+  const lessons = res?.items.filter((i) => isLesson(i.id)) ?? [];
+  const others = res?.items.filter((i) => !isLesson(i.id)) ?? [];
+  const cards = flashcards ? (res?.cards ?? []) : [];
+  const first = others[0]?.href ?? lessons[0]?.href ?? (res?.mine[0] ? `/item/${res.mine[0].exerciseId}` : undefined);
+  const itemList = (list: typeof others) => (
+    <ul>
+      {list.map((i) => (
+        <li key={i.id}>
+          <button type="button" onClick={() => go(i.href)} className="w-full rounded-md px-2 py-2 text-left text-sm hover:bg-sunk">
+            <span className="flex items-baseline gap-2">
+              <span className="min-w-0 font-medium">
+                <Title text={i.title} />
+              </span>
+              {outside(i.id) ? <span className="ml-auto shrink-0 text-xs text-ink-3">{t.outsideFocus}</span> : null}
+            </span>
+            {i.snippet ? <Snippet text={i.snippet} /> : null}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()} title={t.searchLabel} width="max-w-xl">
@@ -65,23 +88,17 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
         />
       </label>
       <div className="mt-3 max-h-[50vh] overflow-y-auto">
-        {res && res.items.length === 0 && res.mine.length === 0 ? <p className="px-1 py-6 text-center text-sm text-ink-2">{t.searchNothing(q)}</p> : null}
-        {res?.items.length ? (
+        {res && res.items.length === 0 && res.mine.length === 0 && cards.length === 0 ? <p className="px-1 py-6 text-center text-sm text-ink-2">{t.searchNothing(q)}</p> : null}
+        {others.length ? (
           <section>
             <h3 className="px-2 pb-1 pt-2 text-xs font-semibold text-ink-2">{t.searchExercises}</h3>
-            <ul>
-              {res.items.map((i) => (
-                <li key={i.id}>
-                  <button type="button" onClick={() => go(i.href)} className="w-full rounded-md px-2 py-2 text-left text-sm hover:bg-sunk">
-                    <span className="flex items-baseline gap-2">
-                      <span className="min-w-0 font-medium"><Title text={i.title} /></span>
-                      {outside(i.id) ? <span className="ml-auto shrink-0 text-xs text-ink-3">{t.outsideFocus}</span> : null}
-                    </span>
-                    {i.snippet ? <Snippet text={i.snippet} /> : null}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            {itemList(others)}
+          </section>
+        ) : null}
+        {lessons.length ? (
+          <section>
+            <h3 className="px-2 pb-1 pt-3 text-xs font-semibold text-ink-2">{t.searchLessons}</h3>
+            {itemList(lessons)}
           </section>
         ) : null}
         {res?.mine.length ? (
@@ -96,6 +113,24 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
                       {m.source === 'note' ? t.searchSourceNote : t.searchSourceAnswer}:{' '}
                       {m.snippet.replace(/[\[\]]/g, '')}
                     </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+        {cards.length ? (
+          <section>
+            <h3 className="px-2 pb-1 pt-3 text-xs font-semibold text-ink-2">{t.searchCards}</h3>
+            <ul>
+              {cards.map((c) => (
+                <li key={`${c.deckId}/${c.cardId}`}>
+                  <button type="button" onClick={() => go(`/flashcards/deck/${c.deckId}/card/${c.cardId}`)} className="w-full rounded-md px-2 py-2 text-left hover:bg-sunk">
+                    <span className="flex items-baseline gap-3">
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium"><Title text={c.title} /></span>
+                      <span className="shrink-0 text-[12px] text-ink-3">{c.deckTitle}</span>
+                    </span>
+                    {c.snippet ? <Snippet text={c.snippet} /> : null}
                   </button>
                 </li>
               ))}

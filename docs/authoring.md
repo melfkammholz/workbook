@@ -275,6 +275,7 @@ items:
   - lesson: falten-ohne-rekursion
     title: Falten ohne Rekursion
     text: falten.typ            # optional, default <id>.typ
+    tags: [rekursion]           # optional; quizzes turned into flashcards get these tags too
 ```
 
 The text is ordinary Typst. Widgets are configured, not programmed: you say what to show, the app knows how it
@@ -335,8 +336,9 @@ More for lessons:
 
 | Helper | Effect |
 | --- | --- |
-| `#practice("id")[…]` | The exercise to do next, in a box of its own: title, difficulty, the student's status and a button to it. `lint` checks the id. |
-| `#wide[…]` | More room for a dense widget, e.g. two trees side by side: wider than the text, as far as the page allows. |
+| `#practice("id", "id2")` | The exercises that go with a lesson, as a list to click through: each title and whether it is done. Write the call to action once, before it. `lint` checks the ids. |
+| `#muted[…]` | A quiet note inside a line, e.g. in a table cell. |
+| `#wide[…]` | More room for a dense widget, e.g. two trees side by side: wider than the text (up to 70rem), as far as the page allows. |
 | `#expr-trees((expr: "f 1 (f 2 z)", caption: "…"), …, colors: (f: 3, z: 1))` | Expressions drawn as trees, side by side. |
 | `#fold-list(xs: ("1", "2"), folds: ((name: "foldl (flip (:)) []", dir: "left", fn: "flip (:)", start: "[]"), …))` | A list folded element by element, input and accumulator as cards; every step computed. |
 | `#bracketing(ops: ((op: "+", list: ("1", "2", "3"), assoc: true, starts: ((value: "0", neutral: true), …)), …))` | Where `foldr` and `foldl` put the brackets and the start value, with the results computed. |
@@ -374,9 +376,14 @@ code:
 | --- | --- | --- | --- |
 | `haskell` (default) | yes | `ghci` | `Workbook.Check` |
 | `prolog` | yes | SWI-Prolog | `workbook_check` |
-| anything else, e.g. `python` | yes, with highlighting | no | no |
+| `python` | yes | Python 3 | no (`check:` is ignored, `lint` warns) |
+| anything else, e.g. `java` | yes, with highlighting | no | no |
 
 Without a runner the app says so, and students try their code on their own computer.
+
+Python runs the student's file afresh on every change, in a clean namespace, so its
+functions can then be called at the `>>>` prompt. Put a program in a `def main()`, and
+tell students to call `main()`: otherwise it would run on every keystroke.
 
 For Haskell the student's file is named after the `module` line (`module
 Playground.Gcd` becomes `Playground/Gcd.hs`), so imports in your tests just work.
@@ -475,6 +482,19 @@ steps:
 ```
 
 That is a simple **path** on the home page. The "next up" suggestions use `after` and `similar` on the exercises themselves.
+
+A path can also be one of the course's building blocks rather than a topic: a session's exercises, a homework
+sheet, an old exam. Say which with `kind:` (`session`, `homework` or `exam`). Each kind has a page of its own,
+linked at the top of the outline, that lists its groups in the order of their file names (`woche-03.yml`,
+`woche-04.yml`, …) with their progress. The exercises themselves live in the chapters they belong to by topic;
+mark what a session covers only for context as `extra: true`, and it folds away like other extra material.
+
+```yaml
+# threads/woche-03.yml
+title: "Woche 3: Faltung"
+kind: session
+steps: [falten-ohne-rekursion, fold-maybe-either, falten-mit-rekursion, fold-labeled-tree]
+```
 
 Give it a page and it becomes an **adventure**: highlighted on the home page, with a page of its own (your text and
 diagrams, a map of the route, the progress), a badge on its exercises and a filter in the outline. The map is drawn

@@ -13,7 +13,7 @@ import { classHighlighter, languageFor } from './highlight';
  * search, undo history, bracket matching. Colours come from CSS variables so
  * the theme switch needs no reconfiguration.
  */
-export type EditorVariant = 'code' | 'notes';
+export type EditorVariant = 'code' | 'notes' | 'field';
 
 const common = EditorView.theme({
   '&': { height: '100%', backgroundColor: 'var(--sheet)', color: 'var(--ink)' },
@@ -45,6 +45,13 @@ const variants: Record<EditorVariant, Extension> = {
     '&': { fontFamily: 'var(--font-mono)', fontSize: 'var(--editor-font-size, 13.5px)' },
     '.cm-scroller': { fontFamily: 'inherit' },
     '.cm-content': { padding: '14px 16px' },
+    '&.cm-editor .cm-activeLine': { backgroundColor: 'transparent' },
+  }),
+  // A one-line field inside a form (an answer of a quiz card): the same, with the padding of an input.
+  field: EditorView.theme({
+    '&': { fontFamily: 'var(--font-mono)', fontSize: 'var(--editor-font-size, 13.5px)', backgroundColor: 'transparent' },
+    '.cm-scroller': { fontFamily: 'inherit' },
+    '.cm-content': { padding: '5px 4px' },
     '&.cm-editor .cm-activeLine': { backgroundColor: 'transparent' },
   }),
 };

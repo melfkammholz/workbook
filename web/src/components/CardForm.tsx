@@ -54,8 +54,11 @@ export function CardForm({
   onCancel,
   footer,
   autoFocus,
+  fresh,
 }: {
   initial?: Partial<CardFields>;
+  /** Empty after saving even when it started with something, e.g. a quiz taken from a lesson. Editing keeps it. */
+  fresh?: boolean;
   submitLabel: string;
   /** Resolves when saved; the form then empties itself, unless it edits a card. */
   onSubmit: (fields: CardFields) => Promise<unknown>;
@@ -73,6 +76,8 @@ export function CardForm({
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ card: RenderedCard; css: string } | null>(null);
   const [revealed, setRevealed] = useState(false);
+  /** Counts the cards saved, so the quiz form starts afresh after each. */
+  const [round, setRound] = useState(0);
   const [layout, setLayout] = useCardLayout();
   const roomy = useMediaQuery(ROOMY);
   const side = layout === 'side' && roomy;
@@ -109,10 +114,11 @@ export function CardForm({
     setError(null);
     try {
       await onSubmit({ kind, front, back: single ? '' : back, tags });
-      if (!initial?.front) {
+      if (fresh || !initial?.front) {
         setFront('');
         setBack('');
         setPreview(null);
+        setRound((n) => n + 1);
       }
     } catch (err) {
       setError(err instanceof ApiError && err.message === 'unbalanced' ? t.cardUnbalanced : err instanceof Error ? err.message : String(err));
@@ -195,7 +201,7 @@ export function CardForm({
         <p className="mt-1.5 text-[12.5px] text-ink-3">{t.cardKindHint[kind]}</p>
       </div>
       {kind === 'quiz' ? (
-        <QuizCardFields value={front} onChange={setFront} autoFocus={!!autoFocus} />
+        <QuizCardFields key={round} value={front} onChange={setFront} autoFocus={!!autoFocus} />
       ) : (
         field(kind === 'cloze' ? t.clozeText : t.cardFront, front, setFront, single ? 9 : 5, !!autoFocus)
       )}

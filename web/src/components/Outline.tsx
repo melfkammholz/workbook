@@ -1,9 +1,10 @@
 import * as Popover from '@radix-ui/react-popover';
 import { ChevronDown, Clock, Compass, FileText, Flame, GraduationCap, ListChecks, ListFilter, Search, X } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useRoute } from 'wouter';
+import { Link, useLocation, useRoute } from 'wouter';
 import type { ChapterMeta, ExerciseKind, ItemMeta, Outline as OutlineT, PartMeta, Status, StudentState, ThreadInfo } from '@wb/shared';
 import { statusOf, useSettings } from '@/lib/api';
+import { KIND_ICONS, kindProgress, kindsOf } from '@/lib/kinds';
 import { useLessonToc } from '@/lib/lessonToc';
 import { focusExercises, foldItems } from '@/lib/focus';
 import { adventureOfSection, isChapterWide } from '@/lib/sections';
@@ -71,6 +72,7 @@ export function OutlinePanel({ outline, state, currentId, filters, patch, reset,
       ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-6">
+        {filtering ? null : <KindLinks outline={outline} state={state} onNavigate={onNavigate} />}
         {outline.parts.map((part) => (
           <PartBlock key={part.id} outline={outline} part={part} chapters={visible.filter((v) => v.chapter.partId === part.id)} state={state} currentId={currentId} filtering={filtering} onNavigate={onNavigate} />
         ))}
@@ -84,6 +86,69 @@ export function OutlinePanel({ outline, state, currentId, filters, patch, reset,
         ) : null}
       </div>
     </nav>
+  );
+}
+
+/**
+ * The course's work besides its chapters: sessions, homework, old exams. A building block of its own, so it
+ * comes first, and looks like one: a band like the parts, its kinds like chapters.
+ */
+function KindLinks({ outline, state, onNavigate }: { outline: OutlineT; state: StudentState | undefined; onNavigate?: (() => void) | undefined }) {
+  const t = useT();
+  const [location] = useLocation();
+  const kinds = kindsOf(outline);
+  const here = kinds.some((k) => location === `/kind/${k}`);
+  const [open, setOpen] = useState(() => readOpen('part-course-work'));
+  useEffect(() => {
+    if (here) setOpen(true);
+  }, [here]);
+  useEffect(() => writeOpen('part-course-work', open), [open]);
+  if (!kinds.length) return null;
+  const all = kinds.map((k) => kindProgress(outline, k, state));
+  return (
+    <section className="border-b border-line">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="sticky top-0 z-10 flex w-full items-center gap-2 border-b border-line bg-sunk px-3 py-2.5 text-left hover:bg-line/60"
+      >
+        <ChevronDown size={16} className={clsx('shrink-0 text-ink-2 transition-transform', !open && '-rotate-90')} />
+        <span className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-tight text-ink" title={t.courseWork}>{t.courseWorkShort}</span>
+        <span className="shrink-0 text-xs font-medium tabular-nums text-ink-2">
+          {all.reduce((n, p) => n + p.done, 0)}/{all.reduce((n, p) => n + p.total, 0)}
+        </span>
+      </button>
+      {open ? (
+        <ul>
+          {kinds.map((k, i) => {
+            const on = location === `/kind/${k}`;
+            const Icon = KIND_ICONS[k];
+            return (
+              <li key={k}>
+                <Link
+                  href={`/kind/${k}`}
+                  onClick={onNavigate}
+                  aria-current={on ? 'page' : undefined}
+                  className={clsx(
+                    'relative flex items-center gap-2 border-line py-2 pl-[11px] pr-3 text-[13.5px] font-semibold tracking-tight',
+                    i > 0 && 'border-t',
+                    on ? 'bg-accent-soft text-ink' : 'bg-[color-mix(in_srgb,var(--paper)_45%,var(--sheet))] text-ink hover:bg-paper',
+                  )}
+                >
+                  {on ? <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-accent" /> : null}
+                  <Icon size={14} className="shrink-0 text-ink-3" />
+                  <span className="min-w-0 flex-1 truncate">{t.threadKind[k]}</span>
+                  <span className="shrink-0 text-xs font-normal tabular-nums text-ink-3">
+                    {all[i]!.done}/{all[i]!.total}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </section>
   );
 }
 
@@ -359,7 +424,7 @@ function LessonSections({ id }: { id: string }) {
               i === toc.active ? 'font-medium text-ink shadow-[inset_2px_0_0_var(--accent)]' : 'text-ink-3 hover:text-ink',
             )}
           >
-            {s.title}
+            <Title text={s.title} />
           </button>
         </li>
       ))}

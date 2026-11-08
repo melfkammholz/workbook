@@ -88,14 +88,14 @@ export function Meadow({ outline, earned }: { outline: Outline; earned: EarnedEv
   return (
     <>
       {isLarger ? <div aria-hidden className="mt-3" style={{ height: larger }} /> : null}
-      {isLarger ? <div aria-hidden className="fixed inset-0 z-40 bg-ink/40" onClick={() => setLarger(null)} /> : null}
+      {isLarger ? <div aria-hidden className="wb-overlay fixed inset-0 z-40 bg-ink/40" onClick={() => setLarger(null)} /> : null}
       <div
         ref={box}
         data-fill={isLarger ? '' : undefined}
         role={isLarger ? 'dialog' : undefined}
         aria-modal={isLarger || undefined}
         aria-label={isLarger ? t.animals : undefined}
-        className={clsx('overflow-hidden rounded-xl border border-line bg-sunk', isLarger ? 'fixed inset-3 z-50 shadow-[var(--shadow)] sm:inset-6' : 'relative mt-3')}
+        className={clsx('overflow-hidden rounded-xl border border-line bg-sunk', isLarger ? 'wb-pop fixed inset-3 z-50 shadow-[var(--shadow)] sm:inset-6' : 'relative mt-3')}
       >
         <canvas
           ref={canvas}

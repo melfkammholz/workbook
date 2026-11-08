@@ -166,8 +166,9 @@ function Loaded({ id }: { id: string }) {
   };
 
   const task = (
-    // A container, so wide widgets in a lesson know how much room the page has.
-    <div className="@container h-full overflow-y-auto">
+    // A container, so wide widgets in a lesson know how much room the page has. Relative, so nothing positioned
+    // inside (a hidden `sr-only` line) can reach past it and make the whole window scroll.
+    <div className="@container relative h-full overflow-y-auto">
       <TaskColumn
         detail={detail}
         outline={outline}

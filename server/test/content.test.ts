@@ -211,7 +211,7 @@ items:
     const code = (id: string) => content.exercise(id)!.code!;
     expect(code('hs')).toMatchObject({ studentPath: 'Answer.hs', check: null, solution: null, runnable: true });
     expect(code('hs').starter).toContain('module Answer');
-    expect(code('py')).toMatchObject({ studentPath: 'answer.py', starter: '', runnable: false });
+    expect(code('py')).toMatchObject({ studentPath: 'answer.py', starter: '', runnable: true });
     expect(code('pl')).toMatchObject({ studentPath: 'answer.pl', starter: '', runnable: true });
   });
 
@@ -222,11 +222,15 @@ items:
 
   it('warns that tests for a language without a runner are ignored', () => {
     const d = tmpContent({
-      'chapters/01-a/chapter.yml': 'title: A\nitems:\n  - id: py\n    code: { language: python, check: t.py }\n',
+      'chapters/01-a/chapter.yml': 'title: A\nitems:\n  - id: rb\n    code: { language: ruby, check: t.rb }\n  - id: py\n    code: { language: python, check: t.py }\n',
+      'chapters/01-a/rb.typ': 'R',
       'chapters/01-a/py.typ': 'P',
     });
-    const { problems } = loadContent(d).outline;
-    expect(problems.map((p) => p.severity)).toEqual(['warning']);
-    expect(problems[0]!.message).toContain('cannot run python');
+    const content = loadContent(d);
+    const { problems } = content.outline;
+    expect(problems.map((p) => p.severity)).toEqual(['warning', 'warning']);
+    expect(problems[0]!.message).toContain('cannot run ruby');
+    expect(problems[1]!.message).toContain('cannot run tests in python');
+    expect(content.exercise('py')!.code!.check).toBeNull();
   });
 });

@@ -26,6 +26,8 @@ export function FlashcardReview({ deckIds }: { deckIds: string[] }) {
   const [revealed, setRevealed] = useState(false);
   /** For a quiz card: the rating its first pick suggests. */
   const [suggested, setSuggested] = useState<CardRating | null>(null);
+  /** A number key's pick on a quiz card, handed to the quiz (n makes the same number pressed twice count). */
+  const [pick, setPick] = useState<{ i: number; n: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   /** A card that was just forgotten once too often. */
@@ -39,6 +41,7 @@ export function FlashcardReview({ deckIds }: { deckIds: string[] }) {
       setNext(await nextCard(key.split(','), ahead.current));
       setRevealed(false);
       setSuggested(null);
+      setPick(null);
       setFailed(false);
     } catch {
       setFailed(true);
@@ -90,7 +93,11 @@ export function FlashcardReview({ deckIds }: { deckIds: string[] }) {
       if (!card || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('[role=dialog]')) return;
       const target = e.target as HTMLElement | null;
       if (target?.closest('input, textarea, [contenteditable=true]')) return;
-      if (!revealed && (e.key === ' ' || e.key === 'Enter')) {
+      // A quiz card: before the first pick, a number picks an answer; after it, numbers rate as for any card.
+      if (!revealed && card.kind === 'quiz' && /^[1-9]$/.test(e.key)) {
+        e.preventDefault();
+        setPick({ i: Number(e.key) - 1, n: Date.now() });
+      } else if (!revealed && (e.key === ' ' || e.key === 'Enter')) {
         e.preventDefault();
         setRevealed(true);
       } else if (revealed && /^[1-4]$/.test(e.key)) {
@@ -159,6 +166,7 @@ export function FlashcardReview({ deckIds }: { deckIds: string[] }) {
                     bare
                     parts={partsOfHtml(card.front)}
                     reveal={revealed}
+                    pick={pick}
                     onPick={(right) => {
                       setSuggested(right ? 3 : 1);
                       setRevealed(true);

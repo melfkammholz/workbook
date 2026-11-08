@@ -20,6 +20,7 @@ import { ReplView } from './Repl';
 import { TestsPanel } from './TestsPanel';
 import { TypstEditor } from './TypstEditor';
 import { Button, IconButton, ResizeHandle, clsx } from './ui';
+import { useRewards } from '@/lib/rewards';
 
 type TopTab = 'answer' | 'notes' | 'ai';
 type BottomTab = 'interpreter' | 'tests';
@@ -42,7 +43,7 @@ interface Props {
   reviewing: boolean;
 }
 
-const PROMPT: Record<string, string> = { haskell: 'ghci>', prolog: '?-' };
+const PROMPT: Record<string, string> = { haskell: 'ghci>', prolog: '?-', python: '>>>' };
 
 /** The right pane: answer editor, interpreter and checks, notes. */
 export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, checkBanner, finished, reviewing }: Props) {
@@ -89,7 +90,9 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
   const [sample, setSample] = useState<{ samples: string[]; css: string } | null>(null);
 
   const qc = useQueryClient();
-  const celebrating = !!useSettings().data?.showAchievements;
+  // Tests passing for the first time is a celebration; with only the animals chosen, it is not.
+  const rewards = useRewards();
+  const celebrating = rewards.on && !rewards.zooOnly;
   const aiOn = !!useSettings().data?.showAi;
   // Only the first time the tests of this exercise all pass.
   const passedBefore = useRef(work.stats.checkPasses > 0);

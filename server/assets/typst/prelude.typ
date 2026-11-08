@@ -133,12 +133,13 @@
   for (id, body) in notes { _part("note", attrs: (data-id: id), body) }
 })
 
-/// An exercise to do next, in a box of its own: the app adds its title, difficulty and how far the student is.
-/// `#practice("w03-fold-tree")[Die Faltung für diesen Baum schreibst du selbst.]`
-#let practice(id, ..body) = _widget("practice", attrs: (data-id: id), {
-  xref(id)
-  for b in body.pos() { _part("text", b) }
-})
+/// Exercises to do next, as a list the student can click through: `#practice("fold-maybe-either", "fold-maximum")`.
+/// The app shows each one's title and whether it is done. Write the call to action before it, once.
+#let practice(..ids) = _widget(
+  "practice",
+  attrs: (data-ids: ids.pos().join(",")),
+  list(..ids.pos().map(id => xref(id))),
+)
 
 /// Expressions drawn as trees, side by side: `(expr: "f 1 (f 2 z)", caption: "foldr f z [1, 2]")`.
 /// `colors` gives names a constructor colour (1 to 4): `(f: 3, z: 1)`.
@@ -164,6 +165,9 @@
   attrs: (data-config: _config(ops: ops)),
   raw(ops.map(o => "(" + o.op + ")").join(" "), lang: "haskell", block: true),
 )
+
+/// A quiet aside inside a line, e.g. a note in a table cell.
+#let muted(body) = html.elem("span", attrs: (class: "wb-muted"), body)
 
 /// More room for a widget that is dense, e.g. two trees side by side: wider than the text, as far as the window allows.
 #let wide(body) = html.elem("div", attrs: (class: "wb-wide"), body)

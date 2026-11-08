@@ -83,6 +83,7 @@ export interface NotePreview {
 export interface SearchResponse {
   items: { id: string; title: string; href: string; snippet: string | null }[];
   mine: { exerciseId: string; source: 'note' | 'answer'; snippet: string }[];
+  cards: { deckId: string; deckTitle: string; cardId: string; title: string; snippet: string | null }[];
 }
 
 // ───────────────────────── queries ─────────────────────────

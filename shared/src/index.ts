@@ -3,8 +3,8 @@
 // ───────────────────────── content model ─────────────────────────
 
 /** Languages the workbook can run: a live interpreter and tests. */
-export type RunnableLanguage = 'haskell' | 'prolog';
-export const RUNNABLE_LANGUAGES: readonly string[] = ['haskell', 'prolog'];
+export type RunnableLanguage = 'haskell' | 'prolog' | 'python';
+export const RUNNABLE_LANGUAGES: readonly string[] = ['haskell', 'prolog', 'python'];
 /** Any editor language. Others get highlighting only (e.g. "python"). */
 export type Language = string;
 export type ExerciseKind = 'test' | 'challenge';
@@ -79,6 +79,8 @@ export interface LessonMeta extends ItemCommon {
   type: 'lesson';
   /** Extra material: only in the focus "everything", like an extra exercise. */
   extra: boolean;
+  /** Topics, like an exercise's. A flashcard made from one of its questions gets them too. */
+  tags: string[];
 }
 
 /** Questions about a whole chapter or section, placed by the author. Answers do not count as exercises done. */
@@ -140,7 +142,13 @@ export interface ThreadInfo {
   adventure: boolean;
   /** The exercise marked as the big finish on the adventure's map, or null. */
   finale: string | null;
+  /** A group of the course's work rather than a topic: a session's exercises, a homework sheet, an old exam. Null for a path. */
+  kind: ThreadKind | null;
 }
+
+/** The building blocks of a course besides its chapters. Each kind has a page that lists its groups, in file order. */
+export type ThreadKind = 'session' | 'homework' | 'exam';
+export const THREAD_KINDS: readonly ThreadKind[] = ['session', 'homework', 'exam'];
 
 export interface ContentProblem {
   severity: 'error' | 'warning';
@@ -327,6 +335,10 @@ export interface Settings {
   helpAfterMinutes: number;
   /** Opt-in. While false, no achievements, plants or celebrations appear anywhere. */
   showAchievements: boolean;
+  /** With rewards on: everything, or only the animal friends and their meadow. */
+  rewards: 'all' | 'zoo';
+  /** The icon in the bar that leads to them, for fun. */
+  rewardIcon: 'trophy' | 'paw';
   /** Size of the text in the editor, in pixels. */
   editorFontSize: number;
   editorKeys: 'default' | 'vim';
@@ -345,6 +357,8 @@ export const DEFAULT_SETTINGS: Settings = {
   showLessonOutline: true,
   helpAfterMinutes: 30,
   showAchievements: false,
+  rewards: 'all',
+  rewardIcon: 'trophy',
   showFlashcards: false,
   showAi: false,
   editorFontSize: 13.5,
@@ -580,8 +594,13 @@ export const DEFAULT_DECK_SETTINGS: DeckSettings = { retention: 0.9, newPerDay: 
 
 /** How well the cards are known. A card is new until its first review; shaky if likely forgotten, lapsed or still being learned. */
 export interface CardConfidence {
+  /** Remembered well: "Sicher", like a high self-rating. */
   solid: number;
+  /** Still being learned: "Geht so". */
+  learning: number;
+  /** Likely forgotten, lapsed, or forgotten again and again: "Unsicher". */
   shaky: number;
+  /** Never asked yet. */
   fresh: number;
 }
 

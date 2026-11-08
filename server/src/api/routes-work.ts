@@ -35,6 +35,8 @@ const bodies = {
       showLessonOutline: z.boolean(),
       helpAfterMinutes: z.number().int().min(0).max(1440),
       showAchievements: z.boolean(),
+      rewards: z.enum(['all', 'zoo']),
+      rewardIcon: z.enum(['trophy', 'paw']),
       showFlashcards: z.boolean(),
       showAi: z.boolean(),
       safeColors: z.boolean(),

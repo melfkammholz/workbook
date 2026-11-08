@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { ID_PATTERN } from './ids.js';
 
 const id = z.string().regex(ID_PATTERN, 'ids are lowercase letters, digits and dashes (e.g. "binary-exponentiation")');
-const runnable = z.enum(['haskell', 'prolog']);
+const runnable = z.enum(['haskell', 'prolog', 'python']);
 /** Any lowercase language name. Only `runnable` ones get an interpreter and tests. */
 const language = z.string().regex(/^[a-z][a-z0-9+#-]*$/, 'a language name in lowercase, e.g. "haskell" or "python"');
 
@@ -67,6 +67,8 @@ export const lessonSchema = z
     text: z.string().optional(),
     /** Extra material: shown when the student wants to see everything. */
     extra: z.boolean().default(false),
+    /** Topics, as for exercises. Cards made from the lesson's questions get them. */
+    tags: z.array(z.string()).default([]),
   })
   .strict();
 
@@ -156,6 +158,8 @@ export const threadSchema = z
     description: z.string().optional(),
     /** Ordered. A nested list means "any one of these". */
     steps: z.array(z.union([id, z.array(id).min(1)])),
+    /** A group of work instead of a topic: a session's exercises, a homework sheet, an old exam. Listed on its kind's page. */
+    kind: z.enum(['session', 'homework', 'exam']).optional(),
     /** Typst file relative to `threads/`. Having one makes this an adventure. */
     page: z.string().optional(),
     /** The exercise shown as the big finish on the map of an adventure. Has to be one of the steps. */

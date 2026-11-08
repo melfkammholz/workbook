@@ -1,5 +1,6 @@
 import { useAchievements } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { useRewards } from '@/lib/rewards';
 
 export const PLANTS: Record<1 | 2 | 3, string> = { 1: '🌱', 2: '🌿', 3: '🌳' };
 
@@ -7,8 +8,9 @@ export const PLANTS: Record<1 | 2 | 3, string> = { 1: '🌱', 2: '🌿', 3: '�
 export function Plant({ chapterId, className }: { chapterId: string; className?: string }) {
   const t = useT();
   const { data } = useAchievements();
+  const { zooOnly } = useRewards();
   const stage = (data?.earned ?? []).reduce<0 | 1 | 2 | 3>((best, e) => (e.event.kind === 'plant' && e.event.chapterId === chapterId && e.event.stage > best ? e.event.stage : best), 0);
-  if (stage === 0) return null;
+  if (stage === 0 || zooOnly) return null;
   return (
     <span role="img" aria-label={t.plantStage[stage]} title={t.plantStage[stage]} className={className}>
       {PLANTS[stage]}

@@ -1,11 +1,11 @@
-import { ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
+import { Pause, Play } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { arg, foldSetup, isAtomic, parseValue, planFold, show, simplify, type FoldPlan, type Term } from '@/lib/foldSignature';
 import { useT } from '@/lib/i18n';
 import { clsx } from '../ui';
 import { kClass } from './FoldSignature';
 import { nodeOf, postOrder, TreePicture, type Node } from './FoldTree';
-import { Choice, Code, Frame, Message, Row, shake } from './index';
+import { Choice, Code, Frame, Message, Row, StepBar, shake } from './index';
 import { useEvaluate } from './useEvaluate';
 
 interface Fold {
@@ -298,18 +298,30 @@ function Steps({ plan, decl, cfg, root }: { plan: FoldPlan; decl: string; cfg: C
         <TreePicture tree={tree} label={label} done={done} valueOf={valueOf} aria={show(root)} dim={unused} now={now} gone={gone} widest={widest} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" aria-label={t.play} title={playing ? t.pause : t.play} onClick={() => (playing ? setPlaying(false) : (k >= last && setAt(0), setPlaying(true)))} className="grid size-8 place-items-center rounded-md border border-line-strong bg-sheet text-ink-2 hover:bg-sunk hover:text-ink">
-          {playing ? <Pause size={15} /> : <Play size={15} />}
-        </button>
-        <input type="range" min={0} max={last} value={k} onChange={(e) => (setPlaying(false), setAt(Number(e.target.value)))} aria-label={t.fold} className="min-w-0 flex-1 accent-[var(--accent)]" />
-        <button type="button" aria-label={t.rowValue} disabled={k === 0} onClick={() => (setPlaying(false), setAt(k - 1))} className="grid size-8 place-items-center rounded-md border border-line-strong bg-sheet text-ink-2 hover:bg-sunk hover:text-ink disabled:opacity-35">
-          <ChevronLeft size={17} />
-        </button>
-        <button type="button" aria-label={t.done} disabled={k >= last} onClick={() => (setPlaying(false), setAt(k + 1))} className="grid size-8 place-items-center rounded-md bg-accent text-accent-ink hover:brightness-110 disabled:opacity-35">
-          <ChevronRight size={17} />
-        </button>
-      </div>
+      <StepBar
+        at={k}
+        count={steps.length}
+        label={k === 0 ? t.rowValue : k === 1 ? t.rowReplaced : k === 2 ? t.rowInserted : undefined}
+        onGo={(i) => {
+          setPlaying(false);
+          setAt(i);
+        }}
+        extra={
+          <button
+            type="button"
+            aria-label={playing ? t.pause : t.play}
+            title={playing ? t.pause : t.play}
+            onClick={() => {
+              if (playing) return setPlaying(false);
+              if (k >= last) setAt(0);
+              setPlaying(true);
+            }}
+            className="grid size-8 place-items-center rounded-md text-ink-2 hover:bg-sunk hover:text-ink"
+          >
+            {playing ? <Pause size={15} /> : <Play size={15} />}
+          </button>
+        }
+      />
 
       <p className="min-h-[1.5em] text-[14.5px]" aria-live="polite">
         <Message text={say} />

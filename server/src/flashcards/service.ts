@@ -24,7 +24,7 @@ import { createEmptyCard, fsrs, generatorParameters, State, type Card, type Card
 import type { TypstRenderer } from '../content/typst.js';
 import { escapeHtml } from '../content/html.js';
 import type { Store } from '../db/store.js';
-import { appendCard, assignIds, balanced, cardText, deckWarnings, fieldsOf, insertAfter, moveCard, removeCard, replaceCard, scanCards, toTypst, unitsOf, type CardCall, type Unit } from './source.js';
+import { appendCard, assignIds, balanced, cardText, deckWarnings, fieldsOf, insertAfter, moveCard, moveCardTo, removeCard, replaceCard, scanCards, toTypst, unitsOf, type CardCall, type Unit } from './source.js';
 
 const DAY = 86_400_000;
 /** A card being learned that comes up again this soon is shown now rather than making the student wait. */
@@ -70,7 +70,8 @@ interface ScheduleRow {
 }
 
 type Row = Record<string, unknown>;
-type Grouping = 'solid' | 'shaky' | 'fresh';
+/** The three levels of a student's own ratings, and new: so both read the same on the review page. */
+type Grouping = 'solid' | 'learning' | 'shaky' | 'fresh';
 
 export class FlashcardError extends Error {
   constructor(readonly code: 'unknown-deck' | 'unknown-card' | 'unbalanced') {
@@ -113,6 +114,25 @@ export class Flashcards {
     return this.sql
       .all('SELECT id, title, source, settings, position FROM decks ORDER BY position, created_at')
       .map((r) => ({ id: r.id as string, title: r.title as string, source: r.source as string, settings: settingsOf(r.settings as string), position: Number(r.position) }));
+  }
+
+  /** Cards whose text has every word, for the search. `fold` makes text comparable (case, accents). */
+  search(terms: string[], fold: (s: string) => string, snippet: (text: string, terms: string[]) => string | null): { deckId: string; deckTitle: string; cardId: string; title: string; snippet: string | null }[] {
+    const out: { deckId: string; deckTitle: string; cardId: string; title: string; snippet: string | null }[] = [];
+    for (const d of this.decks()) {
+      for (const c of scanCards(d.source)) {
+        if (!c.id) continue;
+        const f = fieldsOf(d.source, c);
+        const text = plainCardText(`${f.front}\n${f.back}`);
+        const folded = fold(text);
+        if (!terms.every((w) => folded.includes(w))) continue;
+        // A quiz is named by its question, any other card by its front.
+        const title = plainCardText(c.kind === 'quiz' ? (/^\s*\[([^\]]*)\]/.exec(f.front)?.[1] ?? f.front) : f.front, true);
+        out.push({ deckId: d.id, deckTitle: d.title, cardId: c.id, title: title.length > 90 ? `${title.slice(0, 89)}…` : title, snippet: snippet(text, terms) ?? text.slice(0, 120) });
+        if (out.length >= 20) return out;
+      }
+    }
+    return out;
   }
 
   private deck(id: string): DeckRow {
@@ -238,6 +258,13 @@ export class Flashcards {
     return this.saveSource(id, moveCard(d.source, cardId, direction) ?? d.source);
   }
 
+  /** Dragged to a place: the card becomes the `to`-th card of the deck. */
+  moveCardTo(id: string, cardId: string, to: number): DeckSaved {
+    const d = this.deck(id);
+    if (!scanCards(d.source).some((c) => c.id === cardId)) throw new FlashcardError('unknown-card');
+    return this.saveSource(id, moveCardTo(d.source, cardId, to) ?? d.source);
+  }
+
   private warnings(source: string) {
     return deckWarnings(source, (ref) => this.resolver.find(ref) !== null);
   }
@@ -305,8 +332,9 @@ export class Flashcards {
       const reviewed = rows.filter((r): r is ScheduleRow => !isNew(r));
       if (!reviewed.length) return 'fresh';
       if (card.id && struggling(card.id)) return 'shaky';
-      const weak = reviewed.some((r) => r.card.state !== State.Review || plainScheduler.get_retrievability(r.card, now, false) < SHAKY_BELOW);
-      return weak ? 'shaky' : 'solid';
+      // Lapsed and relearning, or likely forgotten by now: unsure. Still in its first steps: learning.
+      if (reviewed.some((r) => r.card.state === State.Relearning || (r.card.state === State.Review && plainScheduler.get_retrievability(r.card, now, false) < SHAKY_BELOW))) return 'shaky';
+      return reviewed.some((r) => r.card.state !== State.Review) ? 'learning' : 'solid';
     };
     return { struggling, group, history, lapses };
   }
@@ -531,7 +559,20 @@ function check(kind: CardKind, front: string, back: string): void {
 }
 
 function tally(groups: Grouping[]): CardConfidence {
-  return { solid: groups.filter((g) => g === 'solid').length, shaky: groups.filter((g) => g === 'shaky').length, fresh: groups.filter((g) => g === 'fresh').length };
+  const count = (g: Grouping) => groups.filter((x) => x === g).length;
+  return { solid: count('solid'), learning: count('learning'), shaky: count('shaky'), fresh: count('fresh') };
 }
 
 const origin = (f: Found): CardOrigin => ({ ref: f.ref, title: f.title, courseTitle: f.courseTitle, href: f.href });
+
+/** A card's Typst as words to search and to quote (with code in backticks for a title): a quiz's `choice(correct: true)[…][…]` becomes its answers, and markup goes. */
+export function plainCardText(typst: string, keepCode = false): string {
+  return typst
+    .replace(/\bchoice(\([^)]*\))?/g, ' ')
+    .replace(/#[a-z][\w-]*(\([^)]*\))?/g, ' ')
+    .replace(/\]\s*\[/g, ' – ')
+    .replace(keepCode ? /[*$]/g : /[`*$]/g, '')
+    .replace(/[[\]]|,(?=\s*(\n|$))/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}

@@ -67,7 +67,7 @@ export function Compare({ parts, config }: { parts: Part[]; config: string }) {
 
   return (
     <Frame>
-      <Choice options={ids.map((id) => pairs[id]!)} at={at} onPick={setAt} label={t.examples} />
+      <Choice options={ids.map((id) => pairs[id]!)} at={at} onPick={setAt} label={t.compare} />
       <div ref={box} className="wb-compare relative grid gap-x-12 gap-y-3 sm:grid-cols-2">
         {sides.map((s, i) => (
           <div key={i} data-side={i} className="min-w-0">

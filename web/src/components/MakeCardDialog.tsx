@@ -59,6 +59,7 @@ export function MakeCardDialog({ open, onClose, exerciseId, initial }: { open: b
         // A card started elsewhere (a quiz in a lesson) starts the form afresh.
         key={initial ? `${initial.kind}:${initial.front}` : 'blank'}
         initial={initial}
+        fresh
         autoFocus
         submitLabel={t.addCard}
         onSubmit={async (f) => {

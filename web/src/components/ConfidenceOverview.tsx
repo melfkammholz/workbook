@@ -3,7 +3,7 @@ import { Link } from 'wouter';
 import type { CardConfidence, CourseCards, Outline, ReviewData } from '@wb/shared';
 import { confidenceRows, type Row as RatingRow } from '@/lib/confidence';
 import { useT } from '@/lib/i18n';
-import { CardConfidenceBar } from './CardConfidenceBar';
+import { CARD_SEGMENTS, CardConfidenceBar } from './CardConfidenceBar';
 import { clsx } from './ui';
 
 const RATING_SEGMENTS = [
@@ -12,11 +12,6 @@ const RATING_SEGMENTS = [
   ['high', 'bg-confidence-high'],
 ] as const;
 
-const CARD_SEGMENTS = [
-  ['shaky', 'bg-confidence-low wb-stripes'],
-  ['solid', 'bg-confidence-high'],
-  ['fresh', 'border border-dashed border-ink-3'],
-] as const;
 
 interface Row {
   key: string;
@@ -28,9 +23,9 @@ interface Row {
 
 /** How weak a group looks, 0 to 1, in each measure on its own. They are never added up. */
 const ratingWeakness = (r: RatingRow) => (5 - r.average) / 4;
-const cardWeakness = (v: CardConfidence) => (v.shaky + v.fresh * 0.5) / Math.max(1, v.solid + v.shaky + v.fresh);
+const cardWeakness = (v: CardConfidence) => (v.shaky + (v.learning + v.fresh) * 0.5) / Math.max(1, v.solid + v.learning + v.shaky + v.fresh);
 const weakness = (r: Row) => Math.max(r.rating ? ratingWeakness(r.rating) : 0, r.cards ? cardWeakness(r.cards) : 0);
-const cardTotal = (v: CardConfidence) => v.solid + v.shaky + v.fresh;
+const cardTotal = (v: CardConfidence) => v.solid + v.learning + v.shaky + v.fresh;
 
 /**
  * Where it feels solid and where it does not, by chapter and by topic, in one place:
@@ -62,7 +57,8 @@ export function ConfidenceOverview({ outline, data, cards }: { outline: Outline;
 
   if (chapters.length === 0 && topics.length === 0) return null;
   const names = { low: t.confidenceLow, okay: t.confidenceOkay, high: t.confidenceHigh };
-  const cardNames = { solid: t.cardsSolid, shaky: t.cardsShaky, fresh: t.cardsFresh };
+  // The same words as the ratings beside them: one scale, measured two ways.
+  const cardNames = { solid: t.confidenceHigh, learning: t.confidenceOkay, shaky: t.confidenceLow, fresh: t.cardsFresh };
   const grid = clsx('grid items-center gap-x-4 gap-y-1', showCards ? 'sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_minmax(0,1fr)]' : 'sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)]');
 
   const Legend = ({ items }: { items: readonly (readonly [string, string, string])[] }) => (

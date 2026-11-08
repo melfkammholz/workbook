@@ -202,7 +202,6 @@ export interface CompletionLabels {
   table: string;
   image: string;
   diagram: string;
-  importPackage: string;
   front: string;
   back: string;
   paramFrom: string;
@@ -224,7 +223,6 @@ function hashSnippets(l: CompletionLabels): Completion[] {
     snippetCompletion('#table(\n  columns: ${2},\n  [${}], [${}],\n)', { label: '#table', detail: l.table }),
     snippetCompletion('#image("${}")', { label: '#image', detail: l.image }),
     snippetCompletion('#diagram[\n  ${}\n]', { label: '#diagram', detail: l.diagram }),
-    snippetCompletion('#import "@preview/${package}:${version}": ${}', { label: '#import "@preview/…"', detail: l.importPackage }),
   ];
 }
 

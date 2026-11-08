@@ -4,6 +4,8 @@ import path from 'node:path';
 import YAML from 'yaml';
 import type { ZodError } from 'zod';
 import { RUNNABLE_LANGUAGES } from '@wb/shared';
+
+const TESTABLE_LANGUAGES: readonly string[] = ['haskell', 'prolog'];
 import type {
   ChapterMeta,
   ChecklistMeta,
@@ -277,6 +279,7 @@ export function loadContent(dir: string): Content {
           steps: t.steps.map((s) => (Array.isArray(s) ? s : [s])),
           adventure: !!t.page,
           finale: t.finale ?? null,
+          kind: t.kind ?? null,
         });
         if (t.page) readDoc(docKey.thread(id), path.join(threadsDir, t.page), `page of "${id}"`, t.language);
         if (t.files) shared.set(id, loadSharedFiles(t, threadsDir, `threads/${f}`, err));
@@ -390,7 +393,7 @@ export function loadContent(dir: string): Content {
         const textRel = rel(path.join(chapterDir, l.text ?? `${l.lesson}.typ`));
         const typst = readText(path.join(dir, textRel));
         if (typst === null) return err(textRel, `text file not found (lesson "${l.lesson}")`, l.lesson);
-        const meta: LessonMeta = { type: 'lesson', id: l.lesson, chapterId, sectionId, title: l.title, index: globalIndex++, extra: l.extra };
+        const meta: LessonMeta = { type: 'lesson', id: l.lesson, chapterId, sectionId, title: l.title, index: globalIndex++, extra: l.extra, tags: l.tags };
         chapter.items.push(meta);
         items.set(l.lesson, { meta, typst, typstRel: textRel, chapterRel: rel(chapterDir), codeLanguage: defaults.scratch ?? null });
         return;
@@ -492,19 +495,28 @@ export function loadContent(dir: string): Content {
     }
     for (const t of m.tags) if (!tagMap.has(t)) tagMap.set(t, { id: t, label: t, color: null, type: 'topic', description: null, review: true });
   }
+  // A lesson's tags count as topics too, even if tags.yml does not list them.
+  for (const item of items.values())
+    if (item.meta.type === 'lesson') for (const t of item.meta.tags) if (!tagMap.has(t)) tagMap.set(t, { id: t, label: t, color: null, type: 'topic', description: null, review: true });
   for (const item of items.values()) {
     const seen = new Set<string>();
-    // `#practice("id")` points at an exercise like `#xref` does.
-    for (const x of item.typst.matchAll(/(xref|practice)\(\s*"([^"]+)"/g)) {
-      const ref = x[2]!;
+    // `#practice("a", "b")` points at exercises like `#xref` does.
+    const refs = [
+      ...[...item.typst.matchAll(/xref\(\s*"([^"]+)"/g)].map((x) => ['xref', x[1]!] as const),
+      ...[...item.typst.matchAll(/practice\(([^)]*)\)/g)].flatMap((x) => [...x[1]!.matchAll(/"([^"]+)"/g)].map((y) => ['practice', y[1]!] as const)),
+    ];
+    for (const [kind, ref] of refs) {
       if (ref === item.meta.id) continue;
-      if (!known(ref)) err(item.typstRel, `${x[1]}: unknown id "${ref}"`, item.meta.id);
+      if (!known(ref)) err(item.typstRel, `${kind}: unknown id "${ref}"`, item.meta.id);
       else seen.add(ref);
     }
     if (item.meta.type === 'exercise') item.meta.mentions = [...seen];
   }
   for (const doc of docs.values())
-    for (const x of doc.typst.matchAll(/(xref|practice)\(\s*"([^"]+)"/g)) if (!known(x[2]!)) err(doc.typstRel, `${x[1]}: unknown id "${x[2]}"`);
+    for (const x of doc.typst.matchAll(/xref\(\s*"([^"]+)"/g)) if (!known(x[1]!)) err(doc.typstRel, `xref: unknown id "${x[1]}"`);
+  for (const doc of docs.values())
+    for (const x of doc.typst.matchAll(/practice\(([^)]*)\)/g))
+      for (const y of x[1]!.matchAll(/"([^"]+)"/g)) if (!known(y[1]!)) err(doc.typstRel, `practice: unknown id "${y[1]}"`);
 
   // A part of a shared solution has to name exercises that work in that file.
   for (const [threadId, sf] of shared) {
@@ -649,11 +661,14 @@ function loadCode(
       warn(rel(mainPath), `exercise "${id}" has no solution (use #ifdef TEMPLATE … #else … #endif, or "solution:")`, id);
   }
 
+  // Python has an interpreter in the workbook, but no tests yet.
+  const testable = TESTABLE_LANGUAGES.includes(language);
   if (!runnable && (spec.check || spec.support.length))
     warn(rel(chapterDir), `exercise "${id}": the workbook cannot run ${language}, so its tests and support files are ignored`, id);
+  else if (!testable && spec.check) warn(rel(chapterDir), `exercise "${id}": the workbook cannot run tests in ${language}, so they are ignored`, id);
 
   let check: string | null = null;
-  if (spec.check && runnable) {
+  if (spec.check && testable) {
     check = readText(path.join(chapterDir, spec.check));
     if (check === null) err(rel(path.join(chapterDir, spec.check)), `check file not found (exercise "${id}")`, id);
   }

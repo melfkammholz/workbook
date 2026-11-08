@@ -1,13 +1,15 @@
 import { Clock, Compass, Flame, ListChecks } from 'lucide-react';
-import { useOutline, useSettings } from '@/lib/api';
+import { useOutline } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Level } from './ui';
+import { useRewards } from '@/lib/rewards';
 
 /** Everything a marker in the outline or on an exercise can mean, in one place. */
 export function Legend() {
   const t = useT();
   const outline = useOutline().data;
-  const achievementsOn = !!useSettings().data?.showAchievements;
+  const rewards = useRewards();
+  const achievementsOn = rewards.on && !rewards.zooOnly;
   const tags = outline?.tags.filter((tag) => tag.description) ?? [];
   const rows: [React.ReactNode, string, string][] = [
     ...([1, 2, 3] as const).map((l): [React.ReactNode, string, string] => [<Level key={l} level={l} />, [t.easy, t.medium, t.hard][l - 1]!, t.legendLevels[l - 1]!]),

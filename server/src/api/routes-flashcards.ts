@@ -35,7 +35,7 @@ const bodies = {
     from: z.string().max(300).nullable().default(null),
   }),
   edit: z.object({ kind: z.enum(['basic', 'both', 'cloze', 'quiz']), front: z.string().max(20_000), back: z.string().max(20_000).default(''), tags: z.array(z.string().max(100)).max(30).default([]) }),
-  move: z.object({ direction: z.union([z.literal(-1), z.literal(1)]) }),
+  move: z.union([z.object({ direction: z.union([z.literal(-1), z.literal(1)]) }), z.object({ to: z.number().int().min(0) })]),
   rate: z.object({ key: z.string().max(100), rating: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]) }),
   key: z.object({ key: z.string().max(100) }),
   prompt: z.object({ lang: z.enum(['de', 'en']) }),
@@ -147,7 +147,7 @@ export function flashcardRoutes(app: FastifyInstance, d: Deps): void {
     const b = parse(bodies.move, req.body, reply);
     if (!b) return;
     try {
-      return f().moveCard(req.params.id, req.params.card, b.direction);
+      return 'to' in b ? f().moveCardTo(req.params.id, req.params.card, b.to) : f().moveCard(req.params.id, req.params.card, b.direction);
     } catch (e) {
       return fail(e, reply);
     }

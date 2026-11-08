@@ -81,6 +81,14 @@ const release = (e: KeyboardEvent | FocusEvent) => {
 };
 let listening = false;
 
+/** `g g` and `G`: to the top or the bottom of what scrolls, smoothly. */
+export function scrollToEdge(where: 'top' | 'bottom'): void {
+  const el = scrollTarget();
+  if (!el) return;
+  glide = null;
+  el.scrollTo({ top: where === 'top' ? 0 : el.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+}
+
 /**
  * `j` and `k`: the page glides while the key is held, speeding up and slowing down
  * smoothly, and a tap moves a short step. Key repeats only keep it going.

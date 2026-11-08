@@ -10,7 +10,7 @@ import type { ThreadInfo } from '@wb/shared';
 import { focusExercises, foldItems, type FoldEntry } from '@/lib/focus';
 import { useT } from '@/lib/i18n';
 import { adventureOfSection, isChapterWide } from '@/lib/sections';
-import { plainTitle } from '@/components/Title';
+import { Title } from '@/components/Title';
 
 /** Where a chapter starts: what it is about, how far along it is, and what is in it. */
 export function ChapterPage({ id }: { id: string }) {
@@ -51,7 +51,7 @@ export function ChapterPage({ id }: { id: string }) {
         </div>
         {upNext ? (
           <Link href={`/item/${upNext.id}`} className="mt-6 inline-flex h-10 max-w-full items-center gap-2 rounded-md bg-accent px-5 font-medium text-accent-ink hover:brightness-110">
-            <span className="truncate">{done || started ? t.continueWith(plainTitle(upNext.title)) : t.startWith(plainTitle(upNext.title))}</span> <ArrowRight size={16} className="shrink-0" />
+            <span className="truncate"><Title text={done || started ? t.continueWith(upNext.title) : t.startWith(upNext.title)} /></span> <ArrowRight size={16} className="shrink-0" />
           </Link>
         ) : null}
         {chapter.hasIntro ? (

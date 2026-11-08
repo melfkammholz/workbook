@@ -1,8 +1,8 @@
-import { Plus, X } from 'lucide-react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { Check, Plus, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { useT } from '@/lib/i18n';
 import { CodeEditor } from './CodeEditor';
-import { Button, IconButton, clsx } from './ui';
+import { clsx } from './ui';
 
 /**
  * A quiz card as a form: the question, then its answers, each with why it is right or wrong and whether it
@@ -48,7 +48,9 @@ export function parseQuiz(src: string): QuizFields | null {
     if (s[i] !== '[') return null;
     const end = closing(s, i);
     if (end < 0) return null;
-    const inner = s.slice(i + 1, end).trim();
+    const raw = s.slice(i + 1, end).trim();
+    // In Typst a single line break is a space: lines wrapped in the source are one line here. Blank lines stay.
+    const inner = raw.includes('```') ? raw : raw.replace(/[ \t]*\n[ \t]*/g, '\n').replace(/([^\n])\n(?!\n)/g, '$1 ');
     i = end + 1;
     return inner;
   };
@@ -91,7 +93,6 @@ export function QuizCardFields({ value, onChange, autoFocus }: { value: string; 
   const t = useT();
   // Read once: from here on the form is the source, and the text follows it.
   const [fields, setFields] = useState<QuizFields>(() => parseQuiz(value) ?? { question: '', answers: [{ ...blank(), correct: true }, blank()] });
-  const group = useId();
   const [raw] = useState(() => value.trim() !== '' && parseQuiz(value) === null);
   const first = useRef(true);
   useEffect(() => {
@@ -118,38 +119,65 @@ export function QuizCardFields({ value, onChange, autoFocus }: { value: string; 
     );
   }
 
+  const editor = (value: string, onChange: (v: string) => void, label: string, placeholder?: string, variant: 'notes' | 'field' = 'field') => (
+    <CodeEditor value={value} onChange={onChange} language="typst" variant={variant} wrap lineNumbers={false} label={label} placeholder={placeholder ?? label} tabMovesFocus />
+  );
+
   return (
     <div className="space-y-4">
       <label className="block">
         <span className="text-sm font-medium">{t.quizQuestion}</span>
-        <Box rows={3} focus={autoFocus}>
-          <CodeEditor value={fields.question} onChange={(question) => setFields((f) => ({ ...f, question }))} language="typst" variant="notes" wrap lineNumbers={false} label={t.quizQuestion} tabMovesFocus />
+        <Box rows={2.5} focus={autoFocus}>
+          {editor(fields.question, (question) => setFields((f) => ({ ...f, question })), t.quizQuestion, undefined, 'notes')}
         </Box>
       </label>
-      <fieldset className="space-y-2">
+      <fieldset>
         <legend className="mb-1 text-sm font-medium">{t.quizAnswers}</legend>
-        {fields.answers.map((a, i) => (
-          <div key={i} className={clsx('flex items-start gap-2 rounded-lg border p-2', a.correct ? 'border-done/50 bg-done-soft/40' : 'border-line')}>
-            <label className="mt-1.5 flex shrink-0 cursor-pointer flex-col items-center gap-0.5 text-[11px] text-ink-3" title={t.quizCorrect}>
-              <input type="radio" name={group} checked={a.correct} onChange={() => set(i, { correct: true })} className="size-4 accent-[var(--done)]" />
-              {t.quizCorrectShort}
-            </label>
-            <div className="min-w-0 flex-1 space-y-1.5">
-              <Box rows={1.2}>
-                <CodeEditor value={a.text} onChange={(text) => set(i, { text })} language="typst" variant="notes" wrap lineNumbers={false} label={t.quizAnswer(i + 1)} placeholder={t.quizAnswer(i + 1)} tabMovesFocus />
-              </Box>
-              <Box rows={1.6} quiet>
-                <CodeEditor value={a.why} onChange={(why) => set(i, { why })} language="typst" variant="notes" wrap lineNumbers={false} label={t.quizWhy} placeholder={a.correct ? t.quizWhyRight : t.quizWhyWrong} tabMovesFocus />
-              </Box>
-            </div>
-            <IconButton label={t.quizRemove} disabled={fields.answers.length <= 2} onClick={() => setFields((f) => ({ ...f, answers: f.answers.filter((_, j) => j !== i) }))} className="size-7 shrink-0">
-              <X size={14} />
-            </IconButton>
-          </div>
-        ))}
-        <Button size="sm" variant="ghost" onClick={() => setFields((f) => ({ ...f, answers: [...f.answers, blank()] }))}>
-          <Plus size={14} /> {t.quizAdd}
-        </Button>
+        {/* One list, as the answers will look on the card: a circle marks the right one. */}
+        <ul className="divide-y divide-line overflow-hidden rounded-md border border-line-strong bg-sheet">
+          {fields.answers.map((a, i) => (
+            <li key={i} className="group flex items-start gap-2 px-2.5 py-1.5">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={a.correct}
+                aria-label={t.quizCorrect}
+                title={t.quizCorrect}
+                onClick={() => set(i, { correct: true })}
+                className={clsx(
+                  // Centred on the answer's first line: 5px padding, half of a 21.6px line, less half the circle.
+                  'mt-[7px] grid size-[18px] shrink-0 place-items-center rounded-full border-[1.5px] transition-colors',
+                  a.correct ? 'border-done bg-done text-sheet' : 'border-line-strong hover:border-done',
+                )}
+              >
+                {a.correct ? <Check size={11} strokeWidth={3.5} /> : null}
+              </button>
+              <div className="min-w-0 flex-1">
+                {/* Without a height of their own, the fields grow with what is written. */}
+                <div>{editor(a.text, (text) => set(i, { text }), t.quizAnswer(i + 1))}</div>
+                {/* The explanation belongs to the answer above, and says less: smaller, quieter, set off by a line. */}
+                <div className="mb-1 ml-1 border-l-2 border-line pl-1.5" style={{ '--ink': 'var(--ink-2)', '--editor-font-size': '12.5px' } as React.CSSProperties}>
+                  {editor(a.why, (why) => set(i, { why }), t.quizWhy, a.correct ? t.quizWhyRight : t.quizWhyWrong)}
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label={t.quizRemove}
+                title={t.quizRemove}
+                disabled={fields.answers.length <= 2}
+                onClick={() => setFields((f) => ({ ...f, answers: f.answers.filter((_, j) => j !== i) }))}
+                className="mt-1 grid size-7 shrink-0 place-items-center rounded-md text-ink-3 opacity-0 transition-opacity hover:bg-sunk hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 disabled:!opacity-0"
+              >
+                <X size={14} />
+              </button>
+            </li>
+          ))}
+          <li>
+            <button type="button" onClick={() => setFields((f) => ({ ...f, answers: [...f.answers, blank()] }))} className="flex w-full items-center gap-2.5 px-2.5 py-2 text-left text-[13.5px] text-ink-2 hover:bg-sunk hover:text-ink">
+              <Plus size={15} className="ml-px" /> {t.quizAdd}
+            </button>
+          </li>
+        </ul>
       </fieldset>
     </div>
   );

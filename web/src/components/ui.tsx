@@ -98,9 +98,9 @@ export function Dialog({
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-ink/30 backdrop-blur-[2px]" />
+        <DialogPrimitive.Overlay className="wb-overlay fixed inset-0 z-40 bg-ink/30 backdrop-blur-[2px]" />
         <DialogPrimitive.Content
-          className={clsx('fixed left-1/2 top-[12vh] z-50 max-h-[78vh] w-[calc(100vw-2rem)] -translate-x-1/2 overflow-y-auto rounded-xl border border-line-strong bg-sheet p-6 shadow-[var(--shadow)]', width)}
+          className={clsx('wb-dialog fixed left-1/2 top-[12vh] z-50 max-h-[78vh] w-[calc(100vw-2rem)] -translate-x-1/2 overflow-y-auto rounded-xl border border-line-strong bg-sheet p-6 shadow-[var(--shadow)]', width)}
           aria-describedby={description ? undefined : undefined}
         >
           <div className="mb-4 flex items-start justify-between gap-4">

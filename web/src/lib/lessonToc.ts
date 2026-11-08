@@ -25,10 +25,19 @@ export function useLessonToc(): LessonToc | null {
   );
 }
 
+/** A heading as a title: its code in backticks, as titles are written, so the outline shows it as code. */
+function titleOf(el: HTMLElement): string {
+  let out = '';
+  el.childNodes.forEach((n) => {
+    out += n instanceof HTMLElement && n.tagName === 'CODE' ? `\`${n.textContent ?? ''}\`` : (n.textContent ?? '');
+  });
+  return out.trim();
+}
+
 /** Follows the headings of a lesson while it is read. */
 export function watchLesson(id: string, root: HTMLElement): () => void {
   const headings = [...root.querySelectorAll<HTMLElement>('.wb-lesson > h2')];
-  const sections = headings.map((el) => ({ title: el.textContent?.trim() ?? '', el }));
+  const sections = headings.map((el) => ({ title: titleOf(el), el }));
   const scroller = root.closest<HTMLElement>('.overflow-y-auto') ?? document.documentElement;
   const update = () => {
     const top = scroller.getBoundingClientRect().top + 120;

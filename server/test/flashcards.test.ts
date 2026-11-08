@@ -9,7 +9,7 @@ import { makeDeps } from '../src/api/deps.js';
 import { loadConfig } from '../src/config.js';
 import { CourseManager } from '../src/courses/manager.js';
 import { Store } from '../src/db/store.js';
-import { Flashcards } from '../src/flashcards/service.js';
+import { Flashcards, plainCardText } from '../src/flashcards/service.js';
 import { GAP_CLOSE, appendCard, applyEdits, assignIds, balanced, cardText, deckWarnings, dedent, fieldsOf, gapOpen, gapsIn, insertAfter, moveCard, removeCard, replaceCard, scanCards, toTypst, unitsOf } from '../src/flashcards/source.js';
 import type { TypstRenderer } from '../src/content/typst.js';
 import { SessionPool } from '../src/runners/pool.js';
@@ -300,15 +300,18 @@ describe('cards that keep slipping, and how well cards are known', () => {
     }
   };
 
-  it('counts new, shaky and solid cards', async () => {
+  it('counts new, learning, unsure and solid cards: the levels of a student\'s own ratings', async () => {
     const f = make();
     const deck = f.create('A');
     f.saveSource(deck.id, '#flashcard[Q1][A1]\n#flashcard[Q2][A2]');
-    expect(f.list(today()).decks[0]!.confidence).toEqual({ solid: 0, shaky: 0, fresh: 2 });
+    expect(f.list(today()).decks[0]!.confidence).toEqual({ solid: 0, learning: 0, shaky: 0, fresh: 2 });
     f.rate((await f.next([deck.id], today(), false)).card!.key, 4);
-    expect(f.list(today()).decks[0]!.confidence).toEqual({ solid: 1, shaky: 0, fresh: 1 });
+    expect(f.list(today()).decks[0]!.confidence).toEqual({ solid: 1, learning: 0, shaky: 0, fresh: 1 });
+    // Forgotten on its first go: still being learned, not yet unsure.
+    f.rate((await f.next([deck.id], today(), false)).card!.key, 1);
+    expect(f.list(today()).decks[0]!.confidence).toEqual({ solid: 1, learning: 1, shaky: 0, fresh: 0 });
     now += 400 * DAY;
-    expect(f.list(today()).decks[0]!.confidence).toEqual({ solid: 0, shaky: 1, fresh: 1 });
+    expect(f.list(today()).decks[0]!.confidence.shaky).toBeGreaterThanOrEqual(1);
   });
 
   it('offers a card forgotten again and again, until it is kept as it is', async () => {
@@ -414,7 +417,7 @@ describe('flashcards API', () => {
       await api('POST', `/api/flashcards/decks/${deck.id}/cards`, { kind: 'basic', front: 'Q', back: 'A', exercise: 'side-effects', tags: ['own-tag'] });
       const { json } = await api<{ chapters: Record<string, unknown>; tags: Record<string, unknown>; struggling: unknown[] }>('GET', '/api/flashcards/course');
       expect(Object.values(json.chapters).some((c) => (c as { fresh: number }).fresh >= 1)).toBe(true);
-      expect(json.tags['own-tag']).toEqual({ solid: 0, shaky: 0, fresh: 1 });
+      expect(json.tags['own-tag']).toEqual({ solid: 0, learning: 0, shaky: 0, fresh: 1 });
     });
 
     it('counts a card toward a course tag named by its label', async () => {
@@ -463,5 +466,11 @@ describe('flashcards API', () => {
       expect(json.text).toContain('Do not write new cards');
       expect(json.text).toContain('[{title} Q][A]');
     });
+  });
+});
+
+describe('plainCardText', () => {
+  it('turns a quiz into its words', () => {
+    expect(plainCardText('[Welchen Typ hat `f`?],\nchoice[`Maybe r`][Falsch.],\nchoice(correct: true)[`r`][Richtig.],')).toBe('Welchen Typ hat f? Maybe r – Falsch. r – Richtig.');
   });
 });

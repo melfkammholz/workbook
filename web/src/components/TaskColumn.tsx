@@ -1,7 +1,7 @@
 import { ArrowLeft, ArrowRight, Clock, Compass, ExternalLink, Flag, Flame, Lightbulb, MessageCircle, Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
-import type { ExerciseMeta, ItemDetail, ItemMeta, Outline, StudentState } from '@wb/shared';
+import type { ExerciseMeta, ItemDetail, ItemMeta, Outline, StudentState, ThreadInfo } from '@wb/shared';
 import { focusOf, inFocus } from '@wb/shared';
 import { neighbours, statusOf, useCourses } from '@/lib/api';
 import { issueLink } from '@/lib/issues';
@@ -11,6 +11,7 @@ import { Checklist } from './Checklist';
 import { Prose } from './Prose';
 import { Button, Chip, Level, StatusMark, clsx } from './ui';
 import { Title, plainTitle } from '@/components/Title';
+import { KIND_ICONS } from '@/lib/kinds';
 
 interface Props {
   detail: ItemDetail;
@@ -29,6 +30,8 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
   const tagsOf = (type: 'topic' | 'signal') => outline.tags.filter((tag) => tag.type === type && ex?.tags.includes(tag.id));
   const errors = rendered.diagnostics.filter((d) => d.severity === 'error');
   const adventures = outline.threads.filter((x) => x.adventure && x.steps.some((step) => step.includes(meta.id)));
+  // Sessions and homework sheets it belongs to, in their own order.
+  const groups = outline.threads.filter((x) => x.kind && x.steps.some((step) => step.includes(meta.id)));
   const { previous, next } = neighbours(outline, meta.id, state);
   const chapter = outline.chapters.find((c) => c.items.some((i) => i.id === meta.id));
   const courses = useCourses().data;
@@ -81,6 +84,16 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
               </Chip>
             ) : null}
             {!inFocus(ex, focusOf(state)) ? <Chip>{t.outsideFocus}</Chip> : null}
+            {groups.map((g) => {
+              const Icon = KIND_ICONS[g.kind!];
+              return (
+                <Link key={g.id} href={`/kind/${g.kind}`}>
+                  <Chip>
+                    <Icon size={12} /> {g.title}
+                  </Chip>
+                </Link>
+              );
+            })}
             {adventures.map((a) => (
               <Link key={a.id} href={`/adventure/${a.id}`}>
                 <Chip tone="accent">
@@ -139,6 +152,7 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
       {rendered.hints.length ? <Hints hints={rendered.hints} revealed={revealedHints} onReveal={onRevealHint} /> : null}
 
       {ex ? <Threads ex={ex} byId={byId} state={state} /> : null}
+      <GroupNext groups={groups} id={meta.id} byId={byId} state={state} />
 
       <nav aria-label={t.exerciseNavigation} className="mt-10 flex flex-wrap justify-between gap-3 border-t border-line pt-5 text-sm">
         {previous ? (
@@ -288,5 +302,40 @@ function ItemLink({ item, state, arrow }: { item: ItemMeta; state: StudentState 
         {arrow ? <ArrowRight size={14} className="text-ink-3 opacity-0 transition-opacity group-hover:opacity-100" /> : null}
       </Link>
     </li>
+  );
+}
+
+/** What comes next in a session or homework sheet, for those who follow it in its order. */
+function GroupNext({ groups, id, byId, state }: { groups: ThreadInfo[]; id: string; byId: Map<string, ItemMeta>; state: StudentState | undefined }) {
+  const t = useT();
+  const rows = groups.flatMap((g) => {
+    const at = g.steps.findIndex((step) => step.includes(id));
+    const next = g.steps.slice(at + 1).flat().map((x) => byId.get(x)).find((x): x is ItemMeta => !!x);
+    return next ? [{ g, next }] : [];
+  });
+  if (!rows.length) return null;
+  return (
+    <div className="mt-10 space-y-2">
+      {rows.map(({ g, next }) => {
+        const Icon = KIND_ICONS[g.kind!];
+        return (
+          <Link
+            key={g.id}
+            href={`/item/${next.id}`}
+            className="group flex items-center gap-3 rounded-lg border border-line bg-sheet px-4 py-3 text-[14px] hover:border-line-strong"
+          >
+            <Icon size={16} className="shrink-0 text-ink-3" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-[12.5px] text-ink-3">{t.groupNext(g.title)}</span>
+              <span className="flex items-center gap-2 font-medium">
+                <StatusMark status={statusOf(state, next.id)} size={13} />
+                <Title text={next.title} />
+              </span>
+            </span>
+            <ArrowRight size={16} className="shrink-0 text-ink-3 transition-transform group-hover:translate-x-0.5 group-hover:text-ink" />
+          </Link>
+        );
+      })}
+    </div>
   );
 }

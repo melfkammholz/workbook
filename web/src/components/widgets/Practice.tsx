@@ -1,61 +1,51 @@
-import { PencilLine } from 'lucide-react';
+import { Bookmark, Check, ChevronRight, GraduationCap, PencilLine } from 'lucide-react';
 import { Link } from 'wouter';
 import { statusOf, useOutline, useState_ } from '@/lib/api';
 import { useT } from '@/lib/i18n';
-import { Prose } from '../Prose';
-import { Level, StatusMark, clsx } from '../ui';
-import type { Part } from './index';
-import { Title } from '@/components/Title';
+import { Title } from '../Title';
+import { clsx } from '../ui';
 
 /**
- * The exercise to do next, in a box of its own at the end of a lesson: what it is, how hard, how far the
- * student is, and one click to it. Everything but the author's sentence comes from the outline.
+ * Exercises (or lessons) to do next, at the end of a lesson: a list to click through. Each row says what it is and whether
+ * it is done; the row itself is the way there. The call to action is the author's, once, before the list.
  */
-export function Practice({ id, parts }: { id: string; parts: Part[] }) {
+export function Practice({ ids }: { ids: string[] }) {
   const t = useT();
   const outline = useOutline().data;
   const state = useState_().data?.state;
-  const chapter = outline?.chapters.find((c) => c.items.some((i) => i.id === id));
-  const item = chapter?.items.find((i) => i.id === id);
-  if (!item) return null;
-  const ex = item.type === 'exercise' ? item : null;
-  const status = statusOf(state, id);
-  const text = parts.find((p) => p.name === 'text');
+  const items = ids.flatMap((id) => {
+    const item = outline?.chapters.flatMap((c) => c.items).find((i) => i.id === id);
+    return item ? [item] : [];
+  });
+  if (!items.length) return null;
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-accent/35 bg-accent-soft/50 p-4 sm:flex-nowrap">
-      <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-lg bg-accent text-accent-ink">
-        <PencilLine size={19} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[12.5px] font-medium text-accent">{t.widget.practice}</p>
-        <p className="text-[16px] font-semibold leading-snug">
-          {ex?.startHere && ex.emoji ? <span className="mr-1.5">{ex.emoji}</span> : null}
-          {ex?.number ? <span className="mr-1.5 tabular-nums text-ink-3">{ex.number}</span> : null}
-          <Title text={item.title} />
-        </p>
-        {text ? <Prose html={text.html} className="mt-0.5 text-[14.5px] text-ink-2" /> : null}
-        <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-ink-3">
-          <span className="inline-flex items-center gap-1.5">
-            <StatusMark status={status} size={12} /> {t.status[status]}
-          </span>
-          {ex ? (
-            <span className="inline-flex items-center gap-1.5">
-              <Level level={ex.level} /> {[t.easy, t.medium, t.hard][ex.level - 1]}
-            </span>
-          ) : null}
-          {chapter ? <span className="truncate">{chapter.title}</span> : null}
-        </p>
-      </div>
-      <Link
-        href={`/item/${id}`}
-        className={clsx(
-          // In a lesson the text's own rules for links (accent, underline) would win otherwise.
-          'inline-flex h-8.5 shrink-0 items-center rounded-md px-3.5 text-sm font-medium !no-underline',
-          status === 'done' ? 'border border-line-strong bg-sheet !text-ink hover:bg-sunk' : 'bg-accent !text-accent-ink hover:brightness-110',
-        )}
-      >
-        {status === 'done' ? t.widget.practiceAgain : t.widget.practiceOpen}
-      </Link>
+    <div role="list" className="space-y-1.5">
+      {items.map((item) => {
+        const status = statusOf(state, item.id);
+        const done = status === 'done';
+        // The tile says how far the student is; before that, what it is: an exercise or a lesson.
+        const tile =
+          done ? { cls: 'bg-done-soft text-done', icon: <Check size={16} strokeWidth={2.75} /> }
+          : status === 'review' ? { cls: 'bg-review-soft text-review', icon: <Bookmark size={15} /> }
+          : status === 'in_progress' ? { cls: 'bg-accent text-accent-ink', icon: item.type === 'lesson' ? <GraduationCap size={15} /> : <PencilLine size={15} /> }
+          : { cls: 'bg-accent-soft text-accent', icon: item.type === 'lesson' ? <GraduationCap size={15} /> : <PencilLine size={15} /> };
+        return (
+          <div role="listitem" key={item.id}>
+            <Link
+              href={`/item/${item.id}`}
+              className="group flex items-center gap-3 rounded-lg border border-line bg-sheet px-3 py-2.5 !text-ink !no-underline shadow-[0_1px_2px_rgb(26_32_51/0.05)] transition-[border-color,box-shadow,transform] hover:-translate-y-px hover:border-accent/50 hover:shadow-[0_3px_10px_-4px_rgb(26_32_51/0.18)]"
+            >
+              <span className={clsx('grid size-8 shrink-0 place-items-center rounded-lg', tile.cls)} title={t.status[status]}>
+                {tile.icon}
+              </span>
+              <span className={clsx('min-w-0 flex-1 text-[15px] font-medium', done && 'text-ink-2')}>
+                <Title text={item.title} />
+              </span>
+              <ChevronRight size={18} className="shrink-0 text-ink-3 transition-transform group-hover:translate-x-0.5 group-hover:text-accent" />
+            </Link>
+          </div>
+        );
+      })}
     </div>
   );
 }

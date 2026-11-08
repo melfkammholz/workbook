@@ -6,6 +6,7 @@ import type { ReplClientMessage, ReplServerMessage, TypeInfo } from '@wb/shared'
 import type { ServerExercise } from '../content/loader.js';
 import { GhciSession } from '../runners/ghci.js';
 import { PrologSession } from '../runners/prolog.js';
+import { PythonSession } from '../runners/python.js';
 import type { Deps } from './deps.js';
 
 /**
@@ -27,13 +28,21 @@ export function replSocket(app: FastifyInstance, d: Deps): void {
       return socket.close();
     }
 
-    let current: { session: GhciSession | PrologSession; release: () => void } | null = null;
+    let current: { session: GhciSession | PrologSession | PythonSession; release: () => void } | null = null;
     let closed = false;
 
     const open = () => {
       const dir = path.join(d.config.dataDir, 'sessions', crypto.randomBytes(8).toString('hex'));
       const session =
-        language === 'prolog'
+        language === 'python'
+          ? new PythonSession({
+              bin: d.config.pythonBin,
+              dir,
+              // Next to the Prolog driver, in the app's assets.
+              libDir: path.join(path.dirname(d.prologLib), 'python'),
+              ...(ex.code ? { targets: Object.keys(ex.code.files), support: ex.code.support } : {}),
+            }).start()
+          : language === 'prolog'
           ? new PrologSession({
               bin: d.config.swiplBin,
               dir,

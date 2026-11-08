@@ -42,9 +42,6 @@ export function HelpPage({ section }: { section?: string }) {
               </div>
             ))}
           </dl>
-          <h3 className="mt-5 font-semibold">{t.helpPackagesTitle}</h3>
-          <p className="mt-1">{withCode(t.helpPackages)}</p>
-          <CodeBlock className="mt-2" language="typst" code={t.helpPackagesExample} />
         </>
       ),
     },

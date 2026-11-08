@@ -41,7 +41,8 @@ export function groupAnimals(outline: Outline, earned: EarnedEvent[]): Group[] {
 }
 
 /** Every animal of the course: what is collected, and, for the completionists, what is still out there. */
-export function AnimalCollection({ outline, earned }: { outline: Outline; earned: EarnedEvent[] }) {
+/** `alone`: the page is only about the animals, so its title already names them. */
+export function AnimalCollection({ outline, earned, alone = false }: { outline: Outline; earned: EarnedEvent[]; alone?: boolean }) {
   const t = useT();
   const groups = useMemo(() => groupAnimals(outline, earned), [outline, earned]);
   const all = groups.flatMap((g) => g.members);
@@ -51,12 +52,12 @@ export function AnimalCollection({ outline, earned }: { outline: Outline; earned
   const ordered = [...groups].sort((a, b) => Number(count(b) === b.members.length) - Number(count(a) === a.members.length) || count(b) - count(a));
 
   return (
-    <section className="mt-10">
+    <section className={alone ? 'mt-3' : 'mt-10'}>
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-[15px] font-semibold">{t.animals}</h2>
-        <span className="text-[13px] tabular-nums text-ink-2">{t.animalsCount(all.filter((m) => m.collected).length, all.length)}</span>
+        {alone ? <p className="max-w-prose text-ink-2">{t.animalsBody}</p> : <h2 className="text-[15px] font-semibold">{t.animals}</h2>}
+        <span className="shrink-0 text-[13px] tabular-nums text-ink-2">{t.animalsCount(all.filter((m) => m.collected).length, all.length)}</span>
       </div>
-      <p className="mt-0.5 max-w-prose text-[13.5px] text-ink-2">{t.animalsBody}</p>
+      {alone ? null : <p className="mt-0.5 max-w-prose text-[13.5px] text-ink-2">{t.animalsBody}</p>}
       {earned.some((e) => e.event.kind === 'animal') ? (
         <>
           <Meadow outline={outline} earned={earned} />

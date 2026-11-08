@@ -195,7 +195,7 @@ function Expression({ tree, done, head, valueOf }: { tree: Node; done: Set<Node>
 }
 
 const CHAR = 8.2;
-const LEVEL = 58;
+const LEVEL = 64;
 const GAP = 16;
 
 /** The tree, laid out like the prototype's: leaves side by side, each node above its children. */
@@ -277,7 +277,8 @@ export function TreePicture({
           n.children.map((c, i) => {
             const a = home.get(n)!;
             const b = home.get(c)!;
-            return <line key={`${ni}-${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} className="transition-opacity duration-300" style={{ stroke: 'var(--line-strong)', strokeWidth: 2, opacity: hidden(c) ? 0 : 1 }} />;
+            // From the parent's bottom to the child's top: a line between centres would cross the boxes beside the child.
+            return <line key={`${ni}-${i}`} x1={a.x} y1={a.y + 15} x2={b.x} y2={b.y - 15} className="transition-opacity duration-300" style={{ stroke: 'var(--line-strong)', strokeWidth: 2, opacity: hidden(c) ? 0 : 1 }} />;
           }),
         )}
         {nodes.map((n, i) => {

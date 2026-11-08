@@ -8,7 +8,8 @@ import { Level, StatusMark, clsx } from '@/components/ui';
 import { indexItems, isExercise, statusOf, threadProgress, useOutline, useSettings, useState_ } from '@/lib/api';
 import { focusExercises } from '@/lib/focus';
 import { useT } from '@/lib/i18n';
-import { Title, plainTitle } from '@/components/Title';
+import { Title } from '@/components/Title';
+import { KIND_ICONS, kindProgress, kindsOf } from '@/lib/kinds';
 
 export function Dashboard() {
   const t = useT();
@@ -31,7 +32,8 @@ export function Dashboard() {
   const weakChecklistAnswers = Object.values(state?.checklists ?? {}).flatMap((c) => Object.values(c)).filter((a) => a.confidence !== null && a.confidence <= 2).length;
   const attention = all.filter((e) => state?.openQuestions[e.id] || statusOf(state, e.id) === 'review' || (state?.reflections[e.id]?.confidence ?? 5) <= 2).length + weakChecklistAnswers;
   const adventures = outline.threads.filter((x) => x.adventure);
-  const paths = outline.threads.filter((x) => !x.adventure);
+  // Sessions, homework and exams have pages of their own; here only the paths through topics.
+  const paths = outline.threads.filter((x) => !x.adventure && !x.kind);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -78,7 +80,7 @@ export function Dashboard() {
 
         {fresh && first ? (
           <Link href={`/item/${first.id}`} className="mt-8 inline-flex h-10 items-center gap-2 rounded-md bg-accent px-5 font-medium text-accent-ink hover:brightness-110">
-            {t.startWith(plainTitle(first.title))} <ArrowRight size={16} />
+            <Title text={t.startWith(first.title)} /> <ArrowRight size={16} />
           </Link>
         ) : null}
 
@@ -144,6 +146,34 @@ export function Dashboard() {
                       <span className="mt-auto pt-3">
                         <span className="mb-1 block text-xs tabular-nums text-ink-2">{t.stepsDone(stepsDone, total)}</span>
                         <ProgressLine done={stepsDone} total={total} />
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ) : null}
+
+        {kindsOf(outline).length ? (
+          <section className="mt-10">
+            <h2 className="mb-1 text-[15px] font-semibold">{t.courseWork}</h2>
+            <p className="mb-3 text-[13.5px] text-ink-2">{t.courseWorkBody}</p>
+            <ul className="grid gap-3 sm:grid-cols-2">
+              {kindsOf(outline).map((k) => {
+                const { done, total } = kindProgress(outline, k, state);
+                const groups = outline.threads.filter((x) => x.kind === k);
+                const Icon = KIND_ICONS[k];
+                return (
+                  <li key={k}>
+                    <Link href={`/kind/${k}`} className="flex h-full flex-col rounded-lg border border-line bg-sheet px-4 py-3.5 hover:border-line-strong">
+                      <span className="flex items-center gap-2 font-semibold">
+                        <Icon size={16} className="shrink-0 text-ink-2" /> {t.threadKind[k]}
+                      </span>
+                      <span className="mt-1 text-[13.5px] text-ink-2">{groups.map((g) => g.title).join(' · ')}</span>
+                      <span className="mt-auto pt-3">
+                        <span className="mb-1 block text-xs tabular-nums text-ink-2">{t.nDoneOfM(done, total)}</span>
+                        <ProgressLine done={done} total={total} />
                       </span>
                     </Link>
                   </li>

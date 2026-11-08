@@ -357,19 +357,57 @@ a.wb-card-from:hover { color: var(--accent); }
 
 /* `#wide[…]`: wider than the text, centred on it, as wide as the page allows (up to 76rem). */
 .wb-wide {
-  --wb-wide: max(100%, min(76rem, 100cqw - 4rem));
+  --wb-wide: max(100%, min(70rem, 100cqw - 4rem));
   width: var(--wb-wide);
   margin-inline: calc((100% - var(--wb-wide)) / 2);
   margin-block: 1.4em;
 }
 .wb-wide > .wb-widget { margin-block: 0; }
 
-/* A quiz card shown as it is (preview, deck view): the answers as a list, the right one marked. */
-.wb-card-face [data-part='question'] { font-weight: 600; margin-bottom: 0.6em; }
-.wb-card-face [data-part='choice'] { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2em 0.7em; margin-top: 0.35em; }
-.wb-card-face [data-part='choice'] > [data-part='label'] { padding: 0.1em 0.6em; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--sheet); }
-.wb-card-face [data-part='choice'][data-correct] > [data-part='label'] { border-color: var(--done); background: var(--done-soft); font-weight: 600; }
-.wb-card-face [data-part='choice'] > [data-part='why'] { font-size: 0.9em; color: var(--ink-3); }
+/* A quiz card shown as it is (deck, its text preview, the card dialog): the question, then one row per answer,
+   a tick on the right one, the explanation quietly beneath. */
+:is(.wb-card-face, .prose-deck) [data-part='question'] { font-weight: 600; margin-bottom: 0.4em; }
+:is(.wb-card-face, .prose-deck) [data-part='choice'] {
+  display: grid; grid-template-columns: 1.15em minmax(0, 1fr); column-gap: 0.6em; padding-block: 0.4em; border-top: 1px solid var(--line);
+}
+:is(.wb-card-face, .prose-deck) [data-part='choice']::before {
+  /* Centred on the answer's line (1.65 × the font size). */
+  content: ''; grid-row: 1 / span 2; width: 1.15em; height: 1.15em; margin-top: 0.42em; border-radius: 50%;
+  border: 1.5px solid var(--line-strong); display: grid; place-items: center; font-size: 0.8em; line-height: 1;
+}
+:is(.wb-card-face, .prose-deck) [data-part='choice'][data-correct]::before {
+  /* A drawn check mark, like the app's icons: a text ✓ sits unevenly in the circle. */
+  border-color: var(--done);
+  background: var(--done) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / 62% no-repeat;
+}
+:is(.wb-card-face, .prose-deck) [data-part='choice'] > [data-part='label'] { grid-column: 2; line-height: 1.65; }
+/* An answer is its own line already: its code needs no box, and the boxes would make the rows uneven. */
+:is(.wb-card-face, .prose-deck) [data-part='label'] code { background: none; padding: 0; font-size: 0.92em; }
+:is(.wb-card-face, .prose-deck) [data-part='why'] { margin-top: 0.1em; }
+:is(.wb-card-face, .prose-deck) [data-part='choice'][data-correct] > [data-part='label'] { font-weight: 600; }
+:is(.wb-card-face, .prose-deck) [data-part='choice'] > [data-part='why'] { grid-column: 2; font-size: 0.88em; color: var(--ink-3); }
+.prose-deck aside[data-wb="card"][data-kind="quiz"] > [data-side="front"] { grid-column: 1 / -1; }
+.prose-deck aside[data-wb="card"][data-kind="quiz"] > [data-side="back"] { display: none; }
 
 /* Code in a title (`backticks` in the course): the code font and a quiet background, no highlighting. */
 .wb-title-code { font-family: var(--font-mono); font-size: 0.88em; font-weight: inherit; background: var(--sunk); padding: 0.05em 0.3em; border-radius: 4px; }
+
+/* Tables in a lesson, as in the prototype: no cell borders, a quiet header, a line between rows. */
+.wb-lesson table { width: 100%; border-collapse: collapse; font-size: 14.5px; line-height: 1.5; }
+.wb-lesson th, .wb-lesson td { border: 0; text-align: left; vertical-align: top; }
+.wb-lesson th { padding: 6px 10px; border-bottom: 1px solid var(--line-strong); font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.wb-lesson td { padding: 7px 10px; border-bottom: 1px solid var(--line); }
+.wb-lesson tr:last-child td { border-bottom: 0; }
+.wb-muted { color: var(--ink-3); font-size: 0.92em; }
+
+/* Popups arrive like text on a page: the ground fades in, the popup settles into place. */
+.wb-overlay { animation: wb-fade 160ms ease-out; }
+.wb-dialog { animation: wb-dialog-in 200ms cubic-bezier(0.2, 0.8, 0.3, 1); }
+.wb-pop { animation: wb-pop-in 200ms cubic-bezier(0.2, 0.8, 0.3, 1); }
+@keyframes wb-fade { from { opacity: 0; } }
+/* The dialog is centred with a transform, so the animation keeps the horizontal shift. */
+@keyframes wb-dialog-in { from { opacity: 0; transform: translate(-50%, 8px) scale(0.985); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes wb-pop-in { from { opacity: 0; transform: translateY(8px) scale(0.99); } }
+@media (prefers-reduced-motion: reduce) {
+  .wb-overlay, .wb-dialog, .wb-pop { animation: none; }
+}

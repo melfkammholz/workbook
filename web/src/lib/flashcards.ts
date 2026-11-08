@@ -60,6 +60,8 @@ export interface CardFields {
 export const editCard = (deck: string, card: string, f: CardFields) => api.put<DeckSaved>(`${deckUrl(deck)}/cards/${encodeURIComponent(card)}`, f);
 export const deleteCard = (deck: string, card: string) => api.delete<DeckSaved>(`${deckUrl(deck)}/cards/${encodeURIComponent(card)}`);
 export const moveCardBy = (deck: string, card: string, direction: -1 | 1) => api.post<DeckSaved>(`${deckUrl(deck)}/cards/${encodeURIComponent(card)}/move`, { direction });
+/** Dragged: the card becomes the `to`-th card of the deck. */
+export const moveCardTo = (deck: string, card: string, to: number) => api.post<DeckSaved>(`${deckUrl(deck)}/cards/${encodeURIComponent(card)}/move`, { to });
 export const keepCard = (card: string) => api.post(`/api/flashcards/cards/${encodeURIComponent(card)}/keep`);
 export const useStruggling = (deck: string | null) =>
   useQuery({ queryKey: ['flashcards', 'struggling', deck], queryFn: () => api.get<StrugglingCard[]>(`/api/flashcards/struggling${deck ? `?deck=${encodeURIComponent(deck)}` : ''}`), staleTime: 0 });

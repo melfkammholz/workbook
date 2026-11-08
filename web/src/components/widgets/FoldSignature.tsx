@@ -1,9 +1,9 @@
-import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { asArgument, distractors, mix, planFold, type FoldPlan } from '@/lib/foldSignature';
 import { useT, type Strings } from '@/lib/i18n';
 import { clsx } from '../ui';
-import { Code, Frame, Message, Reveal, shake } from './index';
+import { Code, Frame, Message, Reveal, StepBar, shake } from './index';
 import { useDrag } from './useDrag';
 
 type FoldStrings = Strings['widget']['fold'];
@@ -222,44 +222,18 @@ function Machine({ plan, given }: { plan: FoldPlan; given: boolean }) {
   const box7 = 'relative inline-flex h-7 items-center rounded-md';
   const gap = clsx(box7, 'min-w-[4.2em] justify-center border-[1.5px] border-dashed bg-sheet px-2 data-[hot]:border-solid data-[hot]:border-accent data-[hot]:bg-accent-soft');
   const active = drag.selected !== null || drag.dragging;
-  const nav = 'grid size-8 shrink-0 place-items-center rounded-md disabled:opacity-35';
 
   return (
     <Frame>
-      <div className="flex items-center gap-2">
-        <div role="list" className="flex min-w-0 flex-1 flex-wrap gap-x-4 gap-y-1 text-[13px]">
-          {t.steps.map((name, i) => (
-            <div role="listitem" key={i}>
-              <button
-                type="button"
-                disabled={!reachable(i)}
-                onClick={() => go(i)}
-                aria-current={i === step ? 'step' : undefined}
-                className={clsx('inline-flex items-center gap-1.5 rounded py-0.5 disabled:cursor-default', i === step ? 'font-medium text-ink' : complete[i] ? 'text-done hover:text-ink' : 'text-ink-3')}
-              >
-                <span className={clsx('grid size-5 place-items-center rounded-full text-[11px] font-semibold', i === step ? 'bg-accent text-accent-ink' : complete[i] ? 'bg-done-soft text-done' : 'bg-sunk')}>
-                  {complete[i] && i !== step ? <Check size={12} strokeWidth={3} /> : i + 1}
-                </span>
-                <Message text={name.replace(/\br\b/, '`r`')} />
-              </button>
-            </div>
-          ))}
-        </div>
-        {forMe ? <Reveal label={forMe} onClick={doForMe} /> : null}
-        <button type="button" aria-label={all.back} title={all.back} disabled={step === 0} onClick={() => go(step - 1)} className={clsx(nav, 'border border-line-strong bg-sheet text-ink-2 hover:bg-sunk hover:text-ink')}>
-          <ChevronLeft size={17} />
-        </button>
-        <button
-          type="button"
-          aria-label={all.next}
-          title={all.next}
-          disabled={step === 2 || !done}
-          onClick={() => go(step + 1)}
-          className={clsx(nav, step < 2 && done ? 'bg-accent text-accent-ink hover:brightness-110' : 'border border-line-strong bg-sheet text-ink-2')}
-        >
-          <ChevronRight size={17} />
-        </button>
-      </div>
+      <StepBar
+        at={step}
+        count={3}
+        label={t.steps[step]}
+        labels={t.steps}
+        onGo={go}
+        canNext={done}
+        extra={forMe ? <Reveal label={forMe} onClick={doForMe} /> : null}
+      />
 
       <Declaration plan={plan} />
 

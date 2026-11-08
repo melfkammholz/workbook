@@ -258,6 +258,16 @@ export function moveCard(source: string, id: string, direction: -1 | 1): string 
   return source.slice(0, a.start) + text(b) + source.slice(a.end, b.start) + text(a) + source.slice(b.end);
 }
 
+/** Moves a card to a position among the cards, one neighbour at a time, so text between cards stays where it is. */
+export function moveCardTo(source: string, id: string, to: number): string | null {
+  const from = scanCards(source).findIndex((x) => x.id === id);
+  if (from < 0) return null;
+  const target = Math.max(0, Math.min(to, scanCards(source).length - 1));
+  let out = source;
+  for (let i = from; i !== target; i += target > i ? 1 : -1) out = moveCard(out, id, target > i ? 1 : -1) ?? out;
+  return out;
+}
+
 /** Puts a card right after another one, e.g. the second half of a split. */
 export function insertAfter(source: string, id: string, card: string): string | null {
   const c = scanCards(source).find((x) => x.id === id);

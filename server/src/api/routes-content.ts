@@ -59,7 +59,7 @@ export function contentRoutes(app: FastifyInstance, d: Deps): void {
 
   app.get<{ Querystring: { q?: string } }>('/api/search', async (req) => {
     const q = (req.query.q ?? '').trim();
-    if (!q) return { items: [], mine: [] };
+    if (!q) return { items: [], mine: [], cards: [] };
     const terms = fold(q).split(/\s+/).filter(Boolean);
     // Every word has to be there, somewhere. Titles count for more than the text.
     const items = d.content.current
@@ -74,6 +74,8 @@ export function contentRoutes(app: FastifyInstance, d: Deps): void {
       const exerciseId = d.content.current.exerciseOfOwner(hit.exerciseId);
       return exerciseId ? [{ ...hit, exerciseId }] : [];
     });
-    return { items, mine };
+    // The student's flashcards too: they belong to no course, and are found from any.
+    const cards = d.courses.flashcards.search(terms, fold, snippetOf);
+    return { items, mine, cards };
   });
 }

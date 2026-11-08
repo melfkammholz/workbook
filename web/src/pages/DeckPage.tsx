@@ -2,7 +2,7 @@ import { EditorSelection, Transaction } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { DeckCard, DeckDoc, DeckSaved, DeckSettings, DeckWarning, Diagnostic, RenderedCard } from '@wb/shared';
-import { ArrowDown, ArrowUp, Check, CircleHelp, Copy, ExternalLink, Pencil, Plus, Settings2, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, CircleHelp, Copy, ExternalLink, GripVertical, Pencil, Plus, Settings2, Sparkles, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { CHATS } from '@/components/AiPanel';
@@ -13,7 +13,7 @@ import { MoreMenu } from '@/components/ExerciseView';
 import { TypstEditor } from '@/components/TypstEditor';
 import { Button, Dialog, Empty, IconButton, Segmented, Spinner, clsx } from '@/components/ui';
 import { useSettings } from '@/lib/api';
-import { addCard, cardKeys, deckPrompt, deleteCard, deleteDeck, editCard, moveCardBy, previewDeck, saveDeckSource, updateDeck, useDeck, useFlashcards } from '@/lib/flashcards';
+import { addCard, cardKeys, deckPrompt, deleteCard, deleteDeck, editCard, moveCardBy, moveCardTo, previewDeck, saveDeckSource, updateDeck, useDeck, useFlashcards } from '@/lib/flashcards';
 import { useLang, useT } from '@/lib/i18n';
 import { readPref, writePref } from '@/lib/shell';
 import { useDebouncedCallback } from '@/lib/useDebounced';
@@ -197,11 +197,14 @@ function CardList({ deck, focusCard, onSaved }: { deck: DeckDoc; focusCard: stri
     requestAnimationFrame(() => document.getElementById(`card-${focusCard}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
   }, [focusCard]);
 
+  /** A card being dragged by its handle, and where it would land: before the card at that index. */
+  const [drag, setDrag] = useState<{ id: string; from: number } | null>(null);
+  const [over, setOver] = useState<number | null>(null);
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-4xl px-4 pb-24 pt-5 sm:px-6">
-        {deck.cards.length ? <p className="mb-3 text-[12.5px] text-ink-3">{t.cardViewNote}</p> : null}
-        <ol className="space-y-3">
+        <ol className="space-y-3" onDragOver={(e) => drag && e.preventDefault()}>
           {deck.cards.map((c, i) =>
             c.id && editing === c.id ? (
               <li key={c.id} id={`card-${c.id}`} className="rounded-xl border border-accent bg-sheet p-4">
@@ -227,6 +230,22 @@ function CardList({ deck, focusCard, onSaved }: { deck: DeckDoc; focusCard: stri
                 last={i === deck.cards.length - 1}
                 onEdit={() => setEditing(c.id)}
                 onMove={async (d) => onSaved(await moveCardBy(deck.id, c.id!, d))}
+                drop={over === i ? 'before' : over === i + 1 && i === deck.cards.length - 1 ? 'after' : null}
+                dragging={drag?.id === c.id}
+                onDragStart={() => c.id && setDrag({ id: c.id, from: i })}
+                onDragOver={(after) => drag && setOver(after ? i + 1 : i)}
+                onDragEnd={() => {
+                  setDrag(null);
+                  setOver(null);
+                }}
+                onDrop={async () => {
+                  if (!drag || over === null) return;
+                  // Dropped below itself: one place less, since it leaves its own place first.
+                  const to = over > drag.from ? over - 1 : over;
+                  setDrag(null);
+                  setOver(null);
+                  if (to !== drag.from) onSaved(await moveCardTo(deck.id, drag.id, to));
+                }}
                 onDelete={async () => onSaved(await deleteCard(deck.id, c.id!))}
               />
             ),
@@ -263,6 +282,12 @@ function CardRow({
   onEdit,
   onMove,
   onDelete,
+  drop,
+  dragging,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
+  onDrop,
 }: {
   card: DeckCard;
   rendered: RenderedCard | undefined;
@@ -272,22 +297,70 @@ function CardRow({
   last: boolean;
   onEdit: () => void;
   onMove: (d: -1 | 1) => Promise<void>;
+  /** Where a dragged card would land, relative to this one. */
+  drop: 'before' | 'after' | null;
+  dragging: boolean;
+  onDragStart: () => void;
+  onDragOver: (after: boolean) => void;
+  onDragEnd: () => void;
+  onDrop: () => void;
   onDelete: () => Promise<void>;
 }) {
   const t = useT();
   const [confirming, setConfirming] = useState(false);
-  const cloze = card.kind === 'cloze';
+  const [armed, setArmed] = useState(false);
+  // A cloze and a quiz are one side: they take the whole width.
+  const oneSide = card.kind === 'cloze' || card.kind === 'quiz';
   return (
-    <li id={card.id ? `card-${card.id}` : undefined} className="group overflow-hidden rounded-xl border border-line bg-sheet">
-      <div className={clsx('grid', !cloze && 'sm:grid-cols-2')}>
+    <li
+      id={card.id ? `card-${card.id}` : undefined}
+      // Only the handle starts a drag, so text in the card can still be selected.
+      draggable={armed}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        onDragStart();
+      }}
+      onDragEnd={() => {
+        setArmed(false);
+        onDragEnd();
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        const r = e.currentTarget.getBoundingClientRect();
+        onDragOver(e.clientY > r.top + r.height / 2);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        onDrop();
+      }}
+      className={clsx(
+        'group relative rounded-xl border border-line bg-sheet transition-opacity',
+        dragging && 'opacity-40',
+        drop === 'before' && 'before:absolute before:inset-x-2 before:-top-2 before:h-0.5 before:rounded-full before:bg-accent',
+        drop === 'after' && 'after:absolute after:inset-x-2 after:-bottom-2 after:h-0.5 after:rounded-full after:bg-accent',
+      )}
+    >
+      <div className="overflow-hidden rounded-xl">
+      <div className={clsx('grid', !oneSide && 'sm:grid-cols-2')}>
         <div className="wb-show-gaps min-w-0 px-4 py-3">{rendered ? <CardFace html={rendered.front} css={css} gap={null} revealed /> : <pre className="whitespace-pre-wrap font-mono text-[13px]">{card.front}</pre>}</div>
-        {!cloze ? (
+        {!oneSide ? (
           <div className="min-w-0 border-t border-line bg-paper px-4 py-3 sm:border-l sm:border-t-0">
             {rendered ? <CardFace html={rendered.back} css={css} gap={null} revealed /> : <pre className="whitespace-pre-wrap font-mono text-[13px]">{card.back}</pre>}
           </div>
         ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-2 border-t border-line px-3 py-1.5 text-[12.5px] text-ink-3">
+        {card.id ? (
+          <span
+            aria-hidden
+            title={t.dragCard}
+            onPointerDown={() => setArmed(true)}
+            onPointerUp={() => setArmed(false)}
+            className="-ml-1 grid size-6 cursor-grab place-items-center rounded text-ink-3 hover:bg-sunk hover:text-ink active:cursor-grabbing"
+          >
+            <GripVertical size={14} />
+          </span>
+        ) : null}
         {card.kind === 'both' ? <span>{t.cardKind.both}</span> : null}
         {card.tags.map((tag) => (
           <span key={tag} className="rounded-full bg-sunk px-2 py-0.5">
@@ -327,6 +400,7 @@ function CardRow({
             </>
           )}
         </span>
+      </div>
       </div>
     </li>
   );

@@ -17,8 +17,8 @@ const SORT_KEY = 'wb-deck-sort';
 
 /** Not solid yet, as a share: new cards count half, they are not known to be shaky. */
 const shakiness = (d: DeckSummary) => {
-  const { solid, shaky, fresh } = d.confidence;
-  return (shaky + fresh * 0.5) / Math.max(1, solid + shaky + fresh);
+  const { solid, learning, shaky, fresh } = d.confidence;
+  return (shaky + (learning + fresh) * 0.5) / Math.max(1, solid + learning + shaky + fresh);
 };
 
 function sortDecks(decks: DeckSummary[], sort: Sort): DeckSummary[] {

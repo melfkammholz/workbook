@@ -97,7 +97,7 @@ export function Widget({ host }: { host: WidgetHost }) {
     case 'bracketing':
       return <Bracketing config={host.attrs.config ?? '{}'} />;
     case 'practice':
-      return <Practice id={host.attrs.id ?? ''} parts={host.parts} />;
+      return <Practice ids={(host.attrs.ids ?? '').split(',').filter(Boolean)} />;
     case 'compare':
       return <Compare parts={host.parts} config={host.attrs.config ?? '{}'} />;
     case 'fold-steps':
@@ -158,7 +158,7 @@ export function Frame({ children, className, bare }: { children: React.ReactNode
   const nested = useContext(Nested) || !!bare;
   return (
     <Nested.Provider value>
-      <div className={clsx('flex min-w-0 flex-col gap-3 text-[15px]', !nested && 'rounded-lg border border-line bg-sheet p-4', className)}>{children}</div>
+      <div className={clsx('relative flex min-w-0 flex-col gap-3 text-[15px]', !nested && 'rounded-lg border border-line bg-sheet p-4', className)}>{children}</div>
     </Nested.Provider>
   );
 }
@@ -179,7 +179,7 @@ export function Row({ label, children }: { label: string; children: React.ReactN
  */
 export function Choice({ options, at, onPick, code = false, label }: { options: string[]; at: number; onPick: (i: number) => void; code?: boolean; label?: string }) {
   return (
-    <div role="group" aria-label={label} className="inline-flex flex-wrap gap-0.5 justify-self-start rounded-md bg-sunk p-0.5">
+    <div role="group" aria-label={label} className="inline-flex max-w-full flex-wrap gap-0.5 self-start justify-self-start rounded-md bg-sunk p-0.5">
       {options.map((o, i) => (
         <button
           key={i}
@@ -216,7 +216,22 @@ export function Reveal({ label, onClick }: { label: string; onClick: () => void 
  * A question with answers to choose from. In a lesson it can become a flashcard (`src` is its Typst text);
  * on a card it has no box of its own, says how the first pick went, and can be revealed from outside.
  */
-export function Quiz({ parts, src, bare, onPick, reveal }: { parts: Part[]; src?: string | undefined; bare?: boolean; onPick?: (right: boolean) => void; reveal?: boolean }) {
+export function Quiz({
+  parts,
+  src,
+  bare,
+  onPick,
+  reveal,
+  pick: picked_,
+}: {
+  parts: Part[];
+  src?: string | undefined;
+  bare?: boolean;
+  onPick?: (right: boolean) => void;
+  reveal?: boolean;
+  /** A pick from outside, e.g. a number key in the review. */
+  pick?: { i: number; n: number } | null;
+}) {
   const t = useT().widget;
   const flashcards = !!useSettings().data?.showFlashcards;
   const [, params] = useRoute('/item/:id');
@@ -244,6 +259,10 @@ export function Quiz({ parts, src, bare, onPick, reveal }: { parts: Part[]; src?
     }
   };
   const feedback = last === null ? null : choices[last]!;
+  useEffect(() => {
+    if (picked_ && picked_.i < choices.length) pick(picked_.i);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked_?.n]);
   useEffect(() => {
     if (reveal && !solved) setLast(choices.findIndex((c) => c.correct));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -277,6 +296,8 @@ export function Quiz({ parts, src, bare, onPick, reveal }: { parts: Part[]; src?
               solved && !c.correct && 'opacity-60',
             )}
           >
+            {/* On a card in the review, numbers pick: they say which. */}
+            {bare ? <span className="mr-2 font-mono text-[12px] tabular-nums text-ink-3">{i + 1}</span> : null}
             <Inline html={c.label} />
           </button>
         ))}
@@ -297,7 +318,25 @@ export function Quiz({ parts, src, bare, onPick, reveal }: { parts: Part[]; src?
 // ───────────────────────── steps ─────────────────────────
 
 /** Where one is in a sequence, with buttons back and forth. Shared by the widgets that go step by step. */
-export function StepBar({ at, count, label, labels, onGo }: { at: number; count: number; label?: string | undefined; labels?: (string | undefined)[]; onGo: (i: number) => void }) {
+export function StepBar({
+  at,
+  count,
+  label,
+  labels,
+  onGo,
+  canNext = true,
+  extra,
+}: {
+  at: number;
+  count: number;
+  label?: string | undefined;
+  labels?: (string | undefined)[];
+  onGo: (i: number) => void;
+  /** False while the step still has to be done (a widget the student works through). */
+  canNext?: boolean;
+  /** Before the arrows: a play button, the eye that does a step for the student. */
+  extra?: React.ReactNode;
+}) {
   const t = useT().widget;
   return (
     <div className="flex items-center gap-3">
@@ -323,12 +362,13 @@ export function StepBar({ at, count, label, labels, onGo }: { at: number; count:
           </span>
         ) : null}
       </span>
-      <div className="flex shrink-0 gap-1">
+      <div className="flex shrink-0 items-center gap-1">
+        {extra}
         <button type="button" aria-label={t.back} title={t.back} disabled={at === 0} onClick={() => onGo(at - 1)} className="grid size-8 place-items-center rounded-md border border-line-strong bg-sheet text-ink-2 hover:bg-sunk hover:text-ink disabled:opacity-35">
           <ChevronLeft size={17} />
         </button>
         {at < count - 1 ? (
-          <button type="button" aria-label={t.next} title={t.next} onClick={() => onGo(at + 1)} className="grid size-8 place-items-center rounded-md bg-accent text-accent-ink hover:brightness-110">
+          <button type="button" aria-label={t.next} title={t.next} disabled={!canNext} onClick={() => onGo(at + 1)} className="grid size-8 place-items-center rounded-md bg-accent text-accent-ink hover:brightness-110 disabled:bg-sunk disabled:text-ink-3 disabled:hover:brightness-100">
             <ChevronRight size={17} />
           </button>
         ) : (

@@ -39,7 +39,7 @@ COPY --from=node:26-trixie-slim /usr/local/bin/node /usr/local/bin/node
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       build-essential libgmp-dev libffi-dev libncurses-dev zlib1g-dev libnuma-dev \
-      ca-certificates curl xz-utils git swi-prolog-nox tini \
+      ca-certificates curl xz-utils git swi-prolog-nox python3 tini \
  && rm -rf /var/lib/apt/lists/*
 
 # GHC and cabal. Installed under /opt so the unprivileged user below can use them.

@@ -13,6 +13,7 @@ export interface Config {
   ghciBin: string;
   runghcBin: string;
   swiplBin: string;
+  pythonBin: string;
   /** Max simultaneously open interpreter sessions. */
   maxSessions: number;
   idleTimeoutMs: number;
@@ -32,6 +33,7 @@ export function loadConfig(env = process.env): Config {
     ghciBin: env.GHCI_BIN ?? 'ghci',
     runghcBin: env.RUNGHC_BIN ?? 'runghc',
     swiplBin: env.SWIPL_BIN ?? 'swipl',
+    pythonBin: env.PYTHON_BIN ?? 'python3',
     maxSessions: Number(env.MAX_SESSIONS ?? 6),
     idleTimeoutMs: Number(env.SESSION_IDLE_MS ?? 15 * 60_000),
     allowedHosts: (env.ALLOWED_HOSTS ?? 'localhost,127.0.0.1,[::1]').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean),
