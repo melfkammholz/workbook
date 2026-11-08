@@ -6,6 +6,9 @@ import type { ZodError } from 'zod';
 import { RUNNABLE_LANGUAGES } from '@wb/shared';
 
 const TESTABLE_LANGUAGES: readonly string[] = ['haskell', 'prolog'];
+
+/** Whether "Run tests" does anything: there is a test file, or (for `sld`) a program to check the tree against. */
+export const hasTests = (code: Pick<ServerCode, 'check' | 'program'>): boolean => code.check !== null || code.program !== null;
 import type {
   ChapterMeta,
   ChecklistMeta,
@@ -56,6 +59,8 @@ export interface ServerCode {
   /** The adventure or thread whose files these are. */
   shared: string | null;
   check: string | null;
+  /** For `sld`: the Prolog program the tree is checked against, as a key of `support`. */
+  program: string | null;
   /** Read-only modules, keyed by session-relative path. */
   support: Record<string, string>;
 }
@@ -440,7 +445,7 @@ export function loadContent(dir: string): Content {
             shared: code.shared,
             // `#ifdef TEMPLATE <ids>` says which parts of a shared file are whose.
             edits: code.shared ? Object.keys(code.reveal) : Object.keys(code.files),
-            hasCheck: code.check !== null,
+            hasCheck: hasTests(code),
             hasSolution: Object.keys(code.reveal).length > 0,
             options: code.options,
           }
@@ -665,7 +670,8 @@ function loadCode(
   const testable = TESTABLE_LANGUAGES.includes(language);
   if (!runnable && (spec.check || spec.support.length))
     warn(rel(chapterDir), `exercise "${id}": the workbook cannot run ${language}, so its tests and support files are ignored`, id);
-  else if (!testable && spec.check) warn(rel(chapterDir), `exercise "${id}": the workbook cannot run tests in ${language}, so they are ignored`, id);
+  else if (language === 'sld' && spec.check) warn(rel(chapterDir), `exercise "${id}": an sld tree is checked by sldcheck against its program, so "check" is ignored`, id);
+  else if (!testable && language !== 'sld' && spec.check) warn(rel(chapterDir), `exercise "${id}": the workbook cannot run tests in ${language}, so they are ignored`, id);
 
   let check: string | null = null;
   if (spec.check && testable) {
@@ -679,6 +685,17 @@ function loadCode(
     if (content === null) err(rel(path.join(chapterDir, s)), `support file not found (exercise "${id}")`, id);
     else support[language === 'haskell' ? haskellPathFor(content, path.basename(s)) : path.basename(s)] = content;
   }
+
+  // The program of an sld exercise is read-only, like a support file, so the student sees what the tree is about.
+  let program: string | null = null;
+  if (language === 'sld') {
+    if (!spec.program) err(rel(chapterDir), `exercise "${id}": language sld needs "program", the Prolog program the tree is about`, id);
+    else {
+      const text = readText(path.join(chapterDir, spec.program));
+      if (text === null) err(rel(path.join(chapterDir, spec.program)), `program file not found (exercise "${id}")`, id);
+      else support[(program = path.basename(spec.program))] = text;
+    }
+  } else if (spec.program) warn(rel(chapterDir), `exercise "${id}": "program" only goes with language sld, so it is ignored`, id);
 
   const studentPath =
     language === 'haskell'
@@ -698,6 +715,7 @@ function loadCode(
     reveal: solution === null ? {} : { [studentPath]: solution },
     shared: null,
     check,
+    program,
     support,
   };
 }
@@ -773,6 +791,7 @@ function loadSharedCode(
     reveal,
     shared: spec.shared!,
     check,
+    program: null,
     support,
   };
 }
@@ -780,6 +799,7 @@ function loadSharedCode(
 const EXTENSIONS: Record<string, string> = {
   prolog: 'pl',
   python: 'py',
+  sld: 'sld',
   javascript: 'js',
   typescript: 'ts',
   java: 'java',

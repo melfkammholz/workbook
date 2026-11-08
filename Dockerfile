@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 #
 # One image with everything a student needs: the workbook app, GHC (ghci/runghc)
-# with QuickCheck, SWI-Prolog, and the Typst CLI.
+# with QuickCheck, SWI-Prolog, sldcheck (for SLD trees), and the Typst CLI.
 #
 #   docker build -t workbook .
 #   docker run --rm -p 127.0.0.1:8080:8080 -v workbook-data:/data workbook
@@ -60,6 +60,15 @@ RUN case "${TARGETARCH:-amd64}" in amd64) t=x86_64;; arm64) t=aarch64;; *) echo 
  && curl -fsSL "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-${t}-unknown-linux-musl.tar.xz" \
   | tar -xJ --strip-components=1 -C /usr/local/bin "typst-${t}-unknown-linux-musl/typst" \
  && typst --version
+
+# sldcheck checks the SLD trees students draw (https://github.com/melfkammholz/sldcheck). It needs nothing but the
+# libraries that come with GHC, so ghc builds it directly. A tag, so that a rebuild gives the same checker; its own
+# example is the test that it works.
+ARG SLDCHECK_REF=v0.2.0.0
+RUN git clone --quiet --depth 1 --branch ${SLDCHECK_REF} https://github.com/melfkammholz/sldcheck /tmp/sldcheck \
+ && ghc -O1 -i/tmp/sldcheck/src -outputdir /tmp/sldcheck-build /tmp/sldcheck/app/Main.hs -o /usr/local/bin/sldcheck \
+ && sldcheck /tmp/sldcheck/examples/member.sld /tmp/sldcheck/examples/member.pl \
+ && rm -rf /tmp/sldcheck /tmp/sldcheck-build
 
 # Haskell libraries available to student code and to the checks. The cabal store
 # lives under /opt so the unprivileged user below can read it.

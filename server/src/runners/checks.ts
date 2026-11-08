@@ -6,10 +6,12 @@ import type { ServerCode } from '../content/loader.js';
 import { syncFiles } from './files.js';
 import { parseMarkedResults, runHaskellChecks, runProcess, stoppedRun } from './haskell-check.js';
 import { parsePrologDiagnostics } from './prolog.js';
+import { runSldChecks } from './sldcheck.js';
 
 export interface RunChecksOptions {
   runghcBin: string;
   swiplBin: string;
+  sldcheckBin: string;
   haskellLib: string;
   prologLib: string;
   workDir: string;
@@ -24,6 +26,7 @@ export interface RunChecksOptions {
 export function runChecks(o: RunChecksOptions): Promise<CheckRun> {
   const { runghcBin, haskellLib, workDir, code, files, timeoutMs, signal } = o;
   if (code.language === 'prolog') return runPrologChecks(o);
+  if (code.language === 'sld') return runSldChecks({ bin: o.sldcheckBin, workDir, code, files, ...(timeoutMs ? { timeoutMs } : {}), ...(signal ? { signal } : {}) });
   return runHaskellChecks({ runghcBin, libDir: haskellLib, workDir, code, files, ...(timeoutMs ? { timeoutMs } : {}), ...(signal ? { signal } : {}) });
 }
 

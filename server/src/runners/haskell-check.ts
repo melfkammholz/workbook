@@ -124,8 +124,8 @@ export function stoppedRun(stdout: string, t0: number): CheckRun {
 }
 
 export function runProcess(bin: string, args: string[], cwd: string, timeoutMs: number, signal?: AbortSignal) {
-  return new Promise<{ stdout: string; stderr: string; timedOut: boolean; stopped: boolean; spawnError: string | null }>((resolve) => {
-    if (signal?.aborted) return resolve({ stdout: '', stderr: '', timedOut: false, stopped: true, spawnError: null });
+  return new Promise<{ stdout: string; stderr: string; timedOut: boolean; stopped: boolean; spawnError: string | null; code: number | null }>((resolve) => {
+    if (signal?.aborted) return resolve({ stdout: '', stderr: '', timedOut: false, stopped: true, spawnError: null, code: null });
     // Own process group, so the timeout also kills the ghc child runghc starts.
     const proc = spawn(bin, args, {
       cwd,
@@ -160,10 +160,10 @@ export function runProcess(bin: string, args: string[], cwd: string, timeoutMs: 
     proc.on('error', (e) => {
       spawnError = e.message;
     });
-    proc.on('close', () => {
+    proc.on('close', (code) => {
       clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
-      resolve({ stdout, stderr, timedOut, stopped, spawnError });
+      resolve({ stdout, stderr, timedOut, stopped, spawnError, code });
     });
   });
 }

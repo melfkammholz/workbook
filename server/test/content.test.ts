@@ -102,10 +102,10 @@ describe('outline structure', () => {
     expect(parts.map((p) => p.title)).toEqual(['Funktionale Programmierung', 'Logische Programmierung']);
     expect(chapters.map((c) => c.partId)).toEqual(['part-1', 'part-1', 'part-2']);
     const [prolog] = chapters.slice(2);
-    expect(prolog!.sections.map((s) => s.title)).toEqual(['Fakten und Anfragen', 'Listen']);
-    expect(prolog!.items.map((i) => i.sectionId)).toEqual([prolog!.sections[0]!.id, prolog!.sections[1]!.id]);
+    expect(prolog!.sections.map((s) => s.title)).toEqual(['Fakten und Anfragen', 'Listen', 'SLD-Bäume']);
+    expect(prolog!.items.map((i) => i.sectionId)).toEqual([prolog!.sections[0]!.id, prolog!.sections[1]!.id, prolog!.sections[2]!.id]);
     // Sections do not take part in the numbering.
-    expect(prolog!.items.map((i) => (i.type === 'exercise' ? i.number : ''))).toEqual(['3.1', '3.2']);
+    expect(prolog!.items.map((i) => (i.type === 'exercise' ? i.number : ''))).toEqual(['3.1', '3.2', '3.3']);
   });
 
   it('still shows a chapter that no part lists, and says so', () => {
@@ -232,6 +232,39 @@ items:
     expect(problems[0]!.message).toContain('cannot run ruby');
     expect(problems[1]!.message).toContain('cannot run tests in python');
     expect(content.exercise('py')!.code!.check).toBeNull();
+  });
+
+  it('asks for the program of an sld exercise, which is the only thing its tests are', () => {
+    const d = tmpContent({
+      'chapters/01-a/chapter.yml': [
+        'title: A',
+        'items:',
+        '  - id: ok',
+        '    code: { language: sld, program: code/p.pl }',
+        '  - id: none',
+        '    code: { language: sld }',
+        '  - id: missing',
+        '    code: { language: sld, program: code/q.pl }',
+        '  - id: extra',
+        '    code: { language: sld, program: code/p.pl, check: t.pl }',
+        '  - id: elsewhere',
+        '    code: { language: prolog, program: code/p.pl }',
+        '',
+      ].join('\n'),
+      ...Object.fromEntries(['ok', 'none', 'missing', 'extra', 'elsewhere'].map((id) => [`chapters/01-a/${id}.typ`, 'T'])),
+      'chapters/01-a/code/p.pl': 'p(a).\n',
+    });
+    const content = loadContent(d);
+    const problems = content.outline.problems.map((p) => `${p.severity}: ${p.message}`);
+    expect(problems).toEqual([
+      expect.stringContaining('error: exercise "none": language sld needs "program"'),
+      expect.stringContaining('error: program file not found (exercise "missing")'),
+      expect.stringContaining('warning: exercise "extra": an sld tree is checked by sldcheck against its program, so "check" is ignored'),
+      expect.stringContaining('warning: exercise "elsewhere": "program" only goes with language sld'),
+    ]);
+    expect(content.exercise('ok')!.code).toMatchObject({ language: 'sld', program: 'p.pl', studentPath: 'answer.sld', starter: '', check: null, support: { 'p.pl': 'p(a).\n' } });
+    expect(content.exercise('ok')!.meta.code).toMatchObject({ runnable: true, hasCheck: true });
+    expect(content.exercise('elsewhere')!.code!.program).toBeNull();
   });
 });
 

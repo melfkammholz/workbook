@@ -216,7 +216,7 @@ export interface CompletionLabels {
   paramCorrect: string;
 }
 
-const LANGUAGES = ['haskell', 'prolog', 'python', 'java', 'c', 'typst', 'text'];
+const LANGUAGES = ['haskell', 'prolog', 'sld', 'python', 'java', 'c', 'typst', 'text'];
 
 /** Snippets that start with `#`. */
 function hashSnippets(l: CompletionLabels): Completion[] {

@@ -14,7 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.js';
-import { loadContent } from './content/loader.js';
+import { hasTests, loadContent } from './content/loader.js';
 import { TypstRenderer } from './content/typst.js';
 import { runChecks } from './runners/checks.js';
 
@@ -58,11 +58,12 @@ try {
 
   if (flags.includes('--solutions')) {
     for (const item of content.all()) {
-      if (item.meta.type !== 'exercise' || !('code' in item) || !item.code?.check) continue;
+      if (item.meta.type !== 'exercise' || !('code' in item) || !item.code || !hasTests(item.code)) continue;
       const run = (files: Record<string, string>) =>
         runChecks({
           runghcBin: config.runghcBin,
           swiplBin: config.swiplBin,
+          sldcheckBin: config.sldcheckBin,
           haskellLib: path.join(assets, 'haskell'),
           prologLib: path.join(assets, 'prolog'),
           workDir: path.join(tmp, 'runs'),
@@ -75,6 +76,15 @@ try {
         continue;
       }
       const sol = await run(item.code.fullSolution);
+      if (item.code.language === 'sld') {
+        // The tree is checked against the program: the solution must have no error. There is nothing to say about
+        // the starter, which is usually empty.
+        if (sol.runnerError || !sol.compiled) report('error', id, `solution does not run: ${sol.runnerError ?? sol.diagnostics[0]?.message}`);
+        for (const d of sol.diagnostics.filter((x) => x.severity === 'error')) report('error', id, `reference solution, line ${d.line}${d.code ? ` [${d.code}]` : ''}: ${d.message.replace(/\n/g, ' ')}`);
+        for (const d of sol.diagnostics.filter((x) => x.severity === 'warning')) report('warning', id, `reference solution, line ${d.line}${d.code ? ` [${d.code}]` : ''}: ${d.message.replace(/\n/g, ' ')}`);
+        console.log(`checked ${id}: ${sol.results.every((x) => x.status === 'pass') && sol.results.length > 0 ? 'the tree is correct' : 'the tree has errors'}`);
+        continue;
+      }
       if (sol.runnerError || !sol.compiled) report('error', id, `solution does not run: ${sol.runnerError ?? sol.diagnostics[0]?.message}`);
       for (const r of sol.results.filter((x) => x.status !== 'pass')) report('error', id, `reference solution fails "${r.name}": ${r.message.replace(/\n/g, ' ')}`);
       const stub = await run(item.code.files);

@@ -1,8 +1,15 @@
 import fs from 'node:fs';
-import type { PipeRepl } from './repl.js';
+
+/** What the pool needs to know about a session: a process of an interpreter, or anything with a similar life. */
+export interface PoolSession {
+  lastActivity: number;
+  readonly busy: boolean;
+  once(event: 'exit', listener: () => void): unknown;
+  kill(): void;
+}
 
 interface Entry {
-  session: PipeRepl;
+  session: PoolSession;
   dir: string;
   evict: (reason: string) => void;
 }
@@ -26,7 +33,7 @@ export class SessionPool {
     this.timer ??= setInterval(() => this.sweep(), 30_000).unref();
   }
 
-  add(session: PipeRepl, dir: string, evict: (reason: string) => void): Entry {
+  add(session: PoolSession, dir: string, evict: (reason: string) => void): Entry {
     while (this.entries.size >= this.max) {
       const oldest = [...this.entries].sort((a, b) => a.session.lastActivity - b.session.lastActivity)[0]!;
       this.close(oldest, 'closed to free resources for another exercise');

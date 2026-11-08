@@ -383,6 +383,7 @@ code:
 | `haskell` (default) | yes | `ghci` | `Workbook.Check` |
 | `prolog` | yes | SWI-Prolog | `workbook_check` |
 | `python` | yes | Python 3 | no (`check:` is ignored, `lint` warns) |
+| `sld` | yes, with highlighting | no, but the syntax is checked while typing | [`sldcheck`](#sld-trees), against a Prolog program |
 | anything else, e.g. `java` | yes, with highlighting | no | no |
 
 Without a runner the app says so, and students try their code on their own computer.
@@ -475,6 +476,51 @@ with the starter, because a student's first test run then ends in an error. That
 instances the tests use. When students write a signature themselves, the starter has none, so give the tests the type
 they expect in one place, for example `typedFoldMaybe :: b -> (a -> b) -> Maybe a -> b` with
 `typedFoldMaybe = foldMaybe`, and test through that.
+
+## SLD trees
+
+Students can draw SLD trees as text, and the workbook checks them. A tree is written in the notation of
+[sldcheck](https://github.com/melfkammholz/sldcheck) ([the notation](https://github.com/melfkammholz/sldcheck/blob/main/NOTATION.md)),
+and the program it is about is the exercise's `program:`:
+
+```yaml
+code:
+  language: sld
+  file: code/member.sld        # starter and solution in one file, as everywhere
+  program: code/member.pl      # the Prolog program the tree is checked against
+```
+
+```
+?- member(X, [1, 2]), Y is X + 1.
+#ifndef TEMPLATE
+  | member(X1, [X1|_1]).
+  | {X |-> 1, X1 |-> 1, _1 |-> [2]}
+  ?- Y is 1 + 1.
+    | builtin
+    | {Y |-> 2}
+    ?- true.                    {X |-> 1, Y |-> 2}
+  | member(X2, [_2|T2]) :- member(X2, T2).
+  ...
+#endif
+```
+
+The starter above is only the query, so students begin with the root and draw the rest.
+Students see the program as a read-only tab next to their tree.
+
+* **While they write**, the first tab of the panel ("Syntax") reports syntax errors with their position, and the editor
+  marks the line. Nothing else is shown yet: the missing branches of a tree that is half drawn would give away what the
+  exercise asks for.
+* **"Run tests"** checks the tree against the program and reports *every* problem found, each with a code (`E022`) and
+  what is wrong, marked in the editor. The test is all or nothing: "The tree is correct" passes when there is no error.
+  Warnings, for example for a missing answer at a leaf, do not fail it. sldcheck's messages are in English.
+* **`lint --solutions`** checks the reference solution the same way: it must have no error. The starter is not checked.
+* **Hints and samples** are written like in any exercise. Because the checker accepts any correct tree, a tree can differ
+  from your reference solution in the names of variables and in which most general unifier it uses.
+
+`check:` does not go with `sld` (the program is the test), and `program:` goes with nothing else. sldcheck handles the
+cut, negation as failure, the built-ins `is`, `=`, `==`, `<` and the like, and trees split into parts; it does not handle
+`;`, `->`, `call/N`, `findall/3` or infinite branches: such a node is reported as not checked.
+The Docker image has `sldcheck`; for a development setup, set `SLDCHECK_BIN` to version 0.2 or newer.
 
 ## threads/*.yml: paths and adventures
 

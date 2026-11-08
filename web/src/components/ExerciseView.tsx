@@ -2,7 +2,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { ChevronDown, ChevronUp, Clock, Download, GitCompare, History, MoreHorizontal, Repeat, RotateCcw, Eye, Lock, PencilLine } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Panel, usePanelRef } from 'react-resizable-panels';
-import type { CheckRun, ExerciseMeta, ItemDetail } from '@wb/shared';
+import { SLD_TREE_TEST, type CheckRun, type ExerciseMeta, type ItemDetail } from '@wb/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { fetchSample, fetchSolution, fetchVersions, keys, runChecks, saveAnswer, stopChecks, useSettings, type Work } from '@/lib/api';
 import { useT } from '@/lib/i18n';
@@ -36,7 +36,6 @@ interface Props {
   /** Called the first time the student edits or runs something, to move the exercise out of "to do". */
   onActivity: () => void;
   onAllChecksPass: (allPass: boolean) => void;
-  checkBanner: React.ReactNode;
   /** Finished: looking at an answer needs no warning any more. */
   finished: boolean;
   /** Marked to come back to, which is the moment trying again from memory is worth suggesting. */
@@ -45,13 +44,19 @@ interface Props {
 
 const PROMPT: Record<string, string> = { haskell: 'ghci>', prolog: '?-', python: '>>>' };
 
+/** What a read-only file next to the answer is written in, by its extension: the program of an SLD tree is Prolog. */
+const FILE_LANGUAGES: Record<string, string> = { pl: 'prolog', hs: 'haskell', py: 'python', sld: 'sld' };
+const languageOfFile = (file: string, fallback: string | null) => FILE_LANGUAGES[file.split('.').pop() ?? ''] ?? fallback;
+
 /** The right pane: answer editor, interpreter and checks, notes. */
-export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, checkBanner, finished, reviewing }: Props) {
+export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, finished, reviewing }: Props) {
   const t = useT();
   const code = meta.code;
   // What the editor highlights, and what can run. A Python exercise has the first but not the second.
   const language = code?.language ?? meta.scratch ?? null;
   const runnable = code ? code.runnable : !!meta.scratch;
+  // SLD trees have no interpreter: the first tab of the panel is about the syntax, and the tests say if the tree is right.
+  const isSld = language === 'sld';
   const slots = code?.files ?? ['text'];
   // In shared files, only some are this exercise's to change. Marked only when that is a real choice.
   const edits = code && code.edits.length > 0 && code.edits.length < slots.length ? new Set(code.edits) : null;
@@ -72,6 +77,8 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
   const [saved, setSaved] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [run, setRun] = useState<CheckRun | null>(null);
+  // What the editor held when the tests ran, so that their markers are only shown for that text.
+  const [ranWith, setRanWith] = useState<Record<string, string> | null>(null);
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
 
@@ -166,6 +173,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
     setRunning(true);
     setRunError(null);
     save.flush();
+    setRanWith({ ...latest.current });
     try {
       const r = await runChecks(meta.id, latest.current);
       setRun(r);
@@ -246,7 +254,16 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
 
   const diagnostics = repl.loaded?.diagnostics;
   const errorCount = diagnostics?.filter((d) => d.severity === 'error').length ?? 0;
-  const inThisFile = useMemo(() => diagnostics?.filter((d) => d.file === slot), [diagnostics, slot]);
+  // The problems the tests found in a tree stay in the editor as long as the text is the one they looked at.
+  const inThisFile = useMemo(() => {
+    const found = isSld && run && ranWith && ranWith[slot] === text ? run.diagnostics : [];
+    if (!diagnostics && found.length === 0) return undefined;
+    const seen = new Set<string>();
+    return [...(diagnostics ?? []), ...found].filter((d) => {
+      const key = `${d.line}:${d.column}:${d.message}`;
+      return d.file === slot && !seen.has(key) && !!seen.add(key);
+    });
+  }, [diagnostics, slot, isSld, run, ranWith, text]);
   // With several files, the AI should know which is which.
   const answerForAi = slots.length > 1 ? slots.map((s) => `--- ${s} ---\n${texts[s] ?? ''}`).join('\n\n') : text;
   const prompt = PROMPT[language ?? 'haskell'] ?? '>';
@@ -256,7 +273,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
   const editor = useMemo(
     () =>
       viewing !== null ? (
-        <CodeEditor key={`support-${viewing}`} value={detail.support[viewing] ?? ''} language={language} lineNumbers readOnly label={t.codeLabel(viewing)} variant="code" />
+        <CodeEditor key={`support-${viewing}`} value={detail.support[viewing] ?? ''} language={languageOfFile(viewing, language)} lineNumbers readOnly label={t.codeLabel(viewing)} variant="code" />
       ) : isCode ? (
         <CodeEditor
           key={`${slot}-${fresh}`}
@@ -391,7 +408,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
         {tab === 'notes' ? (
           <NotesPanel id={meta.id} initial={work.note?.content ?? ''} />
         ) : tab === 'ai' && aiOn ? (
-          <AiPanel id={meta.id} answer={answerForAi} tests={run?.compiled ? run.results.map(({ name, status, message }) => ({ name, status, message })) : null} />
+          <AiPanel id={meta.id} answer={answerForAi} tests={run?.compiled ? run.results.map(({ name, status, message }) => ({ name: name === SLD_TREE_TEST ? t.treeCorrect : name, status, message })) : null} />
         ) : runnable ? (
           <Group orientation="vertical" className="h-full">
             <Panel defaultSize="62" minSize="20">
@@ -411,7 +428,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
                 <div className="flex shrink-0 items-center justify-between border-b border-line bg-sheet px-2" style={{ height: TAB_ROW_PX }}>
                   <div role="tablist" aria-label={t.feedback} className="flex">
                     <PanelTab on={bottom === 'interpreter'} onClick={() => showBottom('interpreter')}>
-                      {t.interpreter}
+                      {isSld ? t.syntax : t.interpreter}
                       {errorCount > 0 ? <span className="ml-1.5 rounded-full bg-danger-soft px-1.5 text-xs font-medium text-danger">{errorCount}</span> : null}
                       {repl.loading ? <span className="ml-1.5 inline-block size-1.5 animate-pulse rounded-full bg-accent" aria-label={t.loadingCode} /> : null}
                     </PanelTab>
@@ -428,7 +445,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
                   </div>
                   <div className="flex items-center gap-1">
                     {repl.loaded && bottom === 'interpreter' && code ? (
-                      <span className={clsx('inline-flex items-center gap-1 whitespace-nowrap text-xs', repl.loaded.ok ? 'text-done' : 'text-danger')}>{repl.loaded.ok ? t.loadedIn(repl.loaded.durationMs) : t.doesNotCompile}</span>
+                      <span className={clsx('inline-flex items-center gap-1 whitespace-nowrap text-xs', repl.loaded.ok ? 'text-done' : 'text-danger')}>{isSld ? (repl.loaded.ok ? t.syntaxOk : t.syntaxError) : repl.loaded.ok ? t.loadedIn(repl.loaded.durationMs) : t.doesNotCompile}</span>
                     ) : null}
                     <IconButton label={collapsed ? t.expandPanel : t.collapsePanel} aria-expanded={!collapsed} onClick={toggleBottom} className="size-7">
                       {collapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -437,7 +454,9 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
                 </div>
                 <div className="min-h-0 flex-1">
                   {bottom === 'interpreter' ? (
-                    diagnostics && diagnostics.length > 0 ? (
+                    isSld ? (
+                      <SyntaxPanel repl={repl} multi={slots.length > 1} />
+                    ) : diagnostics && diagnostics.length > 0 ? (
                       // Problems and the session can each be given the room they need.
                       <Group orientation="vertical" className="h-full">
                         <Panel defaultSize="35" minSize="10">
@@ -452,7 +471,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
                       <ReplView repl={session} prompt={prompt} language={language ?? ''} />
                     )
                   ) : (
-                    <TestsPanel run={run} running={running} error={runError} onRun={() => void check()} onStop={() => void stopChecks(meta.id)} firstRun={!run} banner={checkBanner} />
+                    <TestsPanel tree={isSld} run={run} running={running} error={runError} onRun={() => void check()} onStop={() => void stopChecks(meta.id)} firstRun={!run} />
                   )}
                 </div>
               </div>
@@ -501,6 +520,29 @@ function PanelTab({ on, onClick, children }: { on: boolean; onClick: () => void;
   );
 }
 
+/** The first tab of the panel for an SLD tree: no interpreter to type into, only what is wrong with the notation. */
+function SyntaxPanel({ repl, multi }: { repl: ReturnType<typeof useRepl>; multi: boolean }) {
+  const t = useT();
+  const diagnostics = repl.loaded?.diagnostics ?? [];
+  if (diagnostics.length > 0) return <Problems diagnostics={diagnostics} multi={multi} />;
+  const closed = repl.connection === 'closed';
+  return (
+    <div className="h-full overflow-y-auto bg-sunk/60 px-4 py-3 text-[13px] text-ink-2">
+      {closed && repl.exitReason ? (
+        <p className="flex flex-wrap items-center gap-3">
+          <span className="text-danger">{t.replExit[repl.exitReason] ?? repl.exitReason}</span>
+          <Button size="sm" onClick={repl.restart}>
+            {t.syntaxReconnect}
+          </Button>
+        </p>
+      ) : repl.loaded ? (
+        <p className="font-medium text-done">{t.syntaxFine}</p>
+      ) : null}
+      <p className="mt-1.5">{t.syntaxHint}</p>
+    </div>
+  );
+}
+
 function Problems({ diagnostics, multi }: { diagnostics: NonNullable<ReturnType<typeof useRepl>['loaded']>['diagnostics']; multi: boolean }) {
   const t = useT();
   const errs = diagnostics.filter((d) => d.severity === 'error').length;
@@ -512,7 +554,7 @@ function Problems({ diagnostics, multi }: { diagnostics: NonNullable<ReturnType<
         {errs ? <span className="text-danger">{t.nErrors(errs)}</span> : null}
         {warns ? <span className="text-warn">{t.nWarnings(warns)}</span> : null}
       </p>
-      <ul className="px-4 pb-2">
+      <ul className="px-4 pb-2 pt-2">
         {diagnostics.map((d, i) => (
           <li key={i} className="py-1.5 first:pt-0">
             <p className={clsx('font-mono text-xs', d.severity === 'error' ? 'text-danger' : 'text-warn')}>

@@ -305,13 +305,6 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
       onAllChecksPass={() => undefined}
       finished={status === 'done'}
       reviewing={status === 'review'}
-      checkBanner={
-        status !== 'done' ? (
-          <Button variant="primary" size="sm" onClick={() => void changeStatus('done')}>
-            {t.markDone}
-          </Button>
-        ) : null
-      }
     />
   );
 

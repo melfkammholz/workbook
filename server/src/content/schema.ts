@@ -20,6 +20,8 @@ export const codeSchema = z
     solution: z.string().optional(),
     /** A program that runs the checks (see Workbook.Check). */
     check: z.string().optional(),
+    /** For `sld`: the Prolog program the student's SLD tree is checked against. Shown to the student, read-only. */
+    program: z.string().optional(),
     /** Read-only modules the student's code imports. */
     support: z.array(z.string()).default([]),
     /** Extra interpreter flags, e.g. `-XLambdaCase`. */

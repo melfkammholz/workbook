@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AchievementsResponse, HowSolved, ReviewChecklistEntry, ReviewData } from '@wb/shared';
 import { qualifiesFor } from '../achievements.js';
-import { sharedOwner } from '../content/loader.js';
+import { hasTests, sharedOwner } from '../content/loader.js';
 import type { Deps } from './deps.js';
 import { runChecks } from '../runners/checks.js';
 import path from 'node:path';
@@ -173,7 +173,7 @@ export function workRoutes(app: FastifyInstance, d: Deps): void {
     const b = parse(bodies.check, req.body, reply);
     if (!b) return;
     const ex = d.content.current.exercise(req.params.id);
-    if (!ex?.code?.check) return reply.code(404).send({ error: 'this exercise has no tests' });
+    if (!ex?.code || !hasTests(ex.code)) return reply.code(404).send({ error: 'this exercise has no tests' });
     // Only the files the exercise declares are accepted, nothing else gets written.
     const files: Record<string, string> = {};
     for (const file of Object.keys(ex.code.files)) {
@@ -190,6 +190,7 @@ export function workRoutes(app: FastifyInstance, d: Deps): void {
       run = await runChecks({
         runghcBin: d.config.runghcBin,
         swiplBin: d.config.swiplBin,
+        sldcheckBin: d.config.sldcheckBin,
         haskellLib: d.haskellLib,
         prologLib: d.prologLib,
         workDir: path.join(d.config.dataDir, 'runs'),

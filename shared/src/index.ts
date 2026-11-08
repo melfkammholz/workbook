@@ -2,9 +2,15 @@
 
 // ───────────────────────── content model ─────────────────────────
 
-/** Languages the workbook can run: a live interpreter and tests. */
-export type RunnableLanguage = 'haskell' | 'prolog' | 'python';
-export const RUNNABLE_LANGUAGES: readonly string[] = ['haskell', 'prolog', 'python'];
+/**
+ * Languages the workbook can run: a live interpreter and tests. `sld` is the notation of SLD trees, checked by
+ * `sldcheck`: there is no interpreter to type into, but the syntax is checked live and the tree on request.
+ */
+export type RunnableLanguage = 'haskell' | 'prolog' | 'python' | 'sld';
+export const RUNNABLE_LANGUAGES: readonly string[] = ['haskell', 'prolog', 'python', 'sld'];
+
+/** The one test of a run of `sldcheck`: its name stands for "The tree is correct", which the app words in its language. */
+export const SLD_TREE_TEST = 'sld:tree';
 /** Any editor language. Others get highlighting only (e.g. "python"). */
 export type Language = string;
 export type ExerciseKind = 'test' | 'challenge';

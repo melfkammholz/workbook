@@ -18,3 +18,12 @@ items:
       language: prolog
       file: code/laenge.pl
       check: code/laenge_tests.pl
+
+  - section: SLD-Bäume
+  - id: sld-member
+    title: Ein SLD-Baum für member
+    after: [prolog-laenge]
+    code:
+      language: sld
+      file: code/member.sld
+      program: code/member.pl

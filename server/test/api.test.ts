@@ -11,11 +11,13 @@ import { makeDeps } from '../src/api/deps.js';
 import { loadConfig } from '../src/config.js';
 import { CourseManager } from '../src/courses/manager.js';
 import { SessionPool } from '../src/runners/pool.js';
-import { EXAMPLE_CONTENT, HASKELL_LIB, PROLOG_LIB, hasBinary } from './helpers.js';
+import { EXAMPLE_CONTENT, HASKELL_LIB, PROLOG_LIB, hasBinary, hasSldcheck } from './helpers.js';
 
 const typstBin = process.env.TYPST_BIN ?? 'typst';
 const haveTypst = hasBinary(typstBin);
 const haveGhc = hasBinary('ghci');
+const sldcheckBin = process.env.SLDCHECK_BIN ?? 'sldcheck';
+const haveSldcheck = hasSldcheck(sldcheckBin);
 
 let app: Awaited<ReturnType<typeof buildApp>>;
 let base: string;
@@ -24,7 +26,7 @@ let courses: CourseManager;
 
 beforeAll(async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-api-'));
-  const config = { ...loadConfig({ CONTENT_DIR: EXAMPLE_CONTENT, DATA_DIR: dataDir, TYPST_BIN: typstBin } as NodeJS.ProcessEnv), port: 0 };
+  const config = { ...loadConfig({ CONTENT_DIR: EXAMPLE_CONTENT, DATA_DIR: dataDir, TYPST_BIN: typstBin, SLDCHECK_BIN: sldcheckBin } as NodeJS.ProcessEnv), port: 0 };
   pool = new SessionPool(4, 60_000);
   courses = new CourseManager({ config, typstAssets: path.resolve(import.meta.dirname, '../assets/typst') });
   app = await buildApp(makeDeps({ config, courses, pool, haskellLib: HASKELL_LIB, prologLib: PROLOG_LIB }));
@@ -157,6 +159,51 @@ describe('security guards', () => {
       ws.on('error', () => {});
     });
     expect(code).toBe(403);
+  });
+});
+
+describe.skipIf(!haveSldcheck)('SLD trees', () => {
+  const id = 'sld-member';
+  const file = 'member.sld';
+
+  it('checks the tree against the program and records the attempt', async () => {
+    const detail = (await api('GET', `/api/items/${id}`)).json;
+    expect(detail.support['member.pl']).toContain('member(X, [_|T]) :- member(X, T).');
+    expect(detail.starter[file]).toContain('?- member(X, [1, 2]), Y is X + 1.');
+
+    const wrong = (await api('POST', `/api/work/${id}/check`, { files: { [file]: detail.starter[file] } })).json as CheckRun;
+    expect(wrong.results.map((r) => r.status)).toEqual(['fail']);
+    expect(wrong.diagnostics.some((d) => d.code === 'E022')).toBe(true);
+
+    const solution = (await api('POST', `/api/work/${id}/solution`)).json.files[file] as string;
+    const right = (await api('POST', `/api/work/${id}/check`, { files: { [file]: solution } })).json as CheckRun;
+    expect(right.results.map((r) => r.status)).toEqual(['pass']);
+
+    expect((await api('GET', '/api/state')).json.state.stats[id]).toMatchObject({ checkRuns: 2, checkPasses: 1 });
+  });
+
+  it('shows syntax errors on the socket while writing, and answers every load', async () => {
+    const ws = new WebSocket(`ws://${base}/ws/repl/${id}`);
+    const messages: ReplServerMessage[] = [];
+    ws.on('message', (raw) => messages.push(JSON.parse(raw.toString()) as ReplServerMessage));
+    const until = async (done: () => boolean, what: string) => {
+      const end = Date.now() + 10_000;
+      while (!done()) {
+        if (Date.now() > end) throw new Error(`timed out waiting for ${what}`);
+        await new Promise((r) => setTimeout(r, 25));
+      }
+    };
+    await until(() => messages.some((m) => m.type === 'ready'), 'ready');
+    const loaded = () => messages.filter((m): m is Extract<ReplServerMessage, { type: 'loaded' }> => m.type === 'loaded');
+
+    ws.send(JSON.stringify({ type: 'load', files: { [file]: '?- member(X, [1, 2]).\n  | member(X1, [X1|_1]).\n   | {X |-> 1}\n' } }));
+    await until(() => loaded().length === 1, 'the first load');
+    expect(loaded()[0]).toMatchObject({ ok: false, diagnostics: [{ severity: 'error', file, line: 3 }] });
+
+    ws.send(JSON.stringify({ type: 'load', files: { [file]: '?- member(X, [1, 2]), Y is X + 1.\n' } }));
+    await until(() => loaded().length === 2, 'the second load');
+    expect(loaded()[1]).toMatchObject({ ok: true, diagnostics: [] });
+    ws.close();
   });
 });
 

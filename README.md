@@ -9,7 +9,8 @@ move on. The workbook keeps track of what you have done and what you were unsure
 later.
 
 Exercises can ask for a written answer on any subject. Programming exercises currently work in Haskell and Prolog,
-with an editor, a live interpreter and tests. The workbook runs on your own computer from one Docker container, and a
+with an editor, a live interpreter and tests, and SLD trees can be drawn as text and are checked by
+[sldcheck](https://github.com/melfkammholz/sldcheck). The workbook runs on your own computer from one Docker container, and a
 course is a git repository that you add in the app.
 
 **Example course:** [workbook-deklprog](https://github.com/melfkammholz/workbook-deklprog), the exercises for
@@ -63,7 +64,7 @@ You need [Docker](https://docs.docker.com/get-docker/), which is Docker Desktop 
    docker compose up -d
    ```
 
-   The first start downloads the image, which includes GHC, SWI-Prolog and Typst. That takes a while and a few
+   The first start downloads the image, which includes GHC, SWI-Prolog, sldcheck and Typst. That takes a while and a few
    gigabytes of disk space. Later starts are quick.
 
 Open <http://localhost:8080> and paste the address of your course into the welcome dialog, for example
@@ -159,11 +160,12 @@ content problems that students are not shown.
 
 ## Development
 
-You need Node 22.13 or newer, `ghc`/`ghci`/`runghc` with `QuickCheck`, `swipl` and the `typst` CLI 0.15 or newer.
+You need Node 22.13 or newer, `ghc`/`ghci`/`runghc` with `QuickCheck`, `swipl`, the `typst` CLI 0.15 or newer and,
+for SLD trees, [`sldcheck`](https://github.com/melfkammholz/sldcheck) 0.2 or newer (`SLDCHECK_BIN`).
 
 ```sh
 npm install
-npm test                      # server tests; Typst, GHC and Prolog tests are skipped when the tool is missing
+npm test                      # server tests; Typst, GHC, Prolog and sldcheck tests are skipped when the tool is missing
 npm run typecheck
 npm run build
 
@@ -210,7 +212,7 @@ which publishes a tag named after the branch, such as `main`, and leaves `latest
 | `web/src` | The React app. All interface texts are in `lib/i18n.ts` |
 
 Environment variables: `PORT`, `HOST`, `CONTENT_DIR`, `DATA_DIR`, `WEB_DIR`, `TYPST_BIN`, `TYPST_PACKAGE_CACHE_PATH`,
-`GHCI_BIN`, `RUNGHC_BIN`, `SWIPL_BIN`, `MAX_SESSIONS`, `SESSION_IDLE_MS`, `ALLOWED_HOSTS`.
+`GHCI_BIN`, `RUNGHC_BIN`, `SWIPL_BIN`, `SLDCHECK_BIN`, `MAX_SESSIONS`, `SESSION_IDLE_MS`, `ALLOWED_HOSTS`.
 
 ### Security
 

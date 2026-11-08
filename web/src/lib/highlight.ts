@@ -54,43 +54,83 @@ const haskellTypes: StreamParser<unknown> = {
   },
 };
 
-/** A small Prolog tokenizer: enough for readable highlighting of facts, rules and queries. */
+/** The Prolog tokenizer: enough for readable highlighting of facts, rules and queries. */
+function prologToken(stream: StringStream, state: { block: boolean }): string | null {
+  if (state.block) {
+    if (stream.skipTo('*/')) {
+      stream.match('*/');
+      state.block = false;
+    } else stream.skipToEnd();
+    return 'comment';
+  }
+  if (stream.eatSpace()) return null;
+  if (stream.match('/*')) {
+    state.block = true;
+    return 'comment';
+  }
+  if (stream.eat('%')) {
+    stream.skipToEnd();
+    return 'comment';
+  }
+  const q = stream.peek();
+  if (q === '"' || q === "'" || q === '`') {
+    stream.next();
+    let escaped = false;
+    let c: string | void;
+    while ((c = stream.next()) != null) {
+      if (c === q && !escaped) break;
+      escaped = !escaped && c === '\\';
+    }
+    return q === "'" ? 'atom' : 'string';
+  }
+  if (stream.match(/^\d+(\.\d+)?([eE][+-]?\d+)?/)) return 'number';
+  if (stream.match(/^[A-Z_][A-Za-z0-9_]*/)) return 'variableName';
+  if (stream.match(/^[a-z][A-Za-z0-9_]*/)) return stream.match(/^(?=\()/, false) ? 'variableName.function' : 'atom';
+  if (stream.match(/^(:-|-->|\\\+|=\.\.|=:=|=\\=|\\==|==|=<|>=|=|<|>|is\b|->|;|\|)/)) return 'operator';
+  stream.next();
+  return 'punctuation';
+}
+
 const prolog: StreamParser<{ block: boolean }> = {
   startState: () => ({ block: false }),
-  token(stream: StringStream, state) {
-    if (state.block) {
-      if (stream.skipTo('*/')) {
-        stream.match('*/');
-        state.block = false;
-      } else stream.skipToEnd();
-      return 'comment';
-    }
+  token: prologToken,
+  languageData: { commentTokens: { line: '%', block: { open: '/*', close: '*/' } } },
+};
+
+/**
+ * The notation of SLD trees (https://github.com/melfkammholz/sldcheck): lines starting with `?-` are nodes, lines
+ * starting with `|` are steps, and what they contain is Prolog. The bars that give the tree its structure are
+ * operators, so they recede; the words of the notation are keywords; the names of nodes (`@c`) and the numbers of
+ * clauses (`#2`) are marked where they stand.
+ */
+const sld: StreamParser<{ block: boolean; line: 'node' | 'step' | 'other' | null }> = {
+  startState: () => ({ block: false, line: null }),
+  token(stream, state) {
+    if (stream.sol()) state.line = null;
+    if (state.block) return prologToken(stream, state);
     if (stream.eatSpace()) return null;
-    if (stream.match('/*')) {
-      state.block = true;
-      return 'comment';
-    }
-    if (stream.eat('%')) {
-      stream.skipToEnd();
-      return 'comment';
-    }
-    const q = stream.peek();
-    if (q === '"' || q === "'" || q === '`') {
-      stream.next();
-      let escaped = false;
-      let c: string | void;
-      while ((c = stream.next()) != null) {
-        if (c === q && !escaped) break;
-        escaped = !escaped && c === '\\';
+    // The first thing on a line says what kind of line it is.
+    if (state.line === null) {
+      if (stream.match('?-')) {
+        state.line = 'node';
+        return 'operator';
       }
-      return q === "'" ? 'atom' : 'string';
+      if (stream.peek() === '|' && !stream.match(/^\|->/, false)) {
+        stream.next();
+        state.line = 'step';
+        return 'operator';
+      }
+      state.line = 'other';
     }
-    if (stream.match(/^\d+(\.\d+)?([eE][+-]?\d+)?/)) return 'number';
-    if (stream.match(/^[A-Z_][A-Za-z0-9_]*/)) return 'variableName';
-    if (stream.match(/^[a-z][A-Za-z0-9_]*/)) return stream.match(/^(?=\()/, false) ? 'variableName.function' : 'atom';
-    if (stream.match(/^(:-|-->|\\\+|=\.\.|=:=|=\\=|\\==|==|=<|>=|=|<|>|is\b|->|;|\|)/)) return 'operator';
-    stream.next();
-    return 'punctuation';
+    if (stream.match(/^@[A-Za-z0-9_]+/)) return 'typeName';
+    if (stream.match('|->')) return 'operator';
+    if (stream.eat('!')) return 'keyword';
+    if (state.line === 'step') {
+      // As in the notation: not a word of a longer name, and not the start of a term such as `fails(x)` or `by.`.
+      if (stream.match(/^(?:pruned|builtin|fails|by)(?![A-Za-z0-9_(.])/) || stream.match(/^no\s+rule(?![A-Za-z0-9_(.])/)) return 'keyword';
+      if (stream.match(/^#\d+/)) return 'number';
+    }
+    return prologToken(stream, state);
   },
   languageData: { commentTokens: { line: '%', block: { open: '/*', close: '*/' } } },
 };
@@ -99,6 +139,7 @@ const parsers = {
   typst: typstParser,
   haskell: haskellTypes,
   prolog,
+  sld,
   python,
   c,
   cpp,

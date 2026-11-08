@@ -7,6 +7,7 @@ import type { ServerExercise } from '../content/loader.js';
 import { GhciSession } from '../runners/ghci.js';
 import { PrologSession } from '../runners/prolog.js';
 import { PythonSession } from '../runners/python.js';
+import { SldSession } from '../runners/sldcheck.js';
 import type { Deps } from './deps.js';
 
 /**
@@ -28,13 +29,15 @@ export function replSocket(app: FastifyInstance, d: Deps): void {
       return socket.close();
     }
 
-    let current: { session: GhciSession | PrologSession | PythonSession; release: () => void } | null = null;
+    let current: { session: GhciSession | PrologSession | PythonSession | SldSession; release: () => void } | null = null;
     let closed = false;
 
     const open = () => {
       const dir = path.join(d.config.dataDir, 'sessions', crypto.randomBytes(8).toString('hex'));
       const session =
-        language === 'python'
+        language === 'sld' && ex.code
+          ? new SldSession({ bin: d.config.sldcheckBin, dir, code: ex.code }).start()
+          : language === 'python'
           ? new PythonSession({
               bin: d.config.pythonBin,
               dir,
