@@ -7,7 +7,7 @@ import { clsx } from '../ui';
 
 /**
  * Exercises (or lessons) to do next, at the end of a lesson: a list to click through. Each row says what it is and whether
- * it is done; the row itself is the way there. The call to action is the author's, once, before the list.
+ * it is done; the row itself is the way there. A heading says what the list is, so the text needs no call to action.
  */
 export function Practice({ ids }: { ids: string[] }) {
   const t = useT();
@@ -19,7 +19,11 @@ export function Practice({ ids }: { ids: string[] }) {
   });
   if (!items.length) return null;
   return (
-    <div role="list" className="space-y-1.5">
+    <section aria-labelledby={`practice-${items[0]!.id}`} className="mt-8">
+      <h3 id={`practice-${items[0]!.id}`} className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-ink-2">
+        <PencilLine size={14} className="text-accent" /> {t.practiceTitle}
+      </h3>
+      <div role="list" className="space-y-1.5">
       {items.map((item) => {
         const status = statusOf(state, item.id);
         const done = status === 'done';
@@ -46,6 +50,7 @@ export function Practice({ ids }: { ids: string[] }) {
           </div>
         );
       })}
-    </div>
+      </div>
+    </section>
   );
 }

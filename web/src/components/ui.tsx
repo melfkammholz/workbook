@@ -2,7 +2,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { clsx } from 'clsx';
 import { X } from 'lucide-react';
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { useLayoutEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { Separator } from 'react-resizable-panels';
 import type { Status } from '@wb/shared';
 import { useT } from '@/lib/i18n';
@@ -79,6 +79,58 @@ export function Tip({ label, children }: { label: string; children: ReactNode })
 
 // ───────────────────────── dialog ─────────────────────────
 
+/**
+ * Grows and shrinks smoothly with what is inside: a banner that appears, a preview that comes, fields that change.
+ * The first size is taken as it is, so opening is not slowed down.
+ */
+export function AutoHeight({ children, className }: { children: ReactNode; className?: string }) {
+  const outer = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const o = outer.current;
+    const i = inner.current;
+    if (!o || !i || typeof ResizeObserver === 'undefined') return;
+    let last = -1;
+    let settle = 0;
+    const ro = new ResizeObserver(() => {
+      const h = i.offsetHeight;
+      if (h === last) return;
+      if (last < 0 || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        o.style.height = '';
+        o.style.overflow = '';
+      } else {
+        // From where it is now to where it goes; afterwards the height is free again, so nothing gets cut off.
+        o.style.overflow = 'clip';
+        // Mid-way through a change it starts from where it is; otherwise from the size it had before.
+        const from = o.style.height ? o.offsetHeight : last;
+        o.style.transition = 'none';
+        o.style.height = `${from}px`;
+        void o.offsetHeight;
+        o.style.transition = '';
+        o.style.height = `${h}px`;
+        clearTimeout(settle);
+        settle = window.setTimeout(() => {
+          o.style.height = '';
+          o.style.overflow = '';
+        }, 240);
+      }
+      last = h;
+    });
+    ro.observe(i);
+    return () => {
+      ro.disconnect();
+      clearTimeout(settle);
+    };
+  }, []);
+  return (
+    <div ref={outer} className={clsx('wb-autoheight', className)}>
+      <div ref={inner} className="flow-root">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function Dialog({
   open,
   onOpenChange,
@@ -112,7 +164,7 @@ export function Dialog({
               <X size={18} />
             </DialogPrimitive.Close>
           </div>
-          {children}
+          <AutoHeight>{children}</AutoHeight>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

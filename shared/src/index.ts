@@ -70,9 +70,16 @@ export interface ExerciseMeta extends ItemCommon {
   code: CodeSpec | null;
 }
 
+/** Text to read, nothing to do. A lesson is a page with widgets and a done state. */
 export interface PageMeta extends ItemCommon {
   type: 'page';
+  /** Extra material (a deep dive): only in the focus "everything", like an extra lesson. */
+  extra: boolean;
+  tags: string[];
 }
+
+/** Pages and lessons: text to read, laid out alike, extra material folds away alike. */
+export const isReading = (item: ItemMeta): item is PageMeta | LessonMeta => item.type === 'page' || item.type === 'lesson';
 
 /** An explanation with widgets to try things out. Students mark it done; the widgets start fresh on every visit. */
 export interface LessonMeta extends ItemCommon {
@@ -313,9 +320,15 @@ export interface NoteDoc {
 
 export type UiLanguage = 'auto' | 'de' | 'en';
 
+export const DUSK_COLORS = ['indigo', 'teal', 'plum', 'forest'] as const;
+export type DuskColor = (typeof DUSK_COLORS)[number];
+
 export interface Settings {
   displayName: string;
-  theme: 'system' | 'light' | 'dark';
+  /** `dusk`: light text, coloured bar and outline. */
+  theme: 'system' | 'light' | 'dusk' | 'dark';
+  /** The colour of the dusk theme's bar, outline and buttons. */
+  duskColor: DuskColor;
   /** Colours that work with colour vision deficiency (orange and blue) and patterns wherever colour carries meaning. */
   safeColors: boolean;
   /** Opt-in. While false, flashcards appear nowhere; decks are kept. */
@@ -349,6 +362,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   displayName: '',
   theme: 'system',
+  duskColor: 'indigo',
   safeColors: false,
   uiLanguage: 'auto',
   setupDone: false,

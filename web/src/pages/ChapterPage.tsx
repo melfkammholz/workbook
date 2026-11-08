@@ -10,6 +10,7 @@ import type { ThreadInfo } from '@wb/shared';
 import { focusExercises, foldItems, type FoldEntry } from '@/lib/focus';
 import { useT } from '@/lib/i18n';
 import { adventureOfSection, isChapterWide } from '@/lib/sections';
+import { READING_COLUMN } from '@/components/TaskColumn';
 import { Title } from '@/components/Title';
 
 /** Where a chapter starts: what it is about, how far along it is, and what is in it. */
@@ -40,7 +41,7 @@ export function ChapterPage({ id }: { id: string }) {
   // The checklist that ends a chapter is about all of it, so it gets a box of its own below the sections.
   return (
     <div className="h-full overflow-y-auto">
-      <article className="settle mx-auto max-w-[46rem] px-6 pb-24 pt-10 sm:px-8">
+      <article className={`settle pb-24 pt-10 ${READING_COLUMN}`}>
         <h1 className="text-balance text-[2rem] font-semibold leading-tight tracking-[-0.025em]">
           {chapter.title} <Plant chapterId={chapter.id} className="ml-1 text-[1.5rem] leading-none" />
         </h1>

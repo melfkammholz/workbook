@@ -251,10 +251,13 @@ export function TreePicture({
   };
   place(tree, 0, 0);
   const home = new Map(pos);
-  // What is folded sits where it was folded into.
+  const parent = new Map<Node, Node>();
+  for (const n of pos.keys()) for (const c of n.children) parent.set(c, n);
+  // What is folded sits where it was folded into; a field a function took moves into the node that took it.
   for (const n of pos.keys()) {
     const c = collapsedAt(n);
     if (c && c !== n) pos.set(n, home.get(c)!);
+    else if (gone?.has(n) && parent.has(n)) pos.set(n, home.get(parent.get(n)!)!);
   }
   const W = Math.max(220, span(tree));
   const H = Math.max(...[...home.values()].map((p) => p.y)) + 26;
@@ -281,13 +284,23 @@ export function TreePicture({
             return <line key={`${ni}-${i}`} x1={a.x} y1={a.y + 15} x2={b.x} y2={b.y - 15} className="transition-opacity duration-300" style={{ stroke: 'var(--line-strong)', strokeWidth: 2, opacity: hidden(c) ? 0 : 1 }} />;
           }),
         )}
-        {nodes.map((n, i) => {
+        {/* Children first, so a node folded into its parent slides under it rather than over it. */}
+        {nodes.map((n, i) => [n, i] as const).reverse().map(([n, i]) => {
           const p = pos.get(n)!;
           const value = done.has(n) && collapsedAt(n) === n;
           const k = n.term.ci === null ? null : kClass(n.term.ci);
           const w = width(n);
           return (
-            <g key={i} className={clsx(k, 'transition-[transform,opacity] duration-500')} style={{ transform: `translate(${p.x}px, ${p.y}px)`, opacity: hidden(n) ? 0 : dim?.has(n) ? 0.35 : 1 }}>
+            <g
+              key={i}
+              className={k ?? undefined}
+              style={{
+                transform: `translate(${p.x}px, ${p.y}px)`,
+                opacity: hidden(n) ? 0 : dim?.has(n) ? 0.35 : 1,
+                // Going in, it is seen to slide under its parent before it fades; coming back, it is there at once.
+                transition: hidden(n) ? 'transform 500ms cubic-bezier(0.4, 0, 0.2, 1), opacity 180ms 340ms' : 'transform 500ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms',
+              }}
+            >
               <rect
                 x={-w / 2}
                 y={-15}

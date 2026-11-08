@@ -296,8 +296,6 @@ export function Quiz({
               solved && !c.correct && 'opacity-60',
             )}
           >
-            {/* On a card in the review, numbers pick: they say which. */}
-            {bare ? <span className="mr-2 font-mono text-[12px] tabular-nums text-ink-3">{i + 1}</span> : null}
             <Inline html={c.label} />
           </button>
         ))}

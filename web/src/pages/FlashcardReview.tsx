@@ -218,7 +218,7 @@ export function FlashcardReview({ deckIds }: { deckIds: string[] }) {
                 </div>
               )}
               <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[13px] text-ink-3">
-                <span className="hidden sm:inline">{t.reviewKeys}</span>
+                <span className="hidden sm:inline">{card.kind === 'quiz' && !revealed ? t.reviewKeysQuiz : t.reviewKeys}</span>
                 <span className="flex items-center gap-1">
                   <Button size="sm" variant="ghost" disabled={busy} title={t.notTodayHint} onClick={() => void act(() => buryCard(card.key))}>
                     {t.notToday}

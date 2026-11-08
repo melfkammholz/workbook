@@ -833,7 +833,7 @@ export function createMeadow(o: MeadowOptions): Meadow {
 
   let last = performance.now(), themeCheck = 0, raf = 0, onScreen = true;
   function readTheme() {
-    nightTarget = document.documentElement.dataset.theme === 'dark' ? 1 : 0;
+    nightTarget = { dark: 1, dusk: 0.35 }[document.documentElement.dataset.theme ?? ''] ?? 0;
     view.accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || view.accent;
   }
   function frame(now: number) {

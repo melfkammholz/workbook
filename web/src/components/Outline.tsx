@@ -9,7 +9,7 @@ import { useLessonToc } from '@/lib/lessonToc';
 import { focusExercises, foldItems } from '@/lib/focus';
 import { adventureOfSection, isChapterWide } from '@/lib/sections';
 import { useT } from '@/lib/i18n';
-import { activeCount, matches, type Filters } from '@/lib/filters';
+import { ITEM_TYPES, activeCount, matches, type Filters } from '@/lib/filters';
 import { Plant } from './Plant';
 import { Level, StatusMark, clsx } from './ui';
 import { Title } from '@/components/Title';
@@ -42,7 +42,7 @@ export function OutlinePanel({ outline, state, currentId, filters, patch, reset,
   const shown = visible.reduce((s, v) => s + v.items.length, 0);
 
   return (
-    <nav aria-label={t.outline} className="flex h-full min-h-0 flex-col bg-sheet">
+    <nav aria-label={t.outline} className="wb-chrome-side flex h-full min-h-0 flex-col bg-sheet text-ink">
       <div className="flex items-center gap-2 border-b border-line p-3">
         <label className="relative min-w-0 flex-1">
           <span className="sr-only">{t.filterLabel}</span>
@@ -400,7 +400,7 @@ function Row({ item, status, answered, current, first, last, wide, outside, onNa
           </span>
         ) : null}
       </Link>
-      {current && item.type === 'lesson' ? <LessonSections id={item.id} /> : null}
+      {current && (item.type === 'lesson' || item.type === 'page') ? <LessonSections id={item.id} /> : null}
     </li>
   );
 }
@@ -458,6 +458,13 @@ function FilterPopover({ outline, filters, patch, reset, count }: { outline: Out
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content align="end" sideOffset={8} className="z-50 max-h-[70vh] w-72 overflow-y-auto rounded-xl border border-line-strong bg-sheet p-4 shadow-[var(--shadow)]">
+          <Group title={t.filterShow}>
+            {ITEM_TYPES.map((k) => (
+              <Toggle key={k} on={filters.types.includes(k)} onClick={() => patch({ types: toggle(filters.types, k) })}>
+                {t.itemTypes[k]}
+              </Toggle>
+            ))}
+          </Group>
           <Group title={t.filterStatus}>
             {STATUSES.map((s) => (
               <Toggle key={s} on={filters.statuses.includes(s)} onClick={() => patch({ statuses: toggle(filters.statuses, s) })}>

@@ -2,7 +2,7 @@ import { EditorSelection, Transaction } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { DeckCard, DeckDoc, DeckSaved, DeckSettings, DeckWarning, Diagnostic, RenderedCard } from '@wb/shared';
-import { ArrowDown, ArrowUp, Check, CircleHelp, Copy, ExternalLink, GripVertical, Pencil, Plus, Settings2, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, CircleHelp, Copy, Download, ExternalLink, GripVertical, Pencil, Plus, Settings2, Sparkles, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { CHATS } from '@/components/AiPanel';
@@ -13,7 +13,7 @@ import { MoreMenu } from '@/components/ExerciseView';
 import { TypstEditor } from '@/components/TypstEditor';
 import { Button, Dialog, Empty, IconButton, Segmented, Spinner, clsx } from '@/components/ui';
 import { useSettings } from '@/lib/api';
-import { addCard, cardKeys, deckPrompt, deleteCard, deleteDeck, editCard, moveCardBy, moveCardTo, previewDeck, saveDeckSource, updateDeck, useDeck, useFlashcards } from '@/lib/flashcards';
+import { addCard, cardKeys, deckPrompt, deleteCard, downloadDeck, deleteDeck, editCard, moveCardBy, moveCardTo, previewDeck, saveDeckSource, updateDeck, useDeck, useFlashcards } from '@/lib/flashcards';
 import { useLang, useT } from '@/lib/i18n';
 import { readPref, writePref } from '@/lib/shell';
 import { useDebouncedCallback } from '@/lib/useDebounced';
@@ -133,6 +133,7 @@ function DeckEditor({ deck, focusCard }: { deck: DeckDoc; focusCard: string | nu
             <MoreMenu
               items={[
                 ...(aiOn ? [{ icon: Sparkles, label: t.checkDeckWithAi, onClick: () => setChecking(true) }] : []),
+                { icon: Download, label: t.downloadDeck, onClick: () => downloadDeck(deck.title, deck.source) },
                 { icon: Trash2, label: t.deleteDeck, onClick: () => setConfirmDelete(true) },
               ]}
             />

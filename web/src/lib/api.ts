@@ -274,7 +274,7 @@ export const search = (q: string) => api.get<SearchResponse>(`/api/search?q=${en
 
 // ───────────────────────── helpers ─────────────────────────
 
-import { focusOf, inFocus, type ExerciseMeta, type ItemMeta } from '@wb/shared';
+import { focusOf, inFocus, isReading, type ExerciseMeta, type ItemMeta } from '@wb/shared';
 
 export const isExercise = (i: ItemMeta | undefined): i is ExerciseMeta => i?.type === 'exercise';
 
@@ -300,13 +300,19 @@ export function threadProgress(thread: ThreadInfo, state: StudentState | undefin
 /** Out of the focus and not worked on: folded away in the outline, and passed over when moving through the course. */
 function folded(item: ItemMeta, state: StudentState | undefined): boolean {
   const focus = focusOf(state);
-  const outside = isExercise(item) ? !inFocus(item, focus) : item.type === 'lesson' && item.extra && focus !== 'everything';
+  const outside = isExercise(item) ? !inFocus(item, focus) : isReading(item) && item.extra && focus !== 'everything';
   return outside && statusOf(state, item.id) === 'todo';
 }
 
 /** The items around one, in the order of the course, passing over what the focus folds away. */
-export function neighbours(outline: Outline, id: string, state: StudentState | undefined): { previous: ItemMeta | undefined; next: ItemMeta | undefined } {
-  const flat = outline.chapters.flatMap((c) => c.items);
+/** Where an item is, optionally as a step of a group (session, sheet, exam): then that is the order to go in. */
+export const itemHref = (id: string, group?: string | null) => (group ? `/item/${id}/in/${encodeURIComponent(group)}` : `/item/${id}`);
+
+export function neighbours(outline: Outline, id: string, state: StudentState | undefined, group?: string | null): { previous: ItemMeta | undefined; next: ItemMeta | undefined } {
+  const all = outline.chapters.flatMap((c) => c.items);
+  const thread = group ? outline.threads.find((x) => x.id === group && x.kind) : undefined;
+  // Visited from coursework: previous and next follow the group, in its order.
+  const flat = thread && thread.steps.some((s) => s.includes(id)) ? thread.steps.flat().flatMap((x) => all.find((i) => i.id === x) ?? []) : all;
   const at = flat.findIndex((i) => i.id === id);
   if (at < 0) return { previous: undefined, next: undefined };
   const shown = (i: ItemMeta) => !folded(i, state);

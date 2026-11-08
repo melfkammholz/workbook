@@ -27,7 +27,8 @@ const bodies = {
   settings: z
     .object({
       displayName: z.string().max(100),
-      theme: z.enum(['system', 'light', 'dark']),
+      theme: z.enum(['system', 'light', 'dusk', 'dark']),
+      duskColor: z.enum(['indigo', 'teal', 'plum', 'forest']),
       uiLanguage: z.enum(['auto', 'de', 'en']),
       setupDone: z.boolean(),
       noteFormat: z.enum(['typst', 'markdown']),

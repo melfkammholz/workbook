@@ -1,13 +1,13 @@
 import { useQueryClient } from '@tanstack/react-query';
 import type { DeckSummary } from '@wb/shared';
-import { Pencil, Plus, TriangleAlert } from 'lucide-react';
-import { useState } from 'react';
+import { Pencil, Play, Plus, TriangleAlert, Upload } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { CardConfidenceBar } from '@/components/CardConfidenceBar';
-import { Button, Empty, IconButton, Segmented, Spinner } from '@/components/ui';
+import { Button, Empty, IconButton, Segmented, Spinner, Tip, clsx } from '@/components/ui';
 import { readPref, writePref } from '@/lib/shell';
 import { useOutline } from '@/lib/api';
-import { cardKeys, createDeck, useFlashcards } from '@/lib/flashcards';
+import { MAX_DECK_FILE, cardKeys, createDeck, importDeck, useFlashcards } from '@/lib/flashcards';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 
@@ -70,6 +70,25 @@ export function FlashcardsPage() {
       navigate(`/flashcards/deck/${deck.id}`);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const importFile = async (file: File | undefined) => {
+    if (!file || busy) return;
+    setImportError(null);
+    if (file.size > MAX_DECK_FILE) return setImportError(t.importTooBig);
+    setBusy(true);
+    try {
+      const deck = await importDeck(file, !!course);
+      void qc.invalidateQueries({ queryKey: cardKeys.all });
+      navigate(`/flashcards/deck/${deck.id}`);
+    } catch {
+      setImportError(t.importFailed);
+    } finally {
+      setBusy(false);
+      if (fileInput.current) fileInput.current.value = '';
     }
   };
 
@@ -158,13 +177,26 @@ export function FlashcardsPage() {
             </button>
           </div>
           {course ? <p className="mt-1.5 text-[12.5px] text-ink-3">{t.newDeckForCourse(course.title)}</p> : null}
+          {/* A deck someone downloaded (from here, or from a friend) comes back as a new deck. */}
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-3">
+            <input ref={fileInput} type="file" accept=".typ,.txt,text/plain" className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => void importFile(e.target.files?.[0])} />
+            <Button size="sm" disabled={busy} onClick={() => fileInput.current?.click()}>
+              <Upload size={14} /> {t.importDeck}
+            </Button>
+            <span className="text-[12.5px] text-ink-3">{t.importDeckHint}</span>
+          </div>
+          {importError ? (
+            <p role="alert" className="mt-2 text-[13px] text-danger">
+              {importError}
+            </p>
+          ) : null}
         </form>
       </div>
     </div>
   );
 }
 
-/** The name starts a review, the button opens the deck for editing. */
+/** The name and the play button start a review, the pencil opens the deck for editing. */
 function DeckRow({ deck: d, picked, onPick, onEdit }: { deck: DeckSummary; picked: boolean; onPick: () => void; onEdit: () => void }) {
   const t = useT();
   const big = d.settings.maxCards > 0 && d.cards > d.settings.maxCards;
@@ -186,6 +218,19 @@ function DeckRow({ deck: d, picked, onPick, onEdit }: { deck: DeckSummary; picke
       <IconButton label={t.editCard} onClick={onEdit} className="shrink-0">
         <Pencil size={15} />
       </IconButton>
+      {/* Stands out while cards are waiting; without any, a review still goes through the deck. */}
+      <Tip label={t.reviewDeck}>
+        <Link
+          href={`/flashcards/review/${d.id}`}
+          aria-label={`${t.reviewDeck}: ${d.title}`}
+          className={clsx(
+            'inline-flex size-8 shrink-0 items-center justify-center rounded-md transition-colors',
+            d.due + d.fresh > 0 ? 'bg-accent text-accent-ink hover:brightness-110' : 'text-ink-2 hover:bg-sunk hover:text-ink',
+          )}
+        >
+          <Play size={15} />
+        </Link>
+      </Tip>
     </li>
   );
 }

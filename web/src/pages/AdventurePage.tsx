@@ -6,6 +6,7 @@ import { AdventureMap } from '@/components/AdventureMap';
 import { ProgressLine } from '@/components/ItemRows';
 import { Empty } from '@/components/ui';
 import { indexItems, statusOf, threadProgress, useOutline, useState_ } from '@/lib/api';
+import { READING_COLUMN } from '@/components/TaskColumn';
 import { useT } from '@/lib/i18n';
 
 /** An adventure: the author's introduction, the path through it, and where the student is on it. */
@@ -27,7 +28,7 @@ export function AdventurePage({ id }: { id: string }) {
   const next = thread.steps.find((step) => !step.some((s) => statusOf(state, s) === 'done'))?.[0];
   return (
     <div className="h-full overflow-y-auto">
-      <article className="settle mx-auto max-w-[46rem] px-6 pb-24 pt-10 sm:px-8">
+      <article className={`settle pb-24 pt-10 ${READING_COLUMN}`}>
         <p className="mb-1.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-accent">
           <Compass size={14} /> {t.adventure}
         </p>

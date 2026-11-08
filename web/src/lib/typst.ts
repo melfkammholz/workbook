@@ -207,6 +207,13 @@ export interface CompletionLabels {
   paramFrom: string;
   paramTags: string;
   paramBoth: string;
+  quiz: string;
+  choice: string;
+  choiceCorrect: string;
+  question: string;
+  answer: string;
+  why: string;
+  paramCorrect: string;
 }
 
 const LANGUAGES = ['haskell', 'prolog', 'python', 'java', 'c', 'typst', 'text'];
@@ -217,6 +224,7 @@ function hashSnippets(l: CompletionLabels): Completion[] {
     snippetCompletion(`#flashcard[\n  \${${l.front}}\n][\n  \${${l.back}}\n]`, { label: '#flashcard', detail: l.flashcard, boost: 3 }),
     snippetCompletion(`#flashcard(both: true)[\n  \${${l.front}}\n][\n  \${${l.back}}\n]`, { label: '#flashcard(both: true)', detail: l.flashcardBoth, boost: 2 }),
     snippetCompletion('#cloze[\n  ${} {{${}}}\n]', { label: '#cloze', detail: l.cloze, boost: 2 }),
+    snippetCompletion(`#quiz(\n  [\${${l.question}}],\n  choice[\${${l.answer}}][\${${l.why}}],\n  choice(correct: true)[\${${l.answer}}][\${${l.why}}],\n)`, { label: '#quiz', detail: l.quiz, boost: 2 }),
     snippetCompletion('#strong[${}]', { label: '#strong', detail: l.strong }),
     snippetCompletion('#emph[${}]', { label: '#emph', detail: l.emph }),
     snippetCompletion('#link("${https://}")[${}]', { label: '#link', detail: l.link }),
@@ -238,6 +246,70 @@ function basics(l: CompletionLabels): Completion[] {
     snippetCompletion('*${}*', { label: '*…*', detail: l.strong }),
     snippetCompletion('_${}_', { label: '_…_', detail: l.emph }),
   ];
+}
+
+/** A call the cursor is inside: its name, and whether the cursor is between its parentheses (code) or in a `[…]` body (markup). */
+interface Enclosing {
+  name: string;
+  /** Between the parentheses, where arguments go. */
+  args: boolean;
+  /** Where the call's arguments start, for the named arguments already given. */
+  from: number;
+}
+
+/**
+ * The calls around a position, innermost last. Reads the text from the start, so a call written over
+ * several lines (a `#quiz` with its choices) is found too. Strings, raw text, math and comments are
+ * skipped; a bracket in them does not count.
+ */
+export function enclosingCalls(text: string, pos: number): Enclosing[] {
+  const stack: { name: string; open: '(' | '[' | '{'; at: number }[] = [];
+  let i = 0;
+  let lastClosed = '';
+  const code = () => stack.length > 0 && stack[stack.length - 1]!.open !== '[';
+  while (i < pos) {
+    const c = text[i]!;
+    if (c === '/' && text[i + 1] === '/') {
+      const end = text.indexOf('\n', i);
+      i = end < 0 ? pos : end;
+      continue;
+    }
+    if (c === '`') {
+      const fence = text.startsWith('```', i) ? '```' : '`';
+      const end = text.indexOf(fence, i + fence.length);
+      if (end < 0 || end + fence.length > pos) return [];
+      i = end + fence.length;
+      continue;
+    }
+    if (c === '"' && code()) {
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"' && text[j] !== '\n') j += text[j] === '\\' ? 2 : 1;
+      if (j >= pos) return [];
+      i = j + 1;
+      continue;
+    }
+    if (c === '$' && !code()) {
+      const end = text.indexOf('$', i + 1);
+      if (end < 0 || end >= pos) return [];
+      i = end + 1;
+      continue;
+    }
+    if (c === '\\') {
+      i += 2;
+      continue;
+    }
+    if (c === '(' || c === '[' || c === '{') {
+      // The name right before (`#quiz(`, `choice[`); a body right after a call's `)` or `]` belongs to that call.
+      const follows = c === '[' && (text[i - 1] === ')' || text[i - 1] === ']');
+      const named = /#?([A-Za-z_][\w-]*)$/.exec(text.slice(Math.max(0, i - 40), i));
+      stack.push({ name: follows ? lastClosed : (named?.[1] ?? ''), open: c, at: i + 1 });
+    } else if (c === ')' || c === ']' || c === '}') {
+      const top = stack.pop();
+      if (top) lastClosed = top.name;
+    }
+    i++;
+  }
+  return stack.filter((f) => f.open !== '{').map((f) => ({ name: f.name, args: f.open === '(', from: f.at }));
 }
 
 /**
@@ -291,6 +363,33 @@ export function typstCompletions(labels: () => CompletionLabels) {
         return { from: word?.from ?? ctx.pos, options: params.filter((p) => !present.has(p.label)), validFor: /^[\w-]*$/ };
       }
     }
+    // Inside a `#quiz(…)`, written over several lines: its choices and named arguments.
+    const calls = enclosingCalls(ctx.state.doc.sliceString(0, ctx.pos), ctx.pos);
+    const inner = calls[calls.length - 1];
+    if (inner?.args && (inner.name === 'quiz' || inner.name === 'choice')) {
+      const word = ctx.matchBefore(/[\w-]*/);
+      const before = ctx.state.doc.sliceString(inner.from, word?.from ?? ctx.pos).trimEnd();
+      if (inner.name === 'choice') {
+        if (/correct:\s*$/.test(before)) return { from: ctx.pos, options: ['true', 'false'].map((v) => ({ label: v, type: 'keyword' })) };
+        if (before === '') return { from: word?.from ?? ctx.pos, options: [snippetCompletion('correct: ${true}', { label: 'correct', detail: `: bool · ${l.paramCorrect}`, type: 'property' })], validFor: /^[\w-]*$/ };
+        return null;
+      }
+      if (/from:\s*$/.test(before)) return { from: ctx.pos, options: exercises.map((e) => ({ label: e.title, detail: e.id, apply: `"${typstContext.course}/${e.id}"`, type: 'text' })) };
+      if (before === '' || before.endsWith(',')) {
+        const present = new Set([...before.matchAll(/([\w-]+)\s*:/g)].map((m) => m[1]));
+        const options: Completion[] = [
+          snippetCompletion(`choice[\${${l.answer}}][\${${l.why}}]`, { label: 'choice', detail: l.choice, type: 'function', boost: 2 }),
+          snippetCompletion(`choice(correct: true)[\${${l.answer}}][\${${l.why}}]`, { label: 'choice(correct: true)', detail: l.choiceCorrect, type: 'function', boost: 1 }),
+          ...(before === '' ? [snippetCompletion(`[\${${l.question}}]`, { label: '[…]', detail: l.question, type: 'text' })] : []),
+          snippetCompletion('from: "${}"', { label: 'from', detail: `: str · ${l.paramFrom}`, type: 'property' }),
+          snippetCompletion('tags: ("${}",)', { label: 'tags', detail: `: array · ${l.paramTags}`, type: 'property' }),
+        ].filter((o) => !present.has(o.label));
+        // Typing a name offers it at once; on an empty line only when asked, so pressing Enter stays Enter.
+        if (!word?.text && !ctx.explicit) return null;
+        return { from: word?.from ?? ctx.pos, options, validFor: /^[\w-]*$/ };
+      }
+    }
+
     const fence = ctx.matchBefore(/^\s*```[\w-]*/);
     if (fence) {
       const start = fence.from + fence.text.indexOf('`');

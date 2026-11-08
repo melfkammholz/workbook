@@ -234,3 +234,27 @@ items:
     expect(content.exercise('py')!.code!.check).toBeNull();
   });
 });
+
+describe('pages', () => {
+  it('can be extra material with tags, like lessons', () => {
+    const dir = tmpContent({
+      'chapters/01-x/chapter.yml': `
+title: X
+items:
+  - page: deep
+    title: Tiefer
+    extra: true
+    tags: [deep-dive]
+  - page: plain
+    title: Einfach
+`,
+      'chapters/01-x/deep.typ': 'Tief',
+      'chapters/01-x/plain.typ': 'Flach',
+    });
+    const { outline } = loadContent(dir);
+    const [deep, plain] = outline.chapters[0]!.items;
+    expect(deep).toMatchObject({ type: 'page', extra: true, tags: ['deep-dive'] });
+    expect(plain).toMatchObject({ type: 'page', extra: false, tags: [] });
+    expect(outline.tags.some((t) => t.id === 'deep-dive')).toBe(true);
+  });
+});

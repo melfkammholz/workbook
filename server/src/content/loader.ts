@@ -379,7 +379,7 @@ export function loadContent(dir: string): Content {
         const textRel = rel(path.join(chapterDir, p.text ?? `${p.page}.typ`));
         const typst = readText(path.join(dir, textRel));
         if (typst === null) return err(textRel, `text file not found (page "${p.page}")`, p.page);
-        const meta: PageMeta = { type: 'page', id: p.page, chapterId, sectionId, title: p.title, index: globalIndex++ };
+        const meta: PageMeta = { type: 'page', id: p.page, chapterId, sectionId, title: p.title, index: globalIndex++, extra: p.extra, tags: p.tags };
         chapter.items.push(meta);
         items.set(p.page, { meta, typst, typstRel: textRel, chapterRel: rel(chapterDir), codeLanguage: defaults.scratch ?? null });
         return;
@@ -497,7 +497,7 @@ export function loadContent(dir: string): Content {
   }
   // A lesson's tags count as topics too, even if tags.yml does not list them.
   for (const item of items.values())
-    if (item.meta.type === 'lesson') for (const t of item.meta.tags) if (!tagMap.has(t)) tagMap.set(t, { id: t, label: t, color: null, type: 'topic', description: null, review: true });
+    if (item.meta.type === 'lesson' || item.meta.type === 'page') for (const t of item.meta.tags) if (!tagMap.has(t)) tagMap.set(t, { id: t, label: t, color: null, type: 'topic', description: null, review: true });
   for (const item of items.values()) {
     const seen = new Set<string>();
     // `#practice("a", "b")` points at exercises like `#xref` does.

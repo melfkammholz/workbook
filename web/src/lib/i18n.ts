@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import type { CardKind, CourseErrorCode, DeckWarningCode, Focus, Status, ThreadKind, UiLanguage } from '@wb/shared';
+import type { DuskColor, CardKind, CourseErrorCode, DeckWarningCode, Focus, ItemMeta, Status, ThreadKind, UiLanguage } from '@wb/shared';
 import type { Sprite, TraceId, VariantLabel } from '@/components/meadow/types';
 import { useOutline, useSettings } from './api';
 
@@ -333,6 +333,8 @@ const en = {
   recommendedFirst: 'Recommended first',
   filters: 'Filters',
   filtersActive: (n: number) => `Filters, ${n} active`,
+  filterShow: 'Show',
+  itemTypes: { exercise: 'Exercises', lesson: 'Lessons', page: 'Pages', checklist: 'Self-evaluations' } satisfies Record<ItemMeta['type'], string>,
   filterStatus: 'Status',
   filterType: 'Type',
   kindQuestions: 'Questions',
@@ -488,11 +490,15 @@ const en = {
   yourName: 'Your name',
   namePlaceholder: 'Used to greet you on the start page',
   theme: 'Theme',
-  themes: { system: 'System', light: 'Light', dark: 'Dark' },
+  themes: { system: 'System', light: 'Light', dusk: 'Dusk', dark: 'Dark' },
+  duskColor: 'Color of dusk',
+  duskColors: { indigo: 'Indigo', teal: 'Teal', plum: 'Plum', forest: 'Forest' } satisfies Record<DuskColor, string>,
   language: 'Language of the app',
   languages: { auto: 'Same as the course', de: 'Deutsch', en: 'English' } as Record<UiLanguage, string>,
   languageNote: 'Exercises stay in the language they were written in.',
   timerTitle: 'Timer',
+  settingsGeneral: 'You and the app',
+  settingsLook: 'Appearance',
   showTimer: 'Show the time on each exercise',
   showTimerBody: 'Only counts time you are actually active on the page.',
   helpAfter: 'Ask if I need help after',
@@ -586,6 +592,7 @@ const en = {
       [
         ['Space or Enter', 'Show the answer'],
         ['1 to 4', 'Rate it: again, hard, good, easy'],
+        ['1, 2, 3 …', 'On a quiz card: pick an answer, counting from the top'],
       ],
     ],
   ] as [string, [string, string][]][],
@@ -715,6 +722,11 @@ const en = {
   newPerDayHint: 'At most. More cards wait until the next day.',
   rename: 'Rename',
   deleteDeck: 'Delete deck',
+  downloadDeck: 'Download deck',
+  importDeck: 'Import a deck',
+  importDeckHint: 'A file you downloaded from a deck, here or on another computer.',
+  importTooBig: 'This file is too big for a deck (more than 1 MB).',
+  importFailed: 'This file could not be turned into a deck.',
   confirmDeleteDeck: (title: string) => `Delete “${title}”?`,
   deleteDeckBody: 'The text of the deck is gone. If you paste its cards into another deck later, with their ids, they keep what you have learned.',
   deckNotFound: 'This deck does not exist (any more).',
@@ -743,6 +755,7 @@ const en = {
   cardReversed: 'The other way round',
   cardGap: (n: number) => `Gap ${n}`,
   reviewKeys: 'Space shows the answer, 1 to 4 rate it.',
+  reviewKeysQuiz: '1, 2, 3 … pick an answer, counting from the top; then 1 to 4 rate it.',
   interval: (ms: number) => {
     const m = ms / 60_000;
     if (m < 1) return '<1 min';
@@ -753,7 +766,7 @@ const en = {
     if (d < 365) return `${Math.round(d / 30)} mo`;
     return `${(d / 365).toFixed(1)} y`;
   },
-  helpFlashcards: 'Cards you write yourself, in your own words, from your work on the exercises. Each card comes back shortly before you would forget it, so a few minutes a day keep what you learned. Make a card next to the timer in any exercise; the card remembers where it came from.',
+  helpFlashcards: 'Cards you write yourself, in your own words, from your work on the exercises. Each card comes back shortly before you would forget it, so a few minutes a day keep what you learned. Make a card next to the timer in any exercise; the card remembers where it came from. To keep a deck or pass it on, download it from its menu (…); “Import a deck” on the flashcards page turns the file into a deck again.',
   helpReviewingCardsTitle: 'Reviewing',
   helpReviewingCards: 'Pick one deck, or a few to mix. Say what you remember, then show the answer and rate it: Again, Hard, Good or Easy. Under each rating is when the card comes back. Reviewing early or late does no harm, and "Not today" puts a card off without a rating. A few days off are fine: the cards wait.',
   makeCard: 'Make a card',
@@ -821,6 +834,13 @@ const en = {
     paramFrom: 'the exercise it came from',
     paramTags: 'its own tags',
     paramBoth: 'also asked the other way round',
+    quiz: 'Quiz: a question with answers to pick',
+    choice: 'An answer, and why it is wrong',
+    choiceCorrect: 'The right answer, and why',
+    question: 'question',
+    answer: 'answer',
+    why: 'why',
+    paramCorrect: 'this is the right answer',
   },
   hideGap: 'Hide the gap',
   cardTags: 'Tags',
@@ -888,11 +908,12 @@ const en = {
     exam: 'Old exams, task by task. The tasks live in the chapters they belong to; here they are together as they were set.',
   } satisfies Record<ThreadKind, string>,
   threadKindEmpty: 'Nothing here yet.',
-  groupNext: (group: string) => `Next in “${group}”`,
   courseWork: 'Sessions and homework',
   courseWorkShort: 'Sessions and homework',
   courseWorkBody: 'The course\'s work as it was set, one session, sheet or exam after the other. The tasks live in their chapters too.',
   lesson: 'Lesson',
+  practiceTitle: 'Exercises',
+  extraMaterial: 'Extra material',
   helpLessonsTitle: 'Lessons',
   helpLessons: 'A lesson explains one idea on a single page, with things to try out in between: questions, steps to go through, pieces to put in place, folds that compute themselves. They start fresh every time you come back, so a later visit is a chance to test yourself again; nothing you do in them is kept. While you read, the outline shows the lesson\'s sections (you can turn that off in the settings). At the end, the exercises that go with the lesson are listed: a tick shows the ones you have done. With flashcards on, any question in a lesson can become a card of yours. When you have worked through a lesson, mark it as done in the bar at the top.',
   widget: {
@@ -1308,6 +1329,8 @@ const de: Strings = {
   recommendedFirst: 'Zuerst empfohlen',
   filters: 'Filter',
   filtersActive: (n) => `Filter, ${n} aktiv`,
+  filterShow: 'Zeigen',
+  itemTypes: { exercise: 'Aufgaben', lesson: 'Lektionen', page: 'Seiten', checklist: 'Selbstevaluationen' },
   filterStatus: 'Status',
   filterType: 'Art',
   kindQuestions: 'Fragen',
@@ -1454,11 +1477,15 @@ const de: Strings = {
   yourName: 'Dein Name',
   namePlaceholder: 'Für die Begrüßung auf der Startseite',
   theme: 'Design',
-  themes: { system: 'System', light: 'Hell', dark: 'Dunkel' },
+  themes: { system: 'System', light: 'Hell', dusk: 'Dämmerung', dark: 'Dunkel' },
+  duskColor: 'Farbe der Dämmerung',
+  duskColors: { indigo: 'Indigo', teal: 'Petrol', plum: 'Pflaume', forest: 'Wald' },
   language: 'Sprache der App',
   languages: { auto: 'Wie der Kurs', de: 'Deutsch', en: 'English' },
   languageNote: 'Aufgaben bleiben in der Sprache, in der sie geschrieben wurden.',
   timerTitle: 'Timer',
+  settingsGeneral: 'Du und die App',
+  settingsLook: 'Darstellung',
   showTimer: 'Zeit bei jeder Aufgabe anzeigen',
   showTimerBody: 'Zählt nur die Zeit, in der du auf der Seite aktiv bist.',
   helpAfter: 'Nachfragen, ob ich Hilfe brauche, nach',
@@ -1550,6 +1577,7 @@ const de: Strings = {
       [
         ['Leertaste oder Enter', 'Antwort zeigen'],
         ['1 bis 4', 'Bewerten: nochmal, schwer, gut, leicht'],
+        ['1, 2, 3 …', 'Bei einer Quizkarte: eine Antwort wählen, von oben gezählt'],
       ],
     ],
   ],
@@ -1675,6 +1703,11 @@ const de: Strings = {
   newPerDayHint: 'Höchstens. Weitere Karten warten bis zum nächsten Tag.',
   rename: 'Umbenennen',
   deleteDeck: 'Stapel löschen',
+  downloadDeck: 'Stapel herunterladen',
+  importDeck: 'Stapel importieren',
+  importDeckHint: 'Eine Datei, die du von einem Stapel heruntergeladen hast, hier oder auf einem anderen Computer.',
+  importTooBig: 'Diese Datei ist zu groß für einen Stapel (mehr als 1 MB).',
+  importFailed: 'Aus dieser Datei ließ sich kein Stapel machen.',
   confirmDeleteDeck: (title) => `„${title}“ löschen?`,
   deleteDeckBody: 'Der Text des Stapels ist dann weg. Fügst du seine Karten später mit ihren Kennungen in einen anderen Stapel ein, bleibt erhalten, was du gelernt hast.',
   deckNotFound: 'Diesen Stapel gibt es nicht (mehr).',
@@ -1703,6 +1736,7 @@ const de: Strings = {
   cardReversed: 'Andersherum gefragt',
   cardGap: (n) => `Lücke ${n}`,
   reviewKeys: 'Leertaste zeigt die Antwort, 1 bis 4 bewerten sie.',
+  reviewKeysQuiz: '1, 2, 3 … wählen eine Antwort, von oben gezählt; danach bewerten 1 bis 4.',
   interval: (ms) => {
     const m = ms / 60_000;
     if (m < 1) return '<1 Min.';
@@ -1713,7 +1747,7 @@ const de: Strings = {
     if (d < 365) return `${Math.round(d / 30)} Mon.`;
     return `${(d / 365).toFixed(1).replace('.', ',')} J.`;
   },
-  helpFlashcards: 'Karten, die du selbst schreibst, in eigenen Worten, aus deiner Arbeit an den Aufgaben. Jede Karte kommt wieder, kurz bevor du sie vergessen würdest, so halten ein paar Minuten am Tag, was du gelernt hast. „Karte anlegen“ steht neben dem Timer in jeder Aufgabe; die Karte merkt sich, woher sie kommt.',
+  helpFlashcards: 'Karten, die du selbst schreibst, in eigenen Worten, aus deiner Arbeit an den Aufgaben. Jede Karte kommt wieder, kurz bevor du sie vergessen würdest, so halten ein paar Minuten am Tag, was du gelernt hast. „Karte anlegen“ steht neben dem Timer in jeder Aufgabe; die Karte merkt sich, woher sie kommt. Um einen Stapel aufzuheben oder weiterzugeben, lade ihn über sein Menü (…) herunter; „Stapel importieren“ auf der Seite der Karteikarten macht aus der Datei wieder einen Stapel.',
   helpReviewingCardsTitle: 'Wiederholen',
   helpReviewingCards: 'Wähle einen Stapel oder ein paar zum Mischen. Sag dir, was du noch weißt, dann zeig die Antwort und bewerte: Nochmal, Schwer, Gut oder Leicht. Unter jeder Bewertung steht, wann die Karte wiederkommt. Früher oder später wiederholen schadet nicht, und „Nicht heute“ verschiebt eine Karte ohne Bewertung. Ein paar Tage Pause sind kein Problem: die Karten warten.',
   makeCard: 'Karte anlegen',
@@ -1781,6 +1815,13 @@ const de: Strings = {
     paramFrom: 'die Aufgabe, aus der sie stammt',
     paramTags: 'eigene Schlagwörter',
     paramBoth: 'auch andersherum gefragt',
+    quiz: 'Quiz: eine Frage mit Antworten zur Wahl',
+    choice: 'Eine Antwort und warum sie falsch ist',
+    choiceCorrect: 'Die richtige Antwort und warum',
+    question: 'Frage',
+    answer: 'Antwort',
+    why: 'warum',
+    paramCorrect: 'das ist die richtige Antwort',
   },
   hideGap: 'Lücke verdecken',
   cardTags: 'Schlagwörter',
@@ -1848,11 +1889,12 @@ const de: Strings = {
     exam: 'Alte Klausuren, Aufgabe für Aufgabe. Die Aufgaben stehen in den Kapiteln, zu denen sie gehören; hier sind sie so beisammen, wie sie gestellt wurden.',
   },
   threadKindEmpty: 'Hier ist noch nichts.',
-  groupNext: (group: string) => `Als Nächstes in „${group}“`,
   courseWork: 'Übungen und Hausaufgaben',
   courseWorkShort: 'Übungen und Hausaufgaben',
   courseWorkBody: 'Die Arbeit im Kurs, so wie sie gestellt wurde: eine Übung, ein Blatt, eine Klausur nach der anderen. Die Aufgaben stehen auch in ihren Kapiteln.',
   lesson: 'Lektion',
+  practiceTitle: 'Aufgaben',
+  extraMaterial: 'Zusatzmaterial',
   helpLessonsTitle: 'Lektionen',
   helpLessons: 'Eine Lektion erklärt eine Idee auf einer Seite, mit Dingen zum Ausprobieren dazwischen: Fragen, Schritte zum Durchgehen, Teile zum Einsetzen, Faltungen, die sich selbst ausrechnen. Sie fangen bei jedem Besuch von vorn an, so kannst du dich später noch einmal testen; nichts davon wird gespeichert. Beim Lesen zeigt die Gliederung die Abschnitte der Lektion (das lässt sich in den Einstellungen abschalten). Am Ende stehen die Aufgaben, die dazugehören: Ein Haken zeigt, welche du schon erledigt hast. Sind Karteikarten an, kann jede Frage in einer Lektion zu deiner eigenen Karte werden. Wenn du eine Lektion durchgearbeitet hast, markiere sie oben in der Leiste als erledigt.',
   widget: {

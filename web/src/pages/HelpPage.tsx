@@ -1,11 +1,8 @@
-import { useEffect } from 'react';
-import { Link } from 'wouter';
 import { CodeBlock } from '@/components/Dialogs';
 import { Legend } from '@/components/Legend';
 import { withCode } from '@/components/withCode';
-import { clsx } from '@/components/ui';
+import { SectionedPage, type PageSection } from '@/components/SectionedPage';
 import { useSettings } from '@/lib/api';
-import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 
 /**
@@ -18,7 +15,7 @@ export function HelpPage({ section }: { section?: string }) {
   const flashcards = !!settings?.showFlashcards;
   const ai = !!settings?.showAi;
 
-  const sections: { id: string; title: string; body: React.ReactNode }[] = [
+  const sections: PageSection[] = [
     { id: 'working', title: t.helpWorkingTitle, body: <p>{t.helpWorking}</p> },
     { id: 'interpreter', title: t.helpInterpreterTitle, body: <p>{t.helpInterpreter}</p> },
     { id: 'lessons', title: t.helpLessonsTitle, body: <p>{t.helpLessons}</p> },
@@ -98,45 +95,11 @@ export function HelpPage({ section }: { section?: string }) {
     { id: 'data', title: t.helpDataTitle, body: <p>{t.helpData}</p> },
   ];
 
-  useEffect(() => {
-    if (section) requestAnimationFrame(() => document.getElementById(`help-${section}`)?.scrollIntoView({ block: 'start' }));
-  }, [section]);
-
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex max-w-5xl gap-10 px-6 pb-24 pt-6 sm:px-8">
-        {/* Starts on the line of the heading next to it, below the way back. */}
-        <nav aria-label={t.help} className="sticky top-12 mt-12 hidden w-48 shrink-0 self-start lg:block">
-          <ul className="space-y-0.5 text-sm">
-            {sections.map((s) => (
-              <li key={s.id}>
-                <Link href={`/help/${s.id}`} replace className={clsx('block rounded-md px-2 py-1', section === s.id ? 'bg-sunk text-ink' : 'text-ink-2 hover:bg-sunk hover:text-ink')}>
-                  {s.title}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        <div className="min-w-0 max-w-2xl flex-1">
-          {/* Where the other pages have it, and it stays in reach however far down the help goes. */}
-          <div className="sticky top-0 z-10 -mx-2 mb-1 bg-paper px-2 py-2">
-            <BackLink fallback="/" label={t.back}>
-              {t.back}
-            </BackLink>
-          </div>
-          <h1 className="text-[1.75rem] font-semibold tracking-[-0.02em]">{t.help}</h1>
-          <p className="mt-2 text-ink-2">{t.helpIntro}</p>
-          <div className="mt-6">
-            <Legend />
-          </div>
-          {sections.map((s) => (
-            <section key={s.id} id={`help-${s.id}`} className="mt-10 scroll-mt-12 text-[14.5px] leading-relaxed text-ink-2">
-              <h2 className="mb-2 text-lg font-semibold text-ink">{s.title}</h2>
-              {s.body}
-            </section>
-          ))}
-        </div>
+    <SectionedPage base="/help" title={t.help} intro={<p>{t.helpIntro}</p>} section={section} sections={sections}>
+      <div className="mt-6">
+        <Legend />
       </div>
-    </div>
+    </SectionedPage>
   );
 }

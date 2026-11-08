@@ -61,9 +61,9 @@ export function SetupDialog() {
           <legend className="mb-1 text-sm font-medium">{t.theme}</legend>
           <Segmented
             value={settings.theme}
-            options={(['system', 'light', 'dark'] as const).map((th) => [th, t.themes[th]])}
+            options={(['system', 'light', 'dusk', 'dark'] as const).map((th) => [th, t.themes[th]])}
             onChange={(th) => {
-              applyTheme(th);
+              applyTheme(th, settings?.duskColor);
               set({ theme: th });
             }}
           />

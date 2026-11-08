@@ -4,7 +4,7 @@ import { useT } from '@/lib/i18n';
 import { Prose } from './Prose';
 import { Spinner } from './ui';
 
-/** A text the author wrote that is not an exercise: landing page, chapter introduction, adventure page. */
+/** A text the author wrote that is not an exercise: landing page, chapter introduction, adventure page. Set like a lesson. */
 export function CourseText({ url }: { url: string }) {
   const t = useT();
   const doc = useDoc(url);
@@ -26,7 +26,7 @@ export function CourseText({ url }: { url: string }) {
           </ul>
         </div>
       ) : null}
-      <Prose html={doc.data.task} css={doc.data.css} />
+      <Prose html={doc.data.task} css={doc.data.css} className="wb-reading wb-lesson" />
       {doc.data.remarks.length ? (
         <div className="mt-6 space-y-3">
           {doc.data.remarks.map((r, i) => (

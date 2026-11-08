@@ -1,17 +1,17 @@
 import { ArrowRight, FileText, GraduationCap, ListChecks } from 'lucide-react';
 import { Link } from 'wouter';
 import type { ItemMeta, StudentState } from '@wb/shared';
-import { statusOf } from '@/lib/api';
+import { itemHref, statusOf } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Level, StatusMark, clsx } from './ui';
 import { Title } from '@/components/Title';
 
 /** One exercise, page or checklist in a list, with how far along it is. */
-export function ItemRow({ item, state, outside = false, className }: { item: ItemMeta; state: StudentState | undefined; outside?: boolean; className?: string }) {
+export function ItemRow({ item, state, outside = false, className, group }: { item: ItemMeta; state: StudentState | undefined; outside?: boolean; className?: string; group?: string }) {
   const t = useT();
   const answered = item.type === 'checklist' && Object.keys(state?.checklists[item.id] ?? {}).length > 0;
   return (
-    <Link href={`/item/${item.id}`} className={clsx('group flex items-center gap-3 px-4 py-2.5 hover:bg-paper/60', className)}>
+    <Link href={itemHref(item.id, group)} className={clsx('group flex items-center gap-3 px-4 py-2.5 hover:bg-paper/60', className)}>
       {item.type === 'exercise' ? (
         <StatusMark status={statusOf(state, item.id)} size={16} />
       ) : item.type === 'checklist' ? (

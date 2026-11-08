@@ -66,3 +66,26 @@ export const keepCard = (card: string) => api.post(`/api/flashcards/cards/${enco
 export const useStruggling = (deck: string | null) =>
   useQuery({ queryKey: ['flashcards', 'struggling', deck], queryFn: () => api.get<StrugglingCard[]>(`/api/flashcards/struggling${deck ? `?deck=${encodeURIComponent(deck)}` : ''}`), staleTime: 0 });
 export const useCourseCards = (enabled: boolean) => useQuery({ queryKey: ['flashcards', 'course'], queryFn: () => api.get<CourseCards>('/api/flashcards/course'), enabled, staleTime: 0 });
+
+/** A deck as a file: its Typst text, named after it. Everything a deck is, so it can be kept, shared and imported again. */
+export function downloadDeck(title: string, source: string): void {
+  const name = `${title.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-').trim() || 'deck'}.typ`;
+  const url = URL.createObjectURL(new Blob([source], { type: 'text/plain;charset=utf-8' }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** The largest file a deck can be made from (the server takes up to 1 MB of text). */
+export const MAX_DECK_FILE = 1_000_000;
+
+/** A new deck from a downloaded one: named after the file. Cards whose ids another deck already uses get new ones. */
+export async function importDeck(file: File, forCourse: boolean): Promise<DeckDoc> {
+  const text = await file.text();
+  const title = file.name.replace(/\.(typ|txt)$/i, '').trim().slice(0, 200) || 'Deck';
+  const deck = await createDeck(title, forCourse);
+  await saveDeckSource(deck.id, text);
+  return deck;
+}

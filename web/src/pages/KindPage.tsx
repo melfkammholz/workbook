@@ -53,7 +53,7 @@ export function KindPage({ kind }: { kind: ThreadKind }) {
                   .filter((item) => opened.has(g.id) || staysInSight(item, state))
                   .map((item) => (
                     <li key={item.id}>
-                      <ItemRow item={item} state={state} outside={!itemInFocus(item, focus)} />
+                      <ItemRow item={item} state={state} outside={!itemInFocus(item, focus)} group={g.id} />
                     </li>
                   ))}
                 {hidden.length ? (

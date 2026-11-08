@@ -56,6 +56,10 @@ export const pageSchema = z
     page: id,
     title: z.string(),
     text: z.string().optional(),
+    /** Extra material, e.g. a deep dive: shown when the student wants to see everything, like an extra lesson. */
+    extra: z.boolean().default(false),
+    /** Topics and signals, as for exercises (e.g. `deep-dive`). */
+    tags: z.array(z.string()).default([]),
   })
   .strict();
 

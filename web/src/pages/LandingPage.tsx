@@ -5,6 +5,7 @@ import { Link } from 'wouter';
 import { CourseText } from '@/components/CourseText';
 import { Empty } from '@/components/ui';
 import { keys, markLandingSeen, useOutline } from '@/lib/api';
+import { READING_COLUMN } from '@/components/TaskColumn';
 import { useT } from '@/lib/i18n';
 
 /** How the author introduces the course. It opens once by itself; the home page stays the place to start from. */
@@ -28,7 +29,7 @@ export function LandingPage() {
   }
   return (
     <div className="h-full overflow-y-auto">
-      <article className="settle mx-auto max-w-[46rem] px-6 pb-24 pt-10 sm:px-8">
+      <article className={`settle pb-24 pt-10 ${READING_COLUMN}`}>
         <h1 className="mb-6 text-balance text-[2rem] font-semibold leading-tight tracking-[-0.025em]">{outline.title}</h1>
         <CourseText url="/api/landing" />
         <Link href="/" className="mt-10 inline-flex h-10 items-center gap-2 rounded-md bg-accent px-5 font-medium text-accent-ink hover:brightness-110">

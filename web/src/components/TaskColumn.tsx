@@ -2,8 +2,9 @@ import { ArrowLeft, ArrowRight, Clock, Compass, ExternalLink, Flag, Flame, Light
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import type { ExerciseMeta, ItemDetail, ItemMeta, Outline, StudentState, ThreadInfo } from '@wb/shared';
-import { focusOf, inFocus } from '@wb/shared';
-import { neighbours, statusOf, useCourses } from '@/lib/api';
+import { focusOf, inFocus, isReading } from '@wb/shared';
+import { itemHref, neighbours, statusOf, useCourses } from '@/lib/api';
+import { itemInFocus } from '@/lib/focus';
 import { issueLink } from '@/lib/issues';
 import { useT } from '@/lib/i18n';
 import { watchLesson } from '@/lib/lessonToc';
@@ -13,40 +14,53 @@ import { Button, Chip, Level, StatusMark, clsx } from './ui';
 import { Title, plainTitle } from '@/components/Title';
 import { KIND_ICONS } from '@/lib/kinds';
 
+/**
+ * The one column every text is read in: exercises, pages, lessons, chapter intros, adventure pages. Text and
+ * widgets share its width, so everything lines up on one axis; `#wide` breaks out of it on both sides.
+ */
+export const READING_COLUMN = 'max-w-[56rem] px-6 sm:px-8 w-full mx-auto';
+
 interface Props {
   detail: ItemDetail;
   outline: Outline;
   byId: Map<string, ItemMeta>;
   state: StudentState | undefined;
   revealedHints: number;
+  /** The group (session, sheet, exam) the student came from: previous and next follow it. */
+  group?: string | null;
   onRevealHint: (count: number) => void;
 }
 
 /** The left pane: heading, the task as typeset text, the author's remarks, hints and threads to other exercises. */
-export function TaskColumn({ detail, outline, byId, state, revealedHints, onRevealHint }: Props) {
+export function TaskColumn({ detail, outline, byId, state, revealedHints, onRevealHint, group }: Props) {
   const t = useT();
   const { meta, rendered } = detail;
   const ex = meta.type === 'exercise' ? meta : null;
-  const tagsOf = (type: 'topic' | 'signal') => outline.tags.filter((tag) => tag.type === type && ex?.tags.includes(tag.id));
+  const ownTags = 'tags' in meta ? meta.tags : [];
+  const tagsOf = (type: 'topic' | 'signal') => outline.tags.filter((tag) => tag.type === type && ownTags.includes(tag.id));
   const errors = rendered.diagnostics.filter((d) => d.severity === 'error');
   const adventures = outline.threads.filter((x) => x.adventure && x.steps.some((step) => step.includes(meta.id)));
   // Sessions and homework sheets it belongs to, in their own order.
   const groups = outline.threads.filter((x) => x.kind && x.steps.some((step) => step.includes(meta.id)));
-  const { previous, next } = neighbours(outline, meta.id, state);
+  const { previous, next } = neighbours(outline, meta.id, state, group);
   const chapter = outline.chapters.find((c) => c.items.some((i) => i.id === meta.id));
   const courses = useCourses().data;
   const repository = courses?.courses.find((c) => c.id === courses.activeId)?.url ?? null;
   const report = issueLink(outline.issues, repository, t.issueTitle(plainTitle(meta.title)), t.issueBody(meta.id, plainTitle(meta.title)));
 
   const lesson = meta.type === 'lesson';
+  // Pages and lessons are set alike: a page is a lesson without widgets or a done state.
+  const reading = isReading(meta);
+  const extra = reading && meta.extra;
   const article = useRef<HTMLElement>(null);
   useEffect(() => {
-    if (!lesson || !article.current) return;
+    if (!reading || !article.current) return;
     return watchLesson(meta.id, article.current);
-  }, [lesson, meta.id, rendered.task]);
+  }, [reading, meta.id, rendered.task]);
+  const outside = ex ? !inFocus(ex, focusOf(state)) : !itemInFocus(meta, focusOf(state));
 
   return (
-    <article ref={article} className={clsx('settle mx-auto flex flex-col px-6 pb-24 pt-7 sm:px-8', lesson ? 'max-w-[56rem]' : 'max-w-[46rem]')}>
+    <article ref={article} className={clsx('settle mx-auto flex flex-col pb-24 pt-7', READING_COLUMN)}>
       <header className="mb-6">
         {chapter ? (
           // The way up, to the chapter this belongs to.
@@ -54,8 +68,10 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
             <ArrowLeft size={13} className="shrink-0" /> <span className="truncate">{chapter.title}</span>
           </Link>
         ) : null}
-        {lesson ? <p className="mb-1.5 text-[13px] font-medium text-accent">{t.lesson}</p> : null}
-        <h1 className={clsx('text-balance font-semibold leading-tight', lesson ? 'text-[2rem] tracking-[-0.025em]' : 'text-[1.75rem] tracking-[-0.02em]')}>
+        {lesson || extra ? (
+          <p className="mb-1.5 text-[13px] font-medium text-accent">{[lesson ? t.lesson : null, extra ? t.extraMaterial : null].filter(Boolean).join(' · ')}</p>
+        ) : null}
+        <h1 className={clsx('text-balance font-semibold leading-tight', reading ? 'text-[2rem] tracking-[-0.025em]' : 'text-[1.75rem] tracking-[-0.02em]')}>
           {ex?.startHere && ex.emoji ? (
             <span className="mr-2" role="img" aria-label={t.recommendedFirst}>
               {ex.emoji}
@@ -63,27 +79,29 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
           ) : null}
           <Title text={meta.title} />
         </h1>
-        {ex ? (
+        {ex || (reading && (ownTags.length || outside || groups.length || adventures.length)) ? (
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-ink-2">
-            <span className="inline-flex items-center gap-2">
-              <Level level={ex.level} /> {[t.easy, t.medium, t.hard][ex.level - 1]}
-            </span>
-            {ex.kind === 'challenge' ? (
+            {ex ? (
+              <span className="inline-flex items-center gap-2">
+                <Level level={ex.level} /> {[t.easy, t.medium, t.hard][ex.level - 1]}
+              </span>
+            ) : null}
+            {ex?.kind === 'challenge' ? (
               <Chip tone="amber">
                 <Flame size={12} /> {t.challenge}
               </Chip>
             ) : null}
-            {ex.long ? (
+            {ex?.long ? (
               <Chip tone="signal">
                 <Clock size={12} /> {t.takesAWhile}
               </Chip>
             ) : null}
-            {ex.startHere ? (
+            {ex?.startHere ? (
               <Chip tone="accent">
                 <Sparkles size={12} /> {t.recommendedFirst}
               </Chip>
             ) : null}
-            {!inFocus(ex, focusOf(state)) ? <Chip>{t.outsideFocus}</Chip> : null}
+            {outside ? <Chip>{t.outsideFocus}</Chip> : null}
             {groups.map((g) => {
               const Icon = KIND_ICONS[g.kind!];
               return (
@@ -134,7 +152,7 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
       {ex ? <Prerequisites ex={ex} byId={byId} state={state} /> : null}
       {ex ? <SharedOutsideFocus ex={ex} byId={byId} state={state} /> : null}
 
-      <Prose html={rendered.task} css={rendered.css} className={lesson ? 'wb-lesson' : undefined} />
+      <Prose html={rendered.task} css={rendered.css} className={clsx('wb-reading', reading && 'wb-lesson')} />
 
       {meta.type === 'checklist' ? <Checklist id={meta.id} questions={rendered.questions} /> : null}
 
@@ -152,11 +170,10 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
       {rendered.hints.length ? <Hints hints={rendered.hints} revealed={revealedHints} onReveal={onRevealHint} /> : null}
 
       {ex ? <Threads ex={ex} byId={byId} state={state} /> : null}
-      <GroupNext groups={groups} id={meta.id} byId={byId} state={state} />
 
       <nav aria-label={t.exerciseNavigation} className="mt-10 flex flex-wrap justify-between gap-3 border-t border-line pt-5 text-sm">
         {previous ? (
-          <Link href={`/item/${previous.id}`} className="group flex min-w-0 max-w-[48%] items-center gap-2 text-ink-2 hover:text-ink">
+          <Link href={itemHref(previous.id, group)} className="group flex min-w-0 max-w-[48%] items-center gap-2 text-ink-2 hover:text-ink">
             <ArrowLeft size={15} className="shrink-0" />
             <span className="min-w-0">
               <span className="block text-xs text-ink-3">{t.previousItem}</span>
@@ -167,7 +184,7 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
           <span />
         )}
         {next ? (
-          <Link href={`/item/${next.id}`} className="group ml-auto flex min-w-0 max-w-[48%] items-center gap-2 text-right text-ink-2 hover:text-ink">
+          <Link href={itemHref(next.id, group)} className="group ml-auto flex min-w-0 max-w-[48%] items-center gap-2 text-right text-ink-2 hover:text-ink">
             <span className="min-w-0">
               <span className="block text-xs text-ink-3">{t.nextItem}</span>
               <span className="block truncate group-hover:underline"><Title text={next.title} /></span>
@@ -306,36 +323,3 @@ function ItemLink({ item, state, arrow }: { item: ItemMeta; state: StudentState 
 }
 
 /** What comes next in a session or homework sheet, for those who follow it in its order. */
-function GroupNext({ groups, id, byId, state }: { groups: ThreadInfo[]; id: string; byId: Map<string, ItemMeta>; state: StudentState | undefined }) {
-  const t = useT();
-  const rows = groups.flatMap((g) => {
-    const at = g.steps.findIndex((step) => step.includes(id));
-    const next = g.steps.slice(at + 1).flat().map((x) => byId.get(x)).find((x): x is ItemMeta => !!x);
-    return next ? [{ g, next }] : [];
-  });
-  if (!rows.length) return null;
-  return (
-    <div className="mt-10 space-y-2">
-      {rows.map(({ g, next }) => {
-        const Icon = KIND_ICONS[g.kind!];
-        return (
-          <Link
-            key={g.id}
-            href={`/item/${next.id}`}
-            className="group flex items-center gap-3 rounded-lg border border-line bg-sheet px-4 py-3 text-[14px] hover:border-line-strong"
-          >
-            <Icon size={16} className="shrink-0 text-ink-3" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-[12.5px] text-ink-3">{t.groupNext(g.title)}</span>
-              <span className="flex items-center gap-2 font-medium">
-                <StatusMark status={statusOf(state, next.id)} size={13} />
-                <Title text={next.title} />
-              </span>
-            </span>
-            <ArrowRight size={16} className="shrink-0 text-ink-3 transition-transform group-hover:translate-x-0.5 group-hover:text-ink" />
-          </Link>
-        );
-      })}
-    </div>
-  );
-}

@@ -118,6 +118,10 @@ defaults:               # per chapter; any of kind, level, long, tags, scratch
 items:
   - page: einfuehrung   # an information page: preface, explanation, resources
     title: Einführung in Typklassen
+  - page: autodiff-any-derivative
+    title: Ableitungen beliebiger Ordnung
+    extra: true           # a deep dive: folds away unless the student wants everything; the app says it is extra
+    tags: [deep-dive]     # optional, as for exercises
 
   - section: Ableitungen   # optional: everything below belongs to it, until the next section
 
@@ -336,14 +340,16 @@ More for lessons:
 
 | Helper | Effect |
 | --- | --- |
-| `#practice("id", "id2")` | The exercises that go with a lesson, as a list to click through: each title and whether it is done. Write the call to action once, before it. `lint` checks the ids. |
+| `#practice("id", "id2")` | The exercises that go with a lesson, as a list to click through: each title and whether it is done. The app puts a heading “Exercises” above it, so write no call to action (“Jetzt bist du dran”) before it. `lint` checks the ids. |
 | `#muted[…]` | A quiet note inside a line, e.g. in a table cell. |
 | `#wide[…]` | More room for a dense widget, e.g. two trees side by side: wider than the text (up to 70rem), as far as the page allows. |
 | `#expr-trees((expr: "f 1 (f 2 z)", caption: "…"), …, colors: (f: 3, z: 1))` | Expressions drawn as trees, side by side. |
 | `#fold-list(xs: ("1", "2"), folds: ((name: "foldl (flip (:)) []", dir: "left", fn: "flip (:)", start: "[]"), …))` | A list folded element by element, input and accumulator as cards; every step computed. |
 | `#bracketing(ops: ((op: "+", list: ("1", "2", "3"), assoc: true, starts: ((value: "0", neutral: true), …)), …))` | Where `foldr` and `foldl` put the brackets and the start value, with the results computed. |
 
-A lesson can be `extra: true` in `chapter.yml`, like an exercise: it then only shows in the focus "everything".
+A lesson can be `extra: true` in `chapter.yml`, like an exercise or a page: it then only shows in the focus "everything".
+A page is a lesson without a done state: both are set in the same reading column, at the same width as exercise text.
+Widgets take the width of the text; wrap a dense one in `#wide[…]` to give it more room.
 Lessons can be steps of a path or adventure. With flashcards on, students can turn any `#quiz` into a card of
 their own (a quiz card, written the same way).
 

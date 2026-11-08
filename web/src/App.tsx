@@ -35,6 +35,7 @@ import { NotesPage } from '@/pages/NotesPage';
 import { ItemPage } from '@/pages/ItemPage';
 import { ReviewPage } from '@/pages/ReviewPage';
 import { KindPage } from '@/pages/KindPage';
+import { useRewards } from '@/lib/rewards';
 import { THREAD_KINDS, type ThreadKind } from '@wb/shared';
 
 export function App() {
@@ -53,8 +54,8 @@ function Shell() {
   const settings = useSettings().data;
 
   useEffect(() => {
-    if (settings) applyTheme(settings.theme);
-  }, [settings?.theme]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (settings) applyTheme(settings.theme, settings.duskColor);
+  }, [settings?.theme, settings?.duskColor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (settings) document.documentElement.dataset.colors = settings.safeColors ? 'safe' : 'default';
@@ -128,7 +129,7 @@ function NoCourse() {
   if (location.startsWith('/flashcards') || location.startsWith('/help')) {
     return (
       <div className="flex h-full flex-col">
-        <header className="flex h-12 shrink-0 items-center gap-1 border-b border-line bg-sheet px-2">
+        <header className="wb-chrome-bar flex h-12 shrink-0 items-center gap-1 border-b border-line bg-sheet px-2 text-ink">
           <Link href="/" className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-ink-2 hover:bg-sunk hover:text-ink">
             <ArrowLeft size={16} /> {t.noCourseTitle}
           </Link>
@@ -164,12 +165,13 @@ function CourseShell() {
   const courses = useCourses().data;
   const stateQuery = useState_();
   const achievementsOn = !!useSettings().data?.showAchievements;
-  const rewardIcon = useSettings().data?.rewardIcon ?? 'trophy';
+  const rewardIcon = useRewards().icon;
   const flashcardsOn = !!useSettings().data?.showFlashcards;
   const state = useState_().data?.state;
   const { filters, patch, reset } = useFilters();
   const [, params] = useRoute('/item/:id');
-  const currentId = params?.id ?? null;
+  const [, groupParams] = useRoute('/item/:id/in/:group');
+  const currentId = params?.id ?? groupParams?.id ?? null;
   const wide = useMediaQuery('(min-width: 1024px)');
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -286,7 +288,7 @@ function CourseShell() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-1 border-b border-line bg-sheet px-2">
+      <header className="wb-chrome-bar flex h-12 shrink-0 items-center gap-1 border-b border-line bg-sheet px-2 text-ink">
         {wide ? (
           <IconButton
             label={collapsed ? t.showOutline : t.hideOutline}
@@ -372,8 +374,10 @@ function CourseShell() {
           <Switch>
             <Route path="/" component={Dashboard} />
             <Route path="/item/:id">{(p) => <ItemPage id={p.id} />}</Route>
+            <Route path="/item/:id/in/:group">{(p) => <ItemPage id={p.id} group={decodeURIComponent(p.group)} />}</Route>
             <Route path="/review" component={ReviewPage} />
-            <Route path="/settings" component={SettingsPage} />
+            <Route path="/settings">{() => <SettingsPage />}</Route>
+            <Route path="/settings/:section">{(p) => <SettingsPage section={p.section} />}</Route>
             <Route path="/welcome" component={LandingPage} />
             <Route path="/achievements" component={AchievementsPage} />
             <Route path="/notes" component={NotesPage} />

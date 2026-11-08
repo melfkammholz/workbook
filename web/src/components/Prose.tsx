@@ -33,6 +33,14 @@ export function Prose({ html, css, className, lang: langProp }: { html: string; 
       const h = highlightToHtml(code.textContent ?? '', code.getAttribute('data-lang') ?? '');
       if (h !== null) code.innerHTML = h;
     });
+    // A link out of the app says so, and opens beside it: following it must not close the workbook.
+    root.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((a) => {
+      if (!/^(https?:)?\/\//i.test(a.getAttribute('href') ?? '') || a.host === location.host) return;
+      a.classList.add('wb-external');
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      if (!a.title) a.title = a.host;
+    });
     const pres = root.querySelectorAll<HTMLElement>('pre');
     pres.forEach((pre) => {
       const code = pre.querySelector('code') ?? pre;

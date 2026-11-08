@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { Settings, UiLanguage } from '@wb/shared';
+import { DUSK_COLORS, type Settings, type UiLanguage } from '@wb/shared';
 import { api, keys, useSaveSettings, useSettings } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { applyTheme } from '@/lib/theme';
-import { Button, Segmented } from '@/components/ui';
-import { BackLink } from '@/lib/history';
+import { Button, Segmented, clsx } from '@/components/ui';
+import { SectionedPage, type PageSection } from '@/components/SectionedPage';
 
 const inputClass = 'h-9 w-full rounded-md border border-line bg-paper px-3 text-sm placeholder:text-ink-3 focus:border-accent focus:outline-none';
 
@@ -52,8 +52,7 @@ function StartOver() {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   return (
-    <section className="mt-6 space-y-2 border-t border-line pt-5">
-      <h3 className="text-sm font-semibold">{t.resetAllTitle}</h3>
+    <div className="space-y-2">
       <p className="text-[13px] text-ink-2">{t.resetAllBody}</p>
       {asking ? (
         <div className="rounded-md border border-danger/40 bg-danger-soft px-3 py-2.5 text-sm">
@@ -90,12 +89,12 @@ function StartOver() {
           {t.resetAllButton}
         </Button>
       )}
-    </section>
+    </div>
   );
 }
 
-/** The settings, on a page of their own: there are enough of them to be read, not just flicked through. */
-export function SettingsPage() {
+/** The settings, laid out like the help: sections with a table of contents, each one can be linked to. */
+export function SettingsPage({ section }: { section?: string }) {
   const t = useT();
   const settings = useSettings().data;
   const save = useSaveSettings();
@@ -103,95 +102,144 @@ export function SettingsPage() {
 
   if (!settings) return null;
   const set = (p: Partial<Settings>) => save.mutate(p);
+  const zooOnly = settings.showAchievements && settings.rewards === 'zoo';
+
+  const sections: PageSection[] = [
+    {
+      id: 'general',
+      title: t.settingsGeneral,
+      body: (
+        <div className="space-y-4 text-ink">
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium">{t.yourName}</span>
+            <SavedInput value={settings.displayName} onSave={(v) => set({ displayName: v })} placeholder={t.namePlaceholder} />
+          </label>
+          <fieldset>
+            <legend className="mb-1 text-sm font-medium">{t.language}</legend>
+            <Segmented<UiLanguage> value={settings.uiLanguage} options={(['auto', 'de', 'en'] as const).map((l) => [l, t.languages[l]])} onChange={(l) => set({ uiLanguage: l })} />
+            <p className="mt-1 text-[13px] text-ink-3">{t.languageNote}</p>
+          </fieldset>
+        </div>
+      ),
+    },
+    {
+      id: 'look',
+      title: t.settingsLook,
+      body: (
+        <div className="space-y-4 text-ink">
+          <fieldset>
+            <legend className="mb-1 text-sm font-medium">{t.theme}</legend>
+            <Segmented
+              value={settings.theme}
+              options={(['system', 'light', 'dusk', 'dark'] as const).map((th) => [th, t.themes[th]])}
+              onChange={(th) => {
+                applyTheme(th, settings.duskColor);
+                set({ theme: th });
+              }}
+            />
+          </fieldset>
+          {settings.theme === 'dusk' ? (
+            <fieldset>
+              <legend className="mb-1 text-sm font-medium">{t.duskColor}</legend>
+              <div className="flex flex-wrap gap-2" role="radiogroup">
+                {DUSK_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    role="radio"
+                    aria-checked={settings.duskColor === c}
+                    onClick={() => {
+                      applyTheme('dusk', c);
+                      set({ duskColor: c });
+                    }}
+                    data-dusk={c}
+                    className={clsx(
+                      'wb-dusk-swatch inline-flex h-8 items-center gap-2 rounded-md border px-2.5 text-sm',
+                      settings.duskColor === c ? 'border-accent bg-accent-soft text-ink' : 'border-line bg-sheet text-ink-2 hover:text-ink',
+                    )}
+                  >
+                    <span aria-hidden className="size-3.5 rounded-full" style={{ background: 'var(--dusk-swatch)' }} />
+                    {t.duskColors[c]}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
+          <Toggle checked={settings.safeColors} onChange={(v) => set({ safeColors: v })} title={t.safeColors} body={t.safeColorsBody} />
+          <Toggle checked={settings.showLessonOutline} onChange={(v) => set({ showLessonOutline: v })} title={t.showLessonOutline} body={t.showLessonOutlineBody} />
+        </div>
+      ),
+    },
+    {
+      id: 'timer',
+      title: t.timerTitle,
+      body: (
+        <div className="space-y-3 text-ink">
+          <Toggle checked={settings.showTimer} onChange={(v) => set({ showTimer: v })} title={t.showTimer} body={t.showTimerBody} />
+          <label className="block text-sm">
+            <span className="font-medium">{t.helpAfter}</span>{' '}
+            <input
+              type="number"
+              min={0}
+              max={1440}
+              value={settings.helpAfterMinutes}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (Number.isInteger(n) && n >= 0 && n <= 1440) set({ helpAfterMinutes: n });
+              }}
+              className="mx-1 h-8 w-20 rounded-md border border-line bg-paper px-2 text-sm focus:border-accent focus:outline-none"
+            />{' '}
+            {t.minutes}
+            <span className="block text-[13px] text-ink-3">{t.helpAfterBody}</span>
+          </label>
+        </div>
+      ),
+    },
+    {
+      id: 'editor',
+      title: t.editorTitle,
+      body: (
+        <div className="space-y-3 text-ink">
+          <fieldset>
+            <legend className="mb-1 text-sm font-medium">{t.editorFontSize}</legend>
+            <Segmented<string> value={String(settings.editorFontSize)} options={FONT_SIZES.map(([size, name]) => [String(size), t.editorSizes[name]])} onChange={(v) => set({ editorFontSize: Number(v) })} />
+          </fieldset>
+          <Toggle checked={settings.editorKeys === 'vim'} onChange={(v) => set({ editorKeys: v ? 'vim' : 'default' })} title={t.editorVim} body={t.editorVimBody} />
+        </div>
+      ),
+    },
+    {
+      id: 'optional',
+      title: t.optionalFeatures,
+      body: (
+        <div className="space-y-3 text-ink">
+          <Toggle checked={settings.showAchievements} onChange={(v) => set({ showAchievements: v })} title={t.showAchievements} body={t.showAchievementsBody} />
+          {settings.showAchievements ? (
+            <div className="ml-7 space-y-2.5">
+              <fieldset>
+                <legend className="mb-1 text-sm font-medium">{t.rewardsWhat}</legend>
+                <Segmented<'all' | 'zoo'> value={settings.rewards} options={[['all', t.rewardsAll], ['zoo', t.rewardsZoo]]} onChange={(v) => set({ rewards: v })} />
+              </fieldset>
+              {/* With only the animals there is no trophy to show: the paw it is. */}
+              {zooOnly ? null : (
+                <fieldset>
+                  <legend className="mb-1 text-sm font-medium">{t.rewardIconTitle}</legend>
+                  <Segmented<'trophy' | 'paw'> value={settings.rewardIcon} options={[['trophy', t.rewardIconTrophy], ['paw', t.rewardIconPaw]]} onChange={(v) => set({ rewardIcon: v })} />
+                </fieldset>
+              )}
+            </div>
+          ) : null}
+          <Toggle checked={settings.showFlashcards} onChange={(v) => set({ showFlashcards: v })} title={t.showFlashcards} body={t.showFlashcardsBody} />
+          <Toggle checked={settings.showAi} onChange={(v) => set({ showAi: v })} title={t.showAi} body={t.showAiBody} />
+        </div>
+      ),
+    },
+    { id: 'start-over', title: t.resetAllTitle, body: <StartOver /> },
+  ];
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="settle mx-auto max-w-2xl px-6 pb-24 pt-8 sm:px-8">
-        <BackLink fallback="/" label={t.back} className="mb-3">
-          {t.back}
-        </BackLink>
-        <h1 className="mb-6 text-[1.75rem] font-semibold tracking-[-0.02em]">{t.settings}</h1>
-      <section className="space-y-4">
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium">{t.yourName}</span>
-          <SavedInput value={settings.displayName} onSave={(v) => set({ displayName: v })} placeholder={t.namePlaceholder} />
-        </label>
-
-        <fieldset>
-          <legend className="mb-1 text-sm font-medium">{t.theme}</legend>
-          <Segmented
-            value={settings.theme}
-            options={(['system', 'light', 'dark'] as const).map((th) => [th, t.themes[th]])}
-            onChange={(th) => {
-              applyTheme(th);
-              set({ theme: th });
-            }}
-          />
-        </fieldset>
-
-        <Toggle checked={settings.safeColors} onChange={(v) => set({ safeColors: v })} title={t.safeColors} body={t.safeColorsBody} />
-        <Toggle checked={settings.showLessonOutline} onChange={(v) => set({ showLessonOutline: v })} title={t.showLessonOutline} body={t.showLessonOutlineBody} />
-
-        <fieldset>
-          <legend className="mb-1 text-sm font-medium">{t.language}</legend>
-          <Segmented<UiLanguage> value={settings.uiLanguage} options={(['auto', 'de', 'en'] as const).map((l) => [l, t.languages[l]])} onChange={(l) => set({ uiLanguage: l })} />
-          <p className="mt-1 text-[13px] text-ink-3">{t.languageNote}</p>
-        </fieldset>
-      </section>
-
-      <section className="mt-6 space-y-3 border-t border-line pt-5">
-        <h3 className="text-sm font-semibold">{t.timerTitle}</h3>
-        <Toggle checked={settings.showTimer} onChange={(v) => set({ showTimer: v })} title={t.showTimer} body={t.showTimerBody} />
-        <label className="block text-sm">
-          <span className="font-medium">{t.helpAfter}</span>{' '}
-          <input
-            type="number"
-            min={0}
-            max={1440}
-            value={settings.helpAfterMinutes}
-            onChange={(e) => {
-              const n = Number(e.target.value);
-              if (Number.isInteger(n) && n >= 0 && n <= 1440) set({ helpAfterMinutes: n });
-            }}
-            className="mx-1 h-8 w-20 rounded-md border border-line bg-paper px-2 text-sm focus:border-accent focus:outline-none"
-          />{' '}
-          {t.minutes}
-          <span className="block text-[13px] text-ink-3">{t.helpAfterBody}</span>
-        </label>
-      </section>
-
-      <section className="mt-6 space-y-3 border-t border-line pt-5">
-        <h3 className="text-sm font-semibold">{t.editorTitle}</h3>
-        <fieldset>
-          <legend className="mb-1 text-sm font-medium">{t.editorFontSize}</legend>
-          <Segmented<string> value={String(settings.editorFontSize)} options={FONT_SIZES.map(([size, name]) => [String(size), t.editorSizes[name]])} onChange={(v) => set({ editorFontSize: Number(v) })} />
-        </fieldset>
-        <Toggle checked={settings.editorKeys === 'vim'} onChange={(v) => set({ editorKeys: v ? 'vim' : 'default' })} title={t.editorVim} body={t.editorVimBody} />
-      </section>
-
-      <section className="mt-6 space-y-3 border-t border-line pt-5">
-        <h3 className="text-sm font-semibold">{t.optionalFeatures}</h3>
-        <Toggle checked={settings.showAchievements} onChange={(v) => set({ showAchievements: v })} title={t.showAchievements} body={t.showAchievementsBody} />
-        {settings.showAchievements ? (
-          <div className="ml-7 space-y-2.5">
-            <fieldset>
-              <legend className="mb-1 text-sm font-medium">{t.rewardsWhat}</legend>
-              <Segmented<'all' | 'zoo'> value={settings.rewards} options={[['all', t.rewardsAll], ['zoo', t.rewardsZoo]]} onChange={(v) => set({ rewards: v })} />
-            </fieldset>
-            <fieldset>
-              <legend className="mb-1 text-sm font-medium">{t.rewardIconTitle}</legend>
-              <Segmented<'trophy' | 'paw'> value={settings.rewardIcon} options={[['trophy', t.rewardIconTrophy], ['paw', t.rewardIconPaw]]} onChange={(v) => set({ rewardIcon: v })} />
-            </fieldset>
-          </div>
-        ) : null}
-        <Toggle checked={settings.showFlashcards} onChange={(v) => set({ showFlashcards: v })} title={t.showFlashcards} body={t.showFlashcardsBody} />
-        <Toggle checked={settings.showAi} onChange={(v) => set({ showAi: v })} title={t.showAi} body={t.showAiBody} />
-      </section>
-
-      <StartOver />
-
-      {info.data?.typst === 'unavailable' ? <p className="mt-6 border-t border-line pt-4 text-xs text-ink-3">{t.typstMissing}</p> : null}
-      </div>
-    </div>
+    <SectionedPage base="/settings" title={t.settings} section={section} sections={sections}>
+      {info.data?.typst === 'unavailable' ? <p className="mt-4 text-xs text-ink-3">{t.typstMissing}</p> : null}
+    </SectionedPage>
   );
 }

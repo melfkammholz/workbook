@@ -77,6 +77,47 @@
   --k4: #ee7fbd; --k4-soft: #3d1530;
   color-scheme: dark;
 }
+/* Dusk: the text stays light to read, the bar at the top is the evening sky, the outline takes on its colour.
+   Everything comes from one hue (`--dusk-h`), so each colour the student can pick is the same design. */
+:root, [data-dusk] { --dusk-h: 285; --dusk-c: 1; }
+[data-dusk='teal'] { --dusk-h: 205; --dusk-c: 0.8; }
+[data-dusk='plum'] { --dusk-h: 345; --dusk-c: 0.95; }
+[data-dusk='forest'] { --dusk-h: 155; --dusk-c: 0.7; }
+.wb-dusk-swatch { --dusk-swatch: oklch(0.42 calc(0.14 * var(--dusk-c)) var(--dusk-h)); }
+:root[data-theme='dusk'] {
+  --paper: oklch(0.972 calc(0.007 * var(--dusk-c)) var(--dusk-h));
+  --sunk: oklch(0.94 calc(0.011 * var(--dusk-c)) var(--dusk-h));
+  --line: oklch(0.905 calc(0.013 * var(--dusk-c)) var(--dusk-h));
+  --line-strong: oklch(0.835 calc(0.02 * var(--dusk-c)) var(--dusk-h));
+  --accent: oklch(0.48 calc(0.19 * var(--dusk-c)) var(--dusk-h));
+  --accent-soft: oklch(0.93 calc(0.04 * var(--dusk-c)) var(--dusk-h));
+}
+:root[data-theme='dusk'] .wb-chrome-bar {
+  --paper: oklch(0.27 calc(0.1 * var(--dusk-c)) var(--dusk-h));
+  --sheet: oklch(0.31 calc(0.115 * var(--dusk-c)) var(--dusk-h));
+  --sunk: oklch(0.36 calc(0.12 * var(--dusk-c)) var(--dusk-h));
+  --ink: oklch(0.97 calc(0.015 * var(--dusk-c)) var(--dusk-h));
+  --ink-2: oklch(0.86 calc(0.05 * var(--dusk-c)) var(--dusk-h));
+  --ink-3: oklch(0.73 calc(0.07 * var(--dusk-c)) var(--dusk-h));
+  --line: oklch(0.39 calc(0.11 * var(--dusk-c)) var(--dusk-h));
+  --line-strong: oklch(0.46 calc(0.11 * var(--dusk-c)) var(--dusk-h));
+  --accent: oklch(0.85 calc(0.09 * var(--dusk-c)) var(--dusk-h));
+  --accent-ink: oklch(0.25 calc(0.1 * var(--dusk-c)) var(--dusk-h));
+  --accent-soft: oklch(0.43 calc(0.12 * var(--dusk-c)) var(--dusk-h));
+  --done: #6fe0bd;
+  --review: #f0bf5c;
+  --danger: #ff98a8;
+  color-scheme: dark;
+}
+:root[data-theme='dusk'] .wb-chrome-side {
+  --paper: oklch(0.945 calc(0.018 * var(--dusk-c)) var(--dusk-h));
+  --sheet: oklch(0.962 calc(0.013 * var(--dusk-c)) var(--dusk-h));
+  --sunk: oklch(0.93 calc(0.022 * var(--dusk-c)) var(--dusk-h));
+  --line: oklch(0.9 calc(0.025 * var(--dusk-c)) var(--dusk-h));
+  --ink-2: oklch(0.42 calc(0.04 * var(--dusk-c)) var(--dusk-h));
+  --ink-3: oklch(0.58 calc(0.035 * var(--dusk-c)) var(--dusk-h));
+  --accent-soft: oklch(0.9 calc(0.045 * var(--dusk-c)) var(--dusk-h));
+}
 
 @theme inline {
   --font-sans: 'Schibsted Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
@@ -155,6 +196,12 @@ body {
 .prose-task li > ul, .prose-task li > ol { margin-block: 0.3em; }
 .prose-task a { color: var(--accent); text-decoration: underline; text-decoration-thickness: 0.06em; text-underline-offset: 0.18em; }
 .prose-task a.wb-xref { text-decoration-style: dotted; }
+/* A link that leaves the app: the same sign as the app's own (lucide's external-link). */
+a.wb-external::after {
+  content: ''; display: inline-block; width: 0.72em; height: 0.72em; margin-left: 0.18em; vertical-align: 0.02em;
+  background: currentColor; opacity: 0.8;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'/%3E%3C/svg%3E") center / contain no-repeat;
+}
 .prose-task a.wb-xref-broken { color: var(--danger); text-decoration-style: wavy; }
 .prose-task h1, .prose-task h2, .prose-task h3 { font-family: var(--font-sans); line-height: 1.25; letter-spacing: -0.01em; margin-top: 1.4em; }
 .prose-task h1 { font-size: 1.5em; } .prose-task h2 { font-size: 1.25em; } .prose-task h3 { font-size: 1.08em; }
@@ -326,8 +373,9 @@ a.wb-card-from:hover { color: var(--accent); }
 }
 
 /* ───────── lessons: one scrolling page, set like a short book chapter ───────── */
-.wb-lesson { font-size: 15.5px; line-height: 1.65; max-width: none; }
-.wb-lesson > p, .wb-lesson > ul, .wb-lesson > ol, .wb-lesson > aside { max-width: 74ch; }
+/* Text in the reading column (`READING_COLUMN`): the column sets the measure, so text and widgets share one width. */
+.prose-task.wb-reading { max-width: none; }
+.wb-lesson { font-size: 15.5px; line-height: 1.65; }
 .wb-lesson > h2 {
   margin-top: 2.2em; font-size: 1.36em; font-weight: 600; line-height: 1.25; letter-spacing: -0.015em;
   text-wrap: balance; scroll-margin-top: 1.5rem;
@@ -401,12 +449,19 @@ a.wb-card-from:hover { color: var(--accent); }
 .wb-muted { color: var(--ink-3); font-size: 0.92em; }
 
 /* Popups arrive like text on a page: the ground fades in, the popup settles into place. */
-.wb-overlay { animation: wb-fade 160ms ease-out; }
-.wb-dialog { animation: wb-dialog-in 200ms cubic-bezier(0.2, 0.8, 0.3, 1); }
+.wb-overlay { animation: wb-fade 180ms ease-out; }
+.wb-dialog { animation: wb-dialog-in 220ms cubic-bezier(0.2, 0.8, 0.3, 1); will-change: transform, opacity; }
+/* Radix keeps a closing dialog until its animation ends, so it leaves the way it came instead of vanishing. */
+.wb-overlay[data-state='closed'] { animation: wb-fade-out 150ms ease-in forwards; }
+.wb-dialog[data-state='closed'] { animation: wb-dialog-out 150ms ease-in forwards; }
+@keyframes wb-fade-out { to { opacity: 0; } }
+@keyframes wb-dialog-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(6px) scale(0.985); } }
+.wb-autoheight { transition: height 220ms cubic-bezier(0.2, 0.8, 0.3, 1); overflow-clip-margin: 6px; }
 .wb-pop { animation: wb-pop-in 200ms cubic-bezier(0.2, 0.8, 0.3, 1); }
 @keyframes wb-fade { from { opacity: 0; } }
-/* The dialog is centred with a transform, so the animation keeps the horizontal shift. */
-@keyframes wb-dialog-in { from { opacity: 0; transform: translate(-50%, 8px) scale(0.985); } to { opacity: 1; transform: translate(-50%, 0); } }
+/* The dialog is centred with Tailwind's `translate` property, which adds to `transform`: the animation only moves it
+   up and scales it. (Repeating the -50% here shifted it twice while animating, so it jumped sideways at the end.) */
+@keyframes wb-dialog-in { from { opacity: 0; transform: translateY(8px) scale(0.985); } to { opacity: 1; transform: none; } }
 @keyframes wb-pop-in { from { opacity: 0; transform: translateY(8px) scale(0.99); } }
 @media (prefers-reduced-motion: reduce) {
   .wb-overlay, .wb-dialog, .wb-pop { animation: none; }

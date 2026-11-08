@@ -4,5 +4,7 @@ import { useSettings } from './api';
 export function useRewards(): { on: boolean; zooOnly: boolean; icon: 'trophy' | 'paw' } {
   const s = useSettings().data;
   const on = !!s?.showAchievements;
-  return { on, zooOnly: on && s?.rewards === 'zoo', icon: s?.rewardIcon ?? 'trophy' };
+  const zooOnly = on && s?.rewards === 'zoo';
+  // Only the animals: the paw is the only icon that fits.
+  return { on, zooOnly, icon: zooOnly ? 'paw' : (s?.rewardIcon ?? 'trophy') };
 }

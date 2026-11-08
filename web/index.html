@@ -9,7 +9,9 @@
       // Apply the saved theme before first paint to avoid a flash.
       try {
         var t = localStorage.getItem('wb-theme');
-        if (t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.dataset.theme = 'dark';
+        document.documentElement.dataset.dusk = localStorage.getItem('wb-dusk') || 'indigo';
+        if (t === 'dusk') document.documentElement.dataset.theme = 'dusk';
+        else if (t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.dataset.theme = 'dark';
       } catch (e) {}
     </script>
   </head>

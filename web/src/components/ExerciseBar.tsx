@@ -2,6 +2,7 @@ import { ArrowRight, Bookmark, Check, ChevronLeft, ChevronRight, Layers, LifeBuo
 import { Link } from 'wouter';
 import { useState } from 'react';
 import type { ItemMeta, Status } from '@wb/shared';
+import { itemHref } from '@/lib/api';
 import { formatClock } from '@/lib/attention';
 import { useT } from '@/lib/i18n';
 import { altKey } from '@/lib/keys';
@@ -27,6 +28,7 @@ export function ExerciseBar({
   onTogglePause,
   previous,
   next,
+  group,
   onMakeCard,
 }: {
   status: Status;
@@ -42,6 +44,8 @@ export function ExerciseBar({
   onTogglePause: () => void;
   previous: ItemMeta | undefined;
   next: ItemMeta | undefined;
+  /** The session, sheet or exam the student came from: previous and next stay in it. */
+  group?: string | null;
   /** Flashcards are on: a card can be worth making at any moment, so it is always at hand. */
   onMakeCard?: (() => void) | undefined;
 }) {
@@ -50,10 +54,10 @@ export function ExerciseBar({
   return (
     <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line bg-sheet px-3">
       <nav aria-label={t.exerciseNavigation} className="flex items-center">
-        <NavIcon item={previous} label={t.previousItem}>
+        <NavIcon item={previous} group={group} label={t.previousItem}>
           <ChevronLeft size={17} />
         </NavIcon>
-        <NavIcon item={next} label={t.nextItem}>
+        <NavIcon item={next} group={group} label={t.nextItem}>
           <ChevronRight size={17} />
         </NavIcon>
       </nav>
@@ -103,12 +107,12 @@ export function ExerciseBar({
   );
 }
 
-function NavIcon({ item, label, children }: { item: ItemMeta | undefined; label: string; children: React.ReactNode }) {
+function NavIcon({ item, group, label, children }: { item: ItemMeta | undefined; group?: string | null | undefined; label: string; children: React.ReactNode }) {
   const box = 'inline-flex size-7 items-center justify-center rounded-md';
   if (!item) return <span aria-hidden className={clsx(box, 'text-ink-3 opacity-30')}>{children}</span>;
   const full = `${label}: ${plainTitle(item.title)}`;
   return (
-    <Link href={`/item/${item.id}`} aria-label={full} title={full} className={clsx(box, 'text-ink-2 hover:bg-sunk hover:text-ink')}>
+    <Link href={itemHref(item.id, group)} aria-label={full} title={full} className={clsx(box, 'text-ink-2 hover:bg-sunk hover:text-ink')}>
       {children}
     </Link>
   );

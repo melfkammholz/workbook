@@ -10,12 +10,12 @@ import { MakeCardDialog } from '@/components/MakeCardDialog';
 import { ReflectionDialog, type ReflectionInput, type ReflectionMode } from '@/components/ReflectionDialog';
 import { TaskColumn } from '@/components/TaskColumn';
 import { Button, Empty, ResizeHandle, Spinner, clsx } from '@/components/ui';
-import { api, indexItems, keys, neighbours, postReflection, recordHints, recordOpen, resetTimer, saveOpenQuestion, statusOf, useItem, useOutline, useSetStatus, useSettings, useState_, useWork, whatsNext, type Work } from '@/lib/api';
+import { api, indexItems, itemHref, keys, neighbours, postReflection, recordHints, recordOpen, resetTimer, saveOpenQuestion, statusOf, useItem, useOutline, useSetStatus, useSettings, useState_, useWork, whatsNext, type Work } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useActiveTime, useMediaQuery } from '@/lib/useActiveTime';
 import { plainTitle } from '@/components/Title';
 
-export function ItemPage({ id }: { id: string }) {
+export function ItemPage({ id, group = null }: { id: string; group?: string | null }) {
   const t = useT();
   const outline = useOutline();
   const detail = useItem(id, outline.data?.version);
@@ -34,10 +34,10 @@ export function ItemPage({ id }: { id: string }) {
       </div>
     );
   }
-  return <Loaded key={id} id={id} />;
+  return <Loaded key={id} id={id} group={group} />;
 }
 
-function Loaded({ id }: { id: string }) {
+function Loaded({ id, group }: { id: string; group: string | null }) {
   const t = useT();
   const qc = useQueryClient();
   const outline = useOutline().data!;
@@ -88,14 +88,14 @@ function Loaded({ id }: { id: string }) {
         return;
       }
       if (e.code !== 'Comma' && e.code !== 'Period') return;
-      const target = neighbours(outline, id, qc.getQueryData<{ state: NonNullable<typeof state> }>(keys.state)?.state)[e.code === 'Comma' ? 'previous' : 'next'];
+      const target = neighbours(outline, id, qc.getQueryData<{ state: NonNullable<typeof state> }>(keys.state)?.state, group)[e.code === 'Comma' ? 'previous' : 'next'];
       if (!target) return;
       e.preventDefault();
-      navigate(`/item/${target.id}`);
+      navigate(itemHref(target.id, group));
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
-  }, [id, outline, navigate, qc]);
+  }, [id, group, outline, navigate, qc]);
 
   const { session, reset: resetSession, paused, togglePaused } = useActiveTime(id, stateUnknown || status === 'done');
 
@@ -157,7 +157,7 @@ function Loaded({ id }: { id: string }) {
   const revealed = hints ?? w?.stats.hintsRevealed ?? 0;
   const lastReflection = w?.reflections[w.reflections.length - 1];
 
-  const around = neighbours(outline, id, state);
+  const around = neighbours(outline, id, state, group);
   const upNext = status === 'done' ? whatsNext(outline, state, id) : null;
 
   const revealHint = (n: number) => {
@@ -176,6 +176,7 @@ function Loaded({ id }: { id: string }) {
         state={state}
         revealedHints={revealed}
         onRevealHint={revealHint}
+        group={group}
       />
     </div>
   );
@@ -198,6 +199,7 @@ function Loaded({ id }: { id: string }) {
           onTogglePause={togglePaused}
           previous={around.previous}
           next={around.next}
+          group={group}
           onMakeCard={flashcardsOn ? () => setMakingCard(true) : undefined}
         />
         {status === 'done' && upNext ? <ContinueBanner next={upNext} /> : null}
@@ -240,6 +242,7 @@ function Loaded({ id }: { id: string }) {
       onTogglePause={togglePaused}
       previous={around.previous}
       next={around.next}
+      group={group}
       onMakeCard={flashcardsOn ? () => setMakingCard(true) : undefined}
     />
   );

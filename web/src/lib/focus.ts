@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { focusOf, inFocus, type ExerciseMeta, type Focus, type ItemMeta, type Outline, type StudentState } from '@wb/shared';
+import { focusOf, inFocus, isReading, type ExerciseMeta, type Focus, type ItemMeta, type Outline, type StudentState } from '@wb/shared';
 import { api, isExercise, keys, statusOf, type StateResponse } from './api';
 
 export { focusOf, inFocus };
@@ -11,7 +11,7 @@ export { focusOf, inFocus };
 export function focusesOf(outline: Outline): Focus[] {
   const items = outline.chapters.flatMap((c) => c.items);
   const exercises = items.filter(isExercise);
-  const extra = items.some((i) => (i.type === 'exercise' || i.type === 'lesson') && i.extra);
+  const extra = items.some((i) => (i.type === 'exercise' || isReading(i)) && i.extra);
   const out: Focus[] = [];
   if (exercises.some((e) => e.startHere)) out.push('essentials');
   out.push(extra ? 'thorough' : 'everything');
@@ -26,9 +26,9 @@ export function shownFocus(outline: Outline, focus: Focus): Focus {
   return focus === 'essentials' ? offered[0]! : offered.at(-1)!;
 }
 
-/** Pages, checklists and lessons are always in the focus, except a lesson that is extra material. */
+/** Pages, checklists and lessons are always in the focus, except a page or lesson that is extra material. */
 export function itemInFocus(item: ItemMeta, focus: Focus): boolean {
-  if (item.type === 'lesson') return !item.extra || focus === 'everything';
+  if (isReading(item)) return !item.extra || focus === 'everything';
   return !isExercise(item) || inFocus(item, focus);
 }
 
