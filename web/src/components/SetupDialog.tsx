@@ -84,6 +84,13 @@ export function SetupDialog() {
           </span>
         </label>
         <label className="mt-3 flex items-start gap-3">
+          <input type="checkbox" checked={settings.showAnnotations} onChange={(e) => set({ showAnnotations: e.target.checked })} className="mt-1 size-4 accent-[var(--accent)]" />
+          <span>
+            <span className="block text-sm font-medium">{t.showAnnotations}</span>
+            <span className="block text-[13px] text-ink-2">{t.showAnnotationsBody}</span>
+          </span>
+        </label>
+        <label className="mt-3 flex items-start gap-3">
           <input type="checkbox" checked={settings.showAi} onChange={(e) => set({ showAi: e.target.checked })} className="mt-1 size-4 accent-[var(--accent)]" />
           <span>
             <span className="block text-sm font-medium">{t.showAi}</span>

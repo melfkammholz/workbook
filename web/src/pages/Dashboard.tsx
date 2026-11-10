@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpen, Compass, NotebookText, Trophy } from 'lucide-react';
+import { ArrowRight, BookOpen, Compass, Highlighter, NotebookText, RotateCcw, Trophy } from 'lucide-react';
 import { useMemo } from 'react';
 import { Link } from 'wouter';
 import type { ChapterMeta, ExerciseMeta, Status, StudentState } from '@wb/shared';
@@ -6,6 +6,7 @@ import { ProgressLine } from '@/components/ItemRows';
 import { Plant } from '@/components/Plant';
 import { Level, StatusMark, clsx } from '@/components/ui';
 import { indexItems, isExercise, statusOf, threadProgress, useOutline, useSettings, useState_ } from '@/lib/api';
+import { useAnnotations } from '@/lib/annotations';
 import { focusExercises } from '@/lib/focus';
 import { useT } from '@/lib/i18n';
 import { Title } from '@/components/Title';
@@ -17,6 +18,9 @@ export function Dashboard() {
   const stateRes = useState_().data;
   const settings = useSettings().data;
   const { map } = useMemo(() => indexItems(outline), [outline]);
+  const annotations = useAnnotations().data ?? [];
+  const openMarks = annotations.filter((a) => a.review === 'open').length;
+  const missingMarks = annotations.filter((a) => !a.found).length;
   if (!outline) return null;
   const state = stateRes?.state;
   // Progress counts what is in the focus; what is worth another look is the student's own, whatever the focus.
@@ -54,6 +58,11 @@ export function Dashboard() {
           <Link href="/notes" className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline">
             <NotebookText size={14} /> {t.allNotes}
           </Link>
+          {settings?.showAnnotations ? (
+            <Link href="/highlights" className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline">
+              <Highlighter size={14} /> {t.highlights}
+            </Link>
+          ) : null}
           {settings?.showAchievements ? (
             <Link href="/achievements" className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline">
               <Trophy size={14} /> {t.achievements}
@@ -88,6 +97,20 @@ export function Dashboard() {
           <Link href="/review" className="mt-6 flex items-center gap-3 rounded-lg border border-review/40 bg-review-soft px-4 py-3 text-sm font-medium hover:border-review">
             <span className="min-w-0 flex-1">{t.worthAnotherLook(attention)}</span>
             <ArrowRight size={16} className="text-review" />
+          </Link>
+        ) : null}
+
+        {openMarks > 0 ? (
+          <Link href="/highlights/open" className="mt-3 flex items-center gap-3 rounded-lg border border-line bg-sheet px-4 py-3 text-sm font-medium hover:border-line-strong">
+            <RotateCcw size={15} className="shrink-0 text-review" />
+            <span className="min-w-0 flex-1">{t.highlightsOpenSummary(openMarks)}</span>
+            <ArrowRight size={16} className="text-ink-3" />
+          </Link>
+        ) : null}
+        {missingMarks > 0 ? (
+          // After a course update: said once here, not on every page.
+          <Link href="/highlights/missing" className="mt-3 flex items-center gap-3 rounded-lg px-4 py-1.5 text-[13px] text-ink-2 hover:text-ink hover:underline">
+            <span className="min-w-0 flex-1">{t.highlightsMissingSummary(missingMarks)}</span>
           </Link>
         ) : null}
 

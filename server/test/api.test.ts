@@ -6,6 +6,8 @@ import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import type { CheckRun, Outline, ReplServerMessage, StudentState } from '@wb/shared';
+import { quoteAt } from '@wb/shared';
+import { textOfHtml } from '../src/annotations.js';
 import { buildApp } from '../src/api/app.js';
 import { makeDeps } from '../src/api/deps.js';
 import { loadConfig } from '../src/config.js';
@@ -123,6 +125,32 @@ describe('student data API', () => {
     expect((await api('GET', `/api/work/${id}`)).json.stats.activeSeconds).toBe(0);
     expect((await api('POST', '/api/work/nope/timer/reset')).status).toBe(404);
     expect((await api('POST', '/api/work/nope/tick', { seconds: 5 })).status).toBe(404);
+  });
+
+  it.skipIf(!haveTypst)('keeps highlights with comments, finds them, and notices a quote that is gone', async () => {
+    const task = (await api('GET', `/api/items/${id}`)).json.rendered.task as string;
+    const text = textOfHtml(task);
+    const start = text.search(/\S{6}/);
+    const sel = quoteAt(text, start, start + 20)!;
+    const add = await api('POST', '/api/annotations', { target: id, part: 'task', ...sel, color: 'yellow', comment: 'Warum gerade so herum?' });
+    expect(add.status).toBe(200);
+    expect(add.json).toMatchObject({ target: id, color: 'yellow', review: null });
+    const gone = (await api('POST', '/api/annotations', { target: id, part: 'task', quote: 'steht nirgends im Text', prefix: '', suffix: '', color: 'blue' })).json;
+    expect((await api('POST', '/api/annotations', { target: 'nope', part: 'task', ...sel, color: 'yellow' })).status).toBe(404);
+    expect((await api('POST', '/api/annotations', { target: id, part: 'solution', ...sel, color: 'yellow' })).status).toBe(400);
+
+    const patched = await api('PATCH', `/api/annotations/${add.json.id}`, { review: 'open', color: 'green' });
+    expect(patched.json).toMatchObject({ review: 'open', color: 'green', comment: 'Warum gerade so herum?' });
+    const list = (await api('GET', '/api/annotations')).json as { id: string; found: boolean }[];
+    expect(list.find((a) => a.id === add.json.id)?.found).toBe(true);
+    expect(list.find((a) => a.id === gone.id)?.found).toBe(false);
+
+    const search = (await api('GET', '/api/search?q=herum')).json;
+    expect(search.mine).toContainEqual(expect.objectContaining({ exerciseId: id, source: 'annotation', href: `/item/${id}` }));
+
+    expect((await api('DELETE', `/api/annotations/${gone.id}`)).status).toBe(200);
+    expect((await api('DELETE', `/api/annotations/${gone.id}`)).status).toBe(404);
+    expect((await api('PATCH', `/api/annotations/${gone.id}`, { comment: 'x' })).status).toBe(404);
   });
 
   it('no longer offers export and import', async () => {

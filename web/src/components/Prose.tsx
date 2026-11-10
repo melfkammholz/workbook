@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import type { AnnotationPlace } from '@wb/shared';
 import { createPortal } from 'react-dom';
-import { useOutline } from '@/lib/api';
+import { clearLayer, paintLayer, revealPending, useAnnotations } from '@/lib/annotations';
+import { useOutline, useSettings } from '@/lib/api';
 import { highlightToHtml } from '@/lib/highlight';
 import { useT } from '@/lib/i18n';
 import { clsx } from './ui';
@@ -9,9 +11,9 @@ import { Widget, takeWidgets, type WidgetHost } from './widgets';
 /**
  * Renders server-sanitised Typst HTML. Code is highlighted here (the server
  * leaves it plain) and blocks get a copy button. Typst's global CSS (math
- * layout) is injected once.
+ * layout) is injected once. With `annotate`, the student can highlight it (when highlights are switched on).
  */
-export function Prose({ html, css, className, lang: langProp }: { html: string; css?: string; className?: string; lang?: string }) {
+export function Prose({ html, css, className, lang: langProp, annotate }: { html: string; css?: string; className?: string; lang?: string; annotate?: AnnotationPlace }) {
   const ref = useRef<HTMLDivElement>(null);
   const copyLabel = useT().copyCode;
   // The text is in the language of the course, whatever the app is set to: hyphenation depends on it.
@@ -76,12 +78,37 @@ export function Prose({ html, css, className, lang: langProp }: { html: string; 
     return () => cleanups.forEach((c) => c());
   }, [html, copyLabel]);
 
+  const on = !!useSettings().data?.showAnnotations && !!annotate;
+  useHighlights(ref, on ? annotate : undefined, html);
+
   return (
     <>
-      <div ref={ref} {...(lang ? { lang } : {})} className={clsx('prose-task', className)} dangerouslySetInnerHTML={{ __html: html }} />
+      <div
+        ref={ref}
+        {...(lang ? { lang } : {})}
+        {...(on ? { 'data-annotate-target': annotate.target, 'data-annotate-part': annotate.part } : {})}
+        className={clsx('prose-task', className)}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
       {widgets.map((w) => createPortal(<Widget host={w} />, w.el, w.key))}
     </>
   );
+}
+
+/** Paints the student's highlights for this text, after the text itself is ready (declared after that effect). */
+function useHighlights(ref: React.RefObject<HTMLDivElement | null>, place: AnnotationPlace | undefined, html: string) {
+  const key = useId();
+  const all = useAnnotations().data;
+  const target = place?.target;
+  const part = place?.part;
+  const mine = useMemo(() => (target ? (all ?? []).filter((a) => a.target === target && a.part === part) : []), [all, target, part]);
+  useEffect(() => {
+    const root = ref.current;
+    if (!root || !target) return;
+    paintLayer(key, root, mine);
+    revealPending();
+    return () => clearLayer(key);
+  }, [ref, key, target, mine, html]);
 }
 
 const GAP_CLOSE = 0xe0ff;

@@ -32,6 +32,8 @@ import { StrugglingPage } from '@/pages/StrugglingPage';
 import { typstContext } from '@/lib/typst';
 import { LandingPage } from '@/pages/LandingPage';
 import { NotesPage } from '@/pages/NotesPage';
+import { HIGHLIGHT_FILTERS, HighlightsPage, type HighlightFilter } from '@/pages/HighlightsPage';
+import { AnnotationLayer } from '@/components/AnnotationLayer';
 import { ItemPage } from '@/pages/ItemPage';
 import { ReviewPage } from '@/pages/ReviewPage';
 import { KindPage } from '@/pages/KindPage';
@@ -167,6 +169,7 @@ function CourseShell() {
   const achievementsOn = !!useSettings().data?.showAchievements;
   const rewardIcon = useRewards().icon;
   const flashcardsOn = !!useSettings().data?.showFlashcards;
+  const annotationsOn = !!useSettings().data?.showAnnotations;
   const state = useState_().data?.state;
   const { filters, patch, reset } = useFilters();
   const [, params] = useRoute('/item/:id');
@@ -242,6 +245,7 @@ function CourseShell() {
     'g r': () => navigate('/review'),
     'g n': () => navigate('/notes'),
     'g f': flashcardsOn ? () => navigate('/flashcards') : undefined,
+    'g a': annotationsOn ? () => navigate('/highlights') : undefined,
     'g m': achievementsOn ? () => navigate('/achievements') : undefined,
   });
 
@@ -381,6 +385,8 @@ function CourseShell() {
             <Route path="/welcome" component={LandingPage} />
             <Route path="/achievements" component={AchievementsPage} />
             <Route path="/notes" component={NotesPage} />
+            <Route path="/highlights">{() => <HighlightsPage />}</Route>
+            <Route path="/highlights/:filter">{(p) => <HighlightsPage key={p.filter} filter={HIGHLIGHT_FILTERS.includes(p.filter as HighlightFilter) ? (p.filter as HighlightFilter) : 'all'} />}</Route>
             {flashcardRoutes()}
             <Route path="/chapter/:id">{(p) => <ChapterPage key={p.id} id={p.id} />}</Route>
             <Route path="/kind/:kind">{(p) => (THREAD_KINDS.includes(p.kind as ThreadKind) ? <KindPage key={p.kind} kind={p.kind as ThreadKind} /> : null)}</Route>
@@ -408,6 +414,7 @@ function CourseShell() {
       ) : null}
 
       <SearchDialog open={searching} onClose={() => setSearching(false)} />
+      <AnnotationLayer />
       {achievementsOn ? <Celebration /> : null}
       <CourseDialog open={switching} onClose={() => setSwitching(false)} />
       <SetupDialog />

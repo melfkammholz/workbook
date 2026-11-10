@@ -35,6 +35,8 @@ course is a git repository that you add in the app.
   open. The **Review** page collects everything you were unsure about, together with your self-evaluations per chapter.
 * **Notes and history.** You can keep notes per exercise and see all of them on one page. Every answer has a version
   history.
+* **Highlights.** Highlight passages of the course text, write a comment, and mark what you want to come back to. A
+  page lists them all, and a chapter's checklist shows what is still open in it. Optional, like flashcards.
 * **Flashcards you write yourself.** Decks of cards in your own words, reviewed with spaced repetition (FSRS). A card
   can be made right from an exercise, and decks belong to you, not to a course. See [Flashcards](#flashcards).
 * **Adventures.** These are longer stories that lead through several exercises, some with code that grows from one

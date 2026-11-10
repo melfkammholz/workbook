@@ -54,7 +54,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   const lessons = res?.items.filter((i) => isLesson(i.id)) ?? [];
   const others = res?.items.filter((i) => !isLesson(i.id)) ?? [];
   const cards = flashcards ? (res?.cards ?? []) : [];
-  const first = others[0]?.href ?? lessons[0]?.href ?? (res?.mine[0] ? `/item/${res.mine[0].exerciseId}` : undefined);
+  const first = others[0]?.href ?? lessons[0]?.href ?? res?.mine[0]?.href;
   const itemList = (list: typeof others) => (
     <ul>
       {list.map((i) => (
@@ -107,10 +107,10 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
             <ul>
               {res.mine.map((m, i) => (
                 <li key={i}>
-                  <button type="button" onClick={() => go(`/item/${m.exerciseId}`)} className="w-full rounded-md px-2 py-2 text-left hover:bg-sunk">
+                  <button type="button" onClick={() => go(m.href)} className="w-full rounded-md px-2 py-2 text-left hover:bg-sunk">
                     <span className="block text-sm font-medium">{m.exerciseId}</span>
                     <span className="block truncate text-[13px] text-ink-2">
-                      {m.source === 'note' ? t.searchSourceNote : t.searchSourceAnswer}:{' '}
+                      {m.source === 'note' ? t.searchSourceNote : m.source === 'annotation' ? t.searchSourceAnnotation : t.searchSourceAnswer}:{' '}
                       {m.snippet.replace(/[\[\]]/g, '')}
                     </span>
                   </button>

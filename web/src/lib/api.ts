@@ -82,7 +82,8 @@ export interface NotePreview {
 }
 export interface SearchResponse {
   items: { id: string; title: string; href: string; snippet: string | null }[];
-  mine: { exerciseId: string; source: 'note' | 'answer'; snippet: string }[];
+  /** `href`: where it is read; an annotation's `exerciseId` is its target, which may be a chapter introduction. */
+  mine: { exerciseId: string; source: 'note' | 'answer' | 'annotation'; snippet: string; href: string }[];
   cards: { deckId: string; deckTitle: string; cardId: string; title: string; snippet: string | null }[];
 }
 

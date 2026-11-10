@@ -9,6 +9,7 @@ import { issueLink } from '@/lib/issues';
 import { useT } from '@/lib/i18n';
 import { watchLesson } from '@/lib/lessonToc';
 import { Checklist } from './Checklist';
+import { ChapterMarks, OpenMarks } from './Marks';
 import { Prose } from './Prose';
 import { Button, Chip, Level, StatusMark, clsx } from './ui';
 import { Title, plainTitle } from '@/components/Title';
@@ -152,7 +153,10 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
       {ex ? <Prerequisites ex={ex} byId={byId} state={state} /> : null}
       {ex ? <SharedOutsideFocus ex={ex} byId={byId} state={state} /> : null}
 
-      <Prose html={rendered.task} css={rendered.css} className={clsx('wb-reading', reading && 'wb-lesson')} />
+      <OpenMarks target={meta.id} />
+      {meta.type === 'checklist' ? <ChapterMarks chapterId={meta.chapterId} /> : null}
+
+      <Prose html={rendered.task} css={rendered.css} className={clsx('wb-reading', reading && 'wb-lesson')} annotate={{ target: meta.id, part: 'task' }} />
 
       {meta.type === 'checklist' ? <Checklist id={meta.id} questions={rendered.questions} /> : null}
 
@@ -161,13 +165,13 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
           {rendered.remarks.map((r, i) => (
             <aside key={i} className="flex gap-3 rounded-lg border border-line bg-sheet p-4">
               <MessageCircle size={17} className="mt-1 shrink-0 text-accent" aria-label={t.remark} />
-              <Prose html={r} className="prose-note min-w-0 flex-1 text-[15.5px]" />
+              <Prose html={r} className="prose-note min-w-0 flex-1 text-[15.5px]" annotate={{ target: meta.id, part: `remark-${i}` }} />
             </aside>
           ))}
         </div>
       ) : null}
 
-      {rendered.hints.length ? <Hints hints={rendered.hints} revealed={revealedHints} onReveal={onRevealHint} /> : null}
+      {rendered.hints.length ? <Hints id={meta.id} hints={rendered.hints} revealed={revealedHints} onReveal={onRevealHint} /> : null}
 
       {ex ? <Threads ex={ex} byId={byId} state={state} /> : null}
 
@@ -203,7 +207,7 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
   );
 }
 
-function Hints({ hints, revealed, onReveal }: { hints: string[]; revealed: number; onReveal: (n: number) => void }) {
+function Hints({ id, hints, revealed, onReveal }: { id: string; hints: string[]; revealed: number; onReveal: (n: number) => void }) {
   const t = useT();
   const shown = Math.min(revealed, hints.length);
   return (
@@ -217,7 +221,7 @@ function Hints({ hints, revealed, onReveal }: { hints: string[]; revealed: numbe
             <p className="mb-1.5 text-xs font-semibold text-review">
               {t.hintNofM(i + 1, hints.length)}
             </p>
-            <Prose html={h} className="prose-note" />
+            <Prose html={h} className="prose-note" annotate={{ target: id, part: `hint-${i}` }} />
           </li>
         ))}
       </ol>

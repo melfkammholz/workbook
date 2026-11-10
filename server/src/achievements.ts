@@ -14,6 +14,8 @@ export interface AchievementInput {
   /** Every rating of a checklist question ever given, oldest first. */
   checklistRatings: ChecklistRating[];
   noteCount: number;
+  /** Passages marked to come back to, and later cleared up. Optional: older callers have none. */
+  resolvedMarks?: number;
 }
 
 const LOW = 2;
@@ -22,6 +24,7 @@ const HIGH = 4;
 const PERSISTENT_RUNS = 5;
 const CHECKLIST_ANSWERS = 3;
 const NOTES = 5;
+const RESOLVED_MARKS = 5;
 
 const exercisesOf = (c: ChapterMeta) => c.items.filter((i): i is ExerciseMeta => i.type === 'exercise');
 const checklistsOf = (c: ChapterMeta) => c.items.filter((i): i is ChecklistMeta => i.type === 'checklist');
@@ -72,7 +75,7 @@ export function chapterStage(chapter: ChapterMeta, state: StudentState, courseHa
 
 /** Everything the student qualifies for right now, keyed by a stable id. */
 export function qualifiesFor(input: AchievementInput): Map<string, AchievementEvent> {
-  const { outline, state, reflections, checklistRatings, noteCount } = input;
+  const { outline, state, reflections, checklistRatings, noteCount, resolvedMarks = 0 } = input;
   const out = new Map<string, AchievementEvent>();
   const exercises = outline.chapters.flatMap(exercisesOf);
   const checklists = outline.chapters.flatMap(checklistsOf);
@@ -94,6 +97,8 @@ export function qualifiesFor(input: AchievementInput): Map<string, AchievementEv
   if (exercises.some((e) => status(e.id) === 'done' && (state.progress[e.id]?.reviewCount ?? 0) > 0)) add('back-again');
   if (Object.values(state.checklists).reduce((n, c) => n + Object.keys(c).length, 0) >= CHECKLIST_ANSWERS) add('self-aware');
   if (noteCount >= NOTES) add('note-taker');
+  // The second pass over one's own highlights, not the highlighting: that would reward marking everything.
+  if (resolvedMarks >= RESOLVED_MARKS) add('cleared-up');
   if (exercises.some((e) => {
     const s = stats(e.id);
     return s && s.checkRuns === 1 && s.checkPasses === 1;

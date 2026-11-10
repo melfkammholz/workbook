@@ -39,6 +39,7 @@ const bodies = {
       rewards: z.enum(['all', 'zoo']),
       rewardIcon: z.enum(['trophy', 'paw']),
       showFlashcards: z.boolean(),
+      showAnnotations: z.boolean(),
       showAi: z.boolean(),
       safeColors: z.boolean(),
       editorFontSize: z.number().min(10).max(24),
@@ -243,6 +244,7 @@ export function workRoutes(app: FastifyInstance, d: Deps): void {
         reflections: d.store.listReflections(),
         checklistRatings: d.store.listChecklistRatings(),
         noteCount: d.store.noteCount(),
+        resolvedMarks: d.store.resolvedMarkCount(),
       }),
     );
     // In the order they were earned, so the second of a kind is the one that finds a friend.

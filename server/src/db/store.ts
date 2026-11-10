@@ -1,9 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import {
   DEFAULT_SETTINGS,
   type AchievementEvent,
+  type Annotation,
+  type AnnotationColor,
+  type AnnotationPlace,
+  type AnnotationReview,
   type AnswerVersion,
   type ChecklistAnswer,
   type EarnedEvent,
@@ -19,6 +24,7 @@ import {
   type Stats,
   type Status,
   type StudentState,
+  type TextQuote,
 } from '@wb/shared';
 import { MIGRATIONS } from './migrations.js';
 
@@ -32,6 +38,7 @@ const MAX_VERSIONS = 60;
 const MAX_TICK_SECONDS = 120;
 
 type Row = Record<string, unknown>;
+type SearchSource = 'note' | 'answer' | 'annotation';
 
 /**
  * All student data, in one SQLite file.
@@ -334,6 +341,75 @@ export class Store {
     }));
   }
 
+  // ───────────────────────── annotations ─────────────────────────
+
+  listAnnotations(target?: string): Annotation[] {
+    const rows = target ? this.all('SELECT * FROM annotations WHERE target = ? ORDER BY created_at, id', target) : this.all('SELECT * FROM annotations ORDER BY created_at, id');
+    return rows.map(rowToAnnotation);
+  }
+
+  getAnnotation(id: string): Annotation | null {
+    const r = this.get('SELECT * FROM annotations WHERE id = ?', id);
+    return r ? rowToAnnotation(r) : null;
+  }
+
+  addAnnotation(a: AnnotationPlace & TextQuote & { color: AnnotationColor; comment?: string; review?: AnnotationReview | null }): Annotation {
+    const id = randomUUID();
+    const t = this.now();
+    this.tx(() => {
+      this.run(
+        'INSERT INTO annotations (id, target, part, quote, prefix, suffix, color, comment, review, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        id,
+        a.target,
+        a.part,
+        a.quote,
+        a.prefix,
+        a.suffix,
+        a.color,
+        (a.comment ?? '').slice(0, 4000),
+        a.review ?? null,
+        t,
+        t,
+      );
+      this.reindexAnnotations(a.target);
+    });
+    return this.getAnnotation(id)!;
+  }
+
+  /** Null when there is no such annotation. */
+  updateAnnotation(id: string, patch: { color?: AnnotationColor; comment?: string; review?: AnnotationReview | null }): Annotation | null {
+    const prev = this.getAnnotation(id);
+    if (!prev) return null;
+    const next = { ...prev, ...patch, comment: (patch.comment ?? prev.comment).slice(0, 4000) };
+    this.tx(() => {
+      this.run('UPDATE annotations SET color = ?, comment = ?, review = ?, updated_at = ? WHERE id = ?', next.color, next.comment, next.review, this.now(), id);
+      this.reindexAnnotations(prev.target);
+    });
+    return this.getAnnotation(id);
+  }
+
+  deleteAnnotation(id: string): boolean {
+    const prev = this.getAnnotation(id);
+    if (!prev) return false;
+    this.tx(() => {
+      this.run('DELETE FROM annotations WHERE id = ?', id);
+      this.reindexAnnotations(prev.target);
+    });
+    return true;
+  }
+
+  /** Quotes and comments are found by search, under the text they belong to. */
+  private reindexAnnotations(target: string): void {
+    const text = this.listAnnotations(target)
+      .map((a) => (a.comment ? `${a.quote}\n${a.comment}` : a.quote))
+      .join('\n\n');
+    this.reindex(target, 'annotation', text);
+  }
+
+  resolvedMarkCount(): number {
+    return Number(this.get("SELECT COUNT(*) AS n FROM annotations WHERE review = 'resolved'")!.n);
+  }
+
   noteCount(): number {
     return Number(this.get('SELECT COUNT(*) AS n FROM notes')!.n);
   }
@@ -449,7 +525,7 @@ export class Store {
    */
   resetWork(): void {
     this.tx(() => {
-      for (const table of ['progress', 'answers', 'answer_versions', 'notes', 'reflections', 'stats', 'check_history', 'open_questions', 'checklist_answers', 'checklist_ratings', 'achievements', 'search'])
+      for (const table of ['progress', 'answers', 'answer_versions', 'notes', 'reflections', 'stats', 'check_history', 'open_questions', 'checklist_answers', 'checklist_ratings', 'achievements', 'annotations', 'search'])
         this.run(`DELETE FROM ${table}`);
       this.run("DELETE FROM settings WHERE key NOT IN ('settings', 'courses', 'activeCourse')");
     });
@@ -485,13 +561,13 @@ export class Store {
 
   // ───────────────────────── search ─────────────────────────
 
-  private reindex(id: string, source: 'note' | 'answer', text: string): void {
+  private reindex(id: string, source: SearchSource, text: string): void {
     this.run('DELETE FROM search WHERE exercise_id = ? AND source = ?', id, source);
     if (text.trim()) this.run('INSERT INTO search (exercise_id, source, content) VALUES (?,?,?)', id, source, text);
   }
 
-  /** Full-text search over the student's own notes and answers. */
-  search(query: string, limit = 20): { exerciseId: string; source: 'note' | 'answer'; snippet: string }[] {
+  /** Full-text search over the student's own notes, answers and annotations. `exerciseId` is an annotation's target. */
+  search(query: string, limit = 20): { exerciseId: string; source: SearchSource; snippet: string }[] {
     const terms = query.match(/[\p{L}\p{N}_]+/gu);
     if (!terms) return [];
     const match = terms.map((t) => `"${t}"*`).join(' ');
@@ -500,7 +576,7 @@ export class Store {
        FROM search WHERE search MATCH ? ORDER BY rank LIMIT ?`,
       match,
       limit,
-    ).map((r) => ({ exerciseId: r.exercise_id as string, source: r.source as 'note' | 'answer', snippet: r.snippet as string }));
+    ).map((r) => ({ exerciseId: r.exercise_id as string, source: r.source as SearchSource, snippet: r.snippet as string }));
   }
 
   // ───────────────────────── review ─────────────────────────
@@ -534,6 +610,22 @@ function rowToReflection(r: Row): Reflection {
     how: JSON.parse(r.how as string) as HowSolved[],
     comment: r.comment as string,
     createdAt: Number(r.created_at),
+  };
+}
+
+function rowToAnnotation(r: Row): Annotation {
+  return {
+    id: r.id as string,
+    target: r.target as string,
+    part: r.part as string,
+    quote: r.quote as string,
+    prefix: r.prefix as string,
+    suffix: r.suffix as string,
+    color: r.color as AnnotationColor,
+    comment: r.comment as string,
+    review: (r.review as AnnotationReview | null) ?? null,
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
   };
 }
 

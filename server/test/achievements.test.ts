@@ -102,6 +102,11 @@ describe('qualifiesFor', () => {
     expect(ids(input({}))).toEqual([]);
   });
 
+  it('rewards clearing up marked passages, not marking them', () => {
+    expect(ids(input({ resolvedMarks: 4 }))).not.toContain('a/cleared-up');
+    expect(ids(input({ resolvedMarks: 5 }))).toContain('a/cleared-up');
+  });
+
   it('notices a comeback only from low to high, in that order', () => {
     const got = qualifiesFor(input({ reflections: [rating('a', 1), rating('a', 3), rating('a', 4)] }));
     expect(got.get('comeback/e/a')).toEqual({ kind: 'comeback', title: 'a', from: 1, to: 4 });

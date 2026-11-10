@@ -183,4 +183,20 @@ export const MIGRATIONS: Migration[] = [
     // "Keep as is" for a card that kept being forgotten: it is offered again only after the next lapse.
     db.exec('CREATE TABLE IF NOT EXISTS card_kept (card_id TEXT PRIMARY KEY, kept_at INTEGER NOT NULL)');
   },
+  /* 8: highlights and comments on the course's text, found again by their quote */ `
+  CREATE TABLE annotations (
+    id         TEXT PRIMARY KEY,
+    target     TEXT NOT NULL,             -- item id, or a text that is not one: "chapter/<id>", "thread/<id>", "landing"
+    part       TEXT NOT NULL,             -- "task", "remark-<n>", "hint-<n>"
+    quote      TEXT NOT NULL,
+    prefix     TEXT NOT NULL,
+    suffix     TEXT NOT NULL,
+    color      TEXT NOT NULL,
+    comment    TEXT NOT NULL DEFAULT '',
+    review     TEXT CHECK (review IS NULL OR review IN ('open','resolved')),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX annotations_target ON annotations (target);
+  `,
 ];

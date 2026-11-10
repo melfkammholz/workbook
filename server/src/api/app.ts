@@ -4,6 +4,7 @@ import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { aiRoutes } from './routes-ai.js';
+import { annotationRoutes } from './routes-annotations.js';
 import { contentRoutes } from './routes-content.js';
 import { courseRoutes } from './routes-courses.js';
 import { flashcardRoutes } from './routes-flashcards.js';
@@ -48,6 +49,7 @@ export async function buildApp(d: Deps): Promise<FastifyInstance> {
   contentRoutes(app, d);
   workRoutes(app, d);
   aiRoutes(app, d);
+  annotationRoutes(app, d);
   courseRoutes(app, d);
   flashcardRoutes(app, d);
   widgetRoutes(app, d);

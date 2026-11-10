@@ -22,6 +22,7 @@ export function HelpPage({ section }: { section?: string }) {
     { id: 'review', title: t.helpReviewTitle, body: <p>{t.helpReview}</p> },
     { id: 'focus', title: t.helpFocusTitle, body: <p>{t.helpFocus}</p> },
     { id: 'timer', title: t.helpTimerTitle, body: <p>{t.helpTimer}</p> },
+    ...(settings?.showAnnotations ? [{ id: 'highlights', title: t.helpHighlightsTitle, body: <p>{t.helpHighlights}</p> }] : []),
     ...(ai ? [{ id: 'ai', title: t.helpAiTitle, body: <p>{t.helpAi}</p> }] : []),
     {
       id: 'typst',

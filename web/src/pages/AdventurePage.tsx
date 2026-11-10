@@ -39,7 +39,7 @@ export function AdventurePage({ id }: { id: string }) {
           <ProgressLine done={done} total={total} />
         </div>
         <div className="mt-8">
-          <CourseText url={`/api/threads/${encodeURIComponent(id)}/page`} />
+          <CourseText url={`/api/threads/${encodeURIComponent(id)}/page`} target={`thread/${id}`} />
         </div>
         {next ? (
           <Link href={`/item/${next}`} className="mt-8 inline-flex h-10 items-center gap-2 rounded-md bg-accent px-5 font-medium text-accent-ink hover:brightness-110">

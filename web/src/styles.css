@@ -466,3 +466,24 @@ a.wb-card-from:hover { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   .wb-overlay, .wb-dialog, .wb-pop { animation: none; }
 }
+
+/* ───────── highlights ───────── */
+/* Painted by the browser (CSS Custom Highlight API, `web/src/lib/annotations.ts`): the text's HTML stays as it is.
+   The colour is the student's own sorting; the state never depends on it: a dotted line for a comment, a wavy one
+   for a passage to come back to. */
+:root { --ann-yellow: #fbe89a; --ann-green: #c6ecc0; --ann-blue: #c5dcfb; --ann-pink: #f8cde3; --ann-line: #6b7286; }
+:root[data-theme='dark'] { --ann-yellow: #5c4c12; --ann-green: #23502a; --ann-blue: #1f3d66; --ann-pink: #5e2645; --ann-line: #a3aac0; }
+/* Apart for every kind of colour vision deficiency: light yellow, blue, grey and orange. */
+:root[data-colors='safe'] { --ann-yellow: #fbe89a; --ann-green: #d4d7df; --ann-blue: #bcd6fb; --ann-pink: #f9cf9f; }
+:root[data-colors='safe'][data-theme='dark'] { --ann-yellow: #5c4c12; --ann-green: #474c5a; --ann-blue: #1d3e70; --ann-pink: #6a3c0d; }
+::highlight(wb-ann-yellow) { background-color: var(--ann-yellow); }
+::highlight(wb-ann-green) { background-color: var(--ann-green); }
+::highlight(wb-ann-blue) { background-color: var(--ann-blue); }
+::highlight(wb-ann-pink) { background-color: var(--ann-pink); }
+::highlight(wb-ann-comment) { text-decoration: underline dotted var(--ann-line) 1.5px; text-underline-offset: 3px; }
+::highlight(wb-ann-review) { text-decoration: underline wavy var(--review) 1.5px; text-underline-offset: 3px; }
+::highlight(wb-ann-active) { background-color: color-mix(in srgb, var(--accent) 28%, transparent); }
+.wb-ann-swatch { background: var(--ann-yellow); }
+.wb-ann-swatch[data-color='green'] { background: var(--ann-green); }
+.wb-ann-swatch[data-color='blue'] { background: var(--ann-blue); }
+.wb-ann-swatch[data-color='pink'] { background: var(--ann-pink); }

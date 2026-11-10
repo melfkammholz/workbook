@@ -57,7 +57,7 @@ export function ChapterPage({ id }: { id: string }) {
         ) : null}
         {chapter.hasIntro ? (
           <div className="mt-8">
-            <CourseText url={`/api/chapters/${encodeURIComponent(id)}/intro`} />
+            <CourseText url={`/api/chapters/${encodeURIComponent(id)}/intro`} target={`chapter/${id}`} />
           </div>
         ) : null}
         <ol className="mt-8 divide-y divide-line overflow-hidden rounded-lg border border-line bg-sheet">

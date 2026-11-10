@@ -341,6 +341,8 @@ export interface Settings {
   safeColors: boolean;
   /** Opt-in. While false, flashcards appear nowhere; decks are kept. */
   showFlashcards: boolean;
+  /** Opt-in. While false, course text cannot be highlighted and no highlights are shown; they are kept. */
+  showAnnotations: boolean;
   /** Opt-in. While false, nothing offers a prompt for an AI chat. */
   showAi: boolean;
   /** Language of the app itself. Exercises are not translated. `auto` follows the course. */
@@ -382,6 +384,7 @@ export const DEFAULT_SETTINGS: Settings = {
   rewards: 'all',
   rewardIcon: 'trophy',
   showFlashcards: false,
+  showAnnotations: false,
   showAi: false,
   editorFontSize: 13.5,
   editorKeys: 'default',
@@ -400,6 +403,7 @@ export const ACHIEVEMENTS = [
   { id: 'back-again', hidden: false },
   { id: 'self-aware', hidden: false },
   { id: 'note-taker', hidden: false },
+  { id: 'cleared-up', hidden: false },
   { id: 'adventurer', hidden: false },
   { id: 'first-comeback', hidden: false },
   { id: 'first-try', hidden: true },
@@ -816,5 +820,6 @@ Antworte auf Deutsch, in reinem Text ohne Markdown.
 {deck}
 </deck>`,
 };
+export * from './annotations';
 export * from './cards';
 export * from './sld';
