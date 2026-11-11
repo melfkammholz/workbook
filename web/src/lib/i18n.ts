@@ -425,6 +425,7 @@ const en = {
   syntaxReconnect: 'Reconnect',
   // The picture of an SLD tree, and the wide layout.
   sldPreviewLabel: 'The SLD tree, as written',
+  sldTreeNodes: 'Nodes of the SLD tree. Arrow keys move between nodes, Enter goes to the line.',
   sldNoTree: 'The tree appears here as soon as you write its first node, for example ?- member(X, [1, 2]).',
   sldNeedsNewer: 'The preview needs sldcheck 0.3 or newer.',
   sldStale: 'Syntax error: showing the last tree that could be read',
@@ -1534,6 +1535,7 @@ const de: Strings = {
   syntaxError: 'Syntaxfehler',
   syntaxReconnect: 'Neu verbinden',
   sldPreviewLabel: 'Der SLD-Baum, wie geschrieben',
+  sldTreeNodes: 'Knoten des SLD-Baums. Pfeiltasten wechseln den Knoten, Enter springt zur Zeile.',
   sldNoTree: 'Der Baum erscheint hier, sobald du den ersten Knoten schreibst, zum Beispiel ?- member(X, [1, 2]).',
   sldNeedsNewer: 'Die Vorschau braucht sldcheck 0.3 oder neuer.',
   sldStale: 'Syntaxfehler: Es wird der letzte lesbare Baum gezeigt',

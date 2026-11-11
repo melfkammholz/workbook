@@ -6,11 +6,12 @@ import { SLD_TREE_TEST } from '@wb/shared';
 import { loadContent, type ServerCode } from '../src/content/loader.js';
 import { runChecks } from '../src/runners/checks.js';
 import { SldSession, isBlank, parseFindings, parseSldTree } from '../src/runners/sldcheck.js';
-import { EXAMPLE_CONTENT, hasSldcheck, hasSldcheckTree } from './helpers.js';
+import { EXAMPLE_CONTENT, hasSldcheck, hasSldcheckClauses, hasSldcheckTree } from './helpers.js';
 
 const bin = process.env.SLDCHECK_BIN ?? 'sldcheck';
 const haveSldcheck = hasSldcheck(bin);
 const haveTree = hasSldcheckTree(bin);
+const haveClauses = hasSldcheckClauses(bin);
 
 describe('reading what sldcheck prints', () => {
   it('reads the diagnostics and refuses anything else', () => {
@@ -175,6 +176,12 @@ describe.skipIf(!haveSldcheck)('SldSession', () => {
     expect(loaded).toMatchObject({ ok: true, diagnostics: [], sldTree: { negations: [], tree: { goal: 'member(X, [1, 2]), Y is X + 1', steps: [{ kind: 'resolve' }, { kind: 'resolve' }] } } });
     // The tree is drawn from what is written, wrong or not: a tree that has only the query is a tree.
     expect(await s.load({ 'member.sld': code.starter })).toMatchObject({ ok: true, sldTree: { tree: { steps: [] } } });
+  });
+
+  it.skipIf(!haveClauses)('says which clause a resolution step used, so that the edge can show its number', async () => {
+    const s = open();
+    const loaded = await s.load({ 'member.sld': code.solution! });
+    expect(loaded).toMatchObject({ sldTree: { tree: { steps: [{ kind: 'resolve', clause: 1 }, { kind: 'resolve', clause: 2 }] } } });
   });
 
   it.skipIf(!haveTree)('has no tree for a syntax error, and none yet for an empty file', async () => {

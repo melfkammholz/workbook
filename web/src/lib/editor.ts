@@ -22,6 +22,8 @@ const common = EditorView.theme({
   '.cm-gutters': { backgroundColor: 'var(--sheet)', color: 'var(--ink-3)', border: 'none', paddingLeft: '6px' },
   '.cm-activeLine': { backgroundColor: 'color-mix(in srgb, var(--accent) 6%, transparent)' },
   '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--ink-2)' },
+  // The line of what is pointed at elsewhere (a node of an SLD tree): stronger than the active line, and wins over it.
+  '.cm-line.cm-hoverLine': { backgroundColor: 'color-mix(in srgb, var(--accent) 16%, transparent)', boxShadow: 'inset 2px 0 0 var(--accent)' },
   '.cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': { backgroundColor: 'color-mix(in srgb, var(--accent) 24%, transparent)' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)', borderLeftWidth: '2px' },
   '&.cm-focused .cm-matchingBracket, .cm-matchingBracket': { backgroundColor: 'color-mix(in srgb, var(--accent) 22%, transparent)', outline: 'none' },

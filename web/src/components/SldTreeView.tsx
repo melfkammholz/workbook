@@ -25,6 +25,8 @@ interface Props {
   /** The line of the editor's cursor. */
   cursorLine: number;
   onSelectLine: (line: number) => void;
+  /** A node or edge is pointed at or focused: the line it is written at, or null when that ends. */
+  onHoverLine: (line: number | null) => void;
 }
 
 interface View {
@@ -37,9 +39,10 @@ interface View {
  * An SLD tree, drawn from what sldcheck read: goals as boxes, steps as edges with the renamed rule and the
  * substitution, pruned alternatives and failures as dashed stubs. It shows what is written, wrong or not. Drag to
  * pan, scroll to pan, Ctrl+scroll or the buttons to zoom. What the cursor is at is marked, a click goes to the line,
- * and what the tests found is marked red or amber.
+ * and what the tests found is marked red or amber. Pointing at a node or edge highlights its line in the editor. The
+ * nodes are one tab stop (a roving tabindex): arrows walk the tree, Enter goes to the line.
  */
-export function SldTreeView({ tree, stale, problems, cursorLine, onSelectLine }: Props) {
+export function SldTreeView({ tree, stale, problems, cursorLine, onSelectLine, onHoverLine }: Props) {
   const t = useT();
   const host = useRef<HTMLDivElement>(null);
   const svg = useRef<SVGSVGElement>(null);
@@ -144,6 +147,97 @@ export function SldTreeView({ tree, stale, problems, cursorLine, onSelectLine }:
     if (line > 0) onSelectLine(line);
   };
 
+  // The highlight in the editor must not outlive the picture.
+  const onHoverLineRef = useRef(onHoverLine);
+  onHoverLineRef.current = onHoverLine;
+  useEffect(() => () => onHoverLineRef.current(null), []);
+
+  // The keyboard: the tree's shape, the node that is the tab stop, and whether it shows a focus ring.
+  const nav = useMemo(() => {
+    if (!layout) return null;
+    const parent = new Map<string, string>();
+    const kids = new Map<string, string[]>();
+    for (const e of layout.edges) {
+      parent.set(e.to, e.from);
+      const list = kids.get(e.from);
+      if (list) list.push(e.to);
+      else kids.set(e.from, [e.to]);
+    }
+    const byId = new Map(layout.boxes.map((b) => [b.id, b]));
+    // The query's tree and the trees of its negations are neighbours.
+    const roots = layout.boxes.filter((b) => !parent.has(b.id)).map((b) => b.id);
+    const level = (id: string) => {
+      let n = 1;
+      for (let at = parent.get(id); at; at = parent.get(at)) n++;
+      return n;
+    };
+    return { parent, kids, byId, roots, level };
+  }, [layout]);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const [ring, setRing] = useState(false);
+  const tabStop = nav && focusId && nav.byId.has(focusId) ? focusId : (nav?.roots[0] ?? null);
+
+  /** Pans the least it takes to show a box, with a margin; a box larger than the view is centred. */
+  const reveal = (b: SldBox) => {
+    setView((v) => {
+      const shift = (lo: number, hi: number, room: number) => (hi - lo > room - 2 * MARGIN ? room / 2 - (lo + hi) / 2 : lo < MARGIN ? MARGIN - lo : hi > room - MARGIN ? room - MARGIN - hi : 0);
+      const dx = shift(v.x + b.x * v.k, v.x + (b.x + b.w) * v.k, size.w);
+      const dy = shift(v.y + b.y * v.k, v.y + (b.y + b.h) * v.k, size.h);
+      if (!dx && !dy) return v;
+      following.current = false;
+      return { ...v, x: v.x + dx, y: v.y + dy };
+    });
+  };
+  const onNodeFocus = (b: SldBox, el: Element) => {
+    setFocusId(b.id);
+    onHoverLine(b.line);
+    // A click focuses too, but only the keyboard gets a ring and moves the picture.
+    const keyboard = el.matches(':focus-visible');
+    setRing(keyboard);
+    if (keyboard) reveal(b);
+  };
+  const onNodeBlur = () => {
+    setRing(false);
+    onHoverLine(null);
+  };
+  const onTreeKey = (e: React.KeyboardEvent) => {
+    if (!nav || !tabStop) return;
+    const at = nav.byId.get(tabStop);
+    if (!at) return;
+    const up = nav.parent.get(tabStop);
+    const siblings = up ? (nav.kids.get(up) ?? []) : nav.roots;
+    const i = siblings.indexOf(tabStop);
+    let to: string | undefined;
+    switch (e.key) {
+      case 'ArrowUp':
+        to = up;
+        break;
+      case 'ArrowDown':
+        to = nav.kids.get(tabStop)?.[0];
+        break;
+      case 'ArrowLeft':
+        to = siblings[i - 1];
+        break;
+      case 'ArrowRight':
+        to = siblings[i + 1];
+        break;
+      case 'Home':
+        to = nav.roots[0];
+        break;
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        onSelectLine(at.line);
+        return;
+      default:
+        return;
+    }
+    e.preventDefault();
+    if (!to) return;
+    setFocusId(to);
+    svg.current?.querySelector<SVGGElement>(`[data-node="${CSS.escape(to)}"]`)?.focus({ preventScroll: true });
+  };
+
   const worst = useMemo(() => {
     const m = new Map<number, 'error' | 'warning'>();
     for (const p of problems) if (m.get(p.line) !== 'error') m.set(p.line, p.severity);
@@ -205,20 +299,37 @@ export function SldTreeView({ tree, stale, problems, cursorLine, onSelectLine }:
       onPointerCancel={() => (drag.current = null)}
       style={{ cursor: 'grab' }}
     >
-      <svg ref={svg} role="img" aria-label={t.sldPreviewLabel} className="size-full">
+      <svg ref={svg} role="group" aria-label={t.sldPreviewLabel} className="size-full">
         <text ref={probe} className="font-mono" style={{ fontSize: FONT_SIZE }} opacity={0} aria-hidden>
           M
         </text>
         <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
-          <g data-content className={clsx(stale && 'opacity-45')}>
+          <g data-content role="tree" aria-label={t.sldTreeNodes} onKeyDown={onTreeKey} className={clsx(stale && 'opacity-45')}>
             {layout?.titles.map((title) => (
               <text key={title.tree} x={title.x} y={title.y} dominantBaseline="central" className="fill-ink-3 font-sans" style={{ fontSize: 12 }}>
                 {title.text}
               </text>
             ))}
-            {layout?.edges.map((e) => <Edge key={e.id} e={e} state={worst.get(e.line) ?? (active.has(e.id) ? 'active' : null)} onPath={path.has(e.id)} />)}
+            {layout?.edges.map((e) => (
+              <Edge key={e.id} e={e} state={worst.get(e.line) ?? (active.has(e.id) ? 'active' : null)} onPath={path.has(e.id)} onHover={(on) => onHoverLine(on ? e.line : null)} />
+            ))}
             {layout?.boxes.map((b) => (
-              <Box key={b.id} b={b} state={worst.get(b.line) ?? (active.has(b.id) ? 'active' : null)} onPath={path.has(b.id)} measure={measure} onHover={(on) => setHovered(on ? b.id : null)} />
+              <Box
+                key={b.id}
+                b={b}
+                state={worst.get(b.line) ?? (active.has(b.id) ? 'active' : null)}
+                onPath={path.has(b.id)}
+                measure={measure}
+                onHover={(on) => {
+                  setHovered(on ? b.id : null);
+                  onHoverLine(on ? b.line : null);
+                }}
+                tabStop={b.id === tabStop}
+                ring={ring && b.id === focusId}
+                level={nav?.level(b.id) ?? 1}
+                onFocus={(el) => onNodeFocus(b, el)}
+                onBlur={onNodeBlur}
+              />
             ))}
           </g>
         </g>
@@ -293,10 +404,10 @@ function edgePath(e: SldEdge): string[] {
   return bottom < e.y2 ? [curve(e.x1, e.y1, e.x2, top), `M${e.x2} ${bottom} V${e.y2}`] : [curve(e.x1, e.y1, e.x2, top)];
 }
 
-function Edge({ e, state, onPath }: { e: SldEdge; state: State; onPath: boolean }) {
+function Edge({ e, state, onPath, onHover }: { e: SldEdge; state: State; onPath: boolean; onHover: (on: boolean) => void }) {
   const d = edgePath(e);
   return (
-    <g data-line={e.line} className="cursor-pointer">
+    <g data-line={e.line} className="cursor-pointer" onPointerEnter={() => onHover(true)} onPointerLeave={() => onHover(false)}>
       {d.map((p, i) => (
         <path key={`h${i}`} d={p} fill="none" stroke="transparent" strokeWidth={12} />
       ))}
@@ -367,7 +478,22 @@ function selected(goal: string): [string, string] | null {
   return body.endsWith('.') ? [body.slice(0, -1), '.'] : null;
 }
 
-function Box({ b, state, onPath, measure, onHover }: { b: SldBox; state: State; onPath: boolean; measure: ((text: string) => number) | null; onHover: (on: boolean) => void }) {
+interface BoxProps {
+  b: SldBox;
+  state: State;
+  onPath: boolean;
+  measure: ((text: string) => number) | null;
+  onHover: (on: boolean) => void;
+  /** The one node that Tab reaches. */
+  tabStop: boolean;
+  /** Focused by the keyboard. */
+  ring: boolean;
+  level: number;
+  onFocus: (el: Element) => void;
+  onBlur: () => void;
+}
+
+function Box({ b, state, onPath, measure, onHover, tabStop, ring, level, onFocus, onBlur }: BoxProps) {
   const kind = KINDS[b.kind];
   // The answer of a success is written under its box, not in it.
   const inside = b.lines.filter((l) => l.role !== 'answer');
@@ -378,7 +504,20 @@ function Box({ b, state, onPath, measure, onHover }: { b: SldBox; state: State; 
   const first = inside[0]?.role === 'goal' ? selected(inside[0].text) : null;
   const stroke = state ? strokeOf(state, '') : onPath ? 'stroke-accent/60' : kind.stroke;
   return (
-    <g data-line={b.line} className="cursor-pointer" onPointerEnter={() => onHover(true)} onPointerLeave={() => onHover(false)}>
+    <g
+      data-line={b.line}
+      data-node={b.id}
+      role="treeitem"
+      aria-level={level}
+      aria-label={b.lines.map((l) => l.text.trim()).join(' ')}
+      tabIndex={tabStop ? 0 : -1}
+      className="cursor-pointer outline-none"
+      onPointerEnter={() => onHover(true)}
+      onPointerLeave={() => onHover(false)}
+      onFocus={(e) => onFocus(e.currentTarget)}
+      onBlur={onBlur}
+    >
+      {ring ? <rect x={x - 4} y={b.y - 4} width={w + 8} height={h + 8} rx={12} className="fill-none stroke-accent" strokeWidth={2} /> : null}
       <rect x={x} y={b.y + 1.5} width={w} height={h} rx={9} className={kind.drop} />
       <rect x={x} y={b.y} width={w} height={h} rx={9} className={clsx(kind.fill, stroke, 'transition-[stroke]')} strokeWidth={widthOf(state)} strokeDasharray={kind.dashed ? '4 3' : undefined} />
       {first && measure ? (

@@ -1,6 +1,6 @@
 import { setDiagnostics, type Diagnostic as CmDiagnostic } from '@codemirror/lint';
-import { EditorState, Prec, type Extension } from '@codemirror/state';
-import { EditorView, hoverTooltip, keymap } from '@codemirror/view';
+import { EditorState, Prec, StateEffect, StateField, type Extension } from '@codemirror/state';
+import { Decoration, EditorView, hoverTooltip, keymap, type DecorationSet } from '@codemirror/view';
 import { vim } from '@replit/codemirror-vim';
 import type { Diagnostic, TypeInfo } from '@wb/shared';
 import { useEffect, useRef } from 'react';
@@ -30,7 +30,26 @@ interface Props {
   tabMovesFocus?: boolean;
   /** More behaviour, e.g. decorations. Read once, when the editor is made. */
   extensions?: Extension;
+  /** A line to highlight, because something elsewhere that stands for it is pointed at. Not scrolled to. */
+  hoverLine?: number | null;
 }
+
+const setHoverLine = StateEffect.define<number | null>();
+const hoverLineMark = Decoration.line({ class: 'cm-hoverLine' });
+/** The highlighted line; it goes away when its line is edited away. */
+const hoverLineField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    deco = deco.map(tr.changes);
+    for (const e of tr.effects) {
+      if (!e.is(setHoverLine)) continue;
+      const n = e.value;
+      deco = n !== null && n >= 1 && n <= tr.state.doc.lines ? Decoration.set([hoverLineMark.range(tr.state.doc.line(n).from)]) : Decoration.none;
+    }
+    return deco;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
 
 /** The name or operator at a column, if there is one. */
 function tokenAt(text: string, column: number): { from: number; to: number } | null {
@@ -42,7 +61,7 @@ function tokenAt(text: string, column: number): { from: number; to: number } | n
 }
 
 /** Thin wrapper around a CodeMirror view. `value` is the source of truth: when it differs from the document the document is replaced. */
-export function CodeEditor({ value, onChange, language, diagnostics, readOnly, lineNumbers, wrap, placeholder, onSubmit, label, variant, typeOf, onView, tabMovesFocus, extensions }: Props) {
+export function CodeEditor({ value, onChange, language, diagnostics, readOnly, lineNumbers, wrap, placeholder, onSubmit, label, variant, typeOf, onView, tabMovesFocus, extensions, hoverLine }: Props) {
   const t = useT();
   const vimKeys = useSettings().data?.editorKeys === 'vim' && !readOnly;
   const host = useRef<HTMLDivElement>(null);
@@ -78,6 +97,7 @@ export function CodeEditor({ value, onChange, language, diagnostics, readOnly, l
             ...(tabMovesFocus ? { tabMovesFocus } : {}),
           }),
           extensions ?? [],
+          hoverLineField,
           Prec.highest(
             keymap.of([
               {
@@ -162,6 +182,10 @@ export function CodeEditor({ value, onChange, language, diagnostics, readOnly, l
     // Positions refer to the code that was loaded; CodeMirror maps them through later edits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [diagnostics, language, readOnly, lineNumbers, wrap]);
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: setHoverLine.of(hoverLine ?? null) });
+  }, [hoverLine, language, readOnly, lineNumbers, wrap, variant, vimKeys, tabMovesFocus]);
 
   // `isolate`: CodeMirror's own panels and tooltips use high z-indexes, which must not reach dialogs above the editor.
   return <div ref={host} className="isolate h-full min-h-0 overflow-hidden" />;

@@ -118,6 +118,8 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
   const [cursorLine, setCursorLine] = useState(1);
   const editorView = useRef<EditorView | null>(null);
   const cursorLineRef = useRef(1);
+  // A node or edge of the tree that is pointed at (or focused) highlights its line.
+  const [hoverLine, setHoverLine] = useState<number | null>(null);
   const cursorExtension = useMemo(
     () =>
       EditorView.updateListener.of((u) => {
@@ -311,7 +313,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
           label={t.codeLabel(slot)}
           {...(code?.hasCheck ? { onSubmit: () => void check() } : {})}
           {...(runnable && language === 'haskell' ? { typeOf: (span: Omit<TypeSpan, 'file'>) => repl.typeAt({ file: slot, ...span }) } : {})}
-          {...(isSld ? { extensions: cursorExtension, onView: (v: EditorView | null) => (editorView.current = v) } : {})}
+          {...(isSld ? { extensions: cursorExtension, onView: (v: EditorView | null) => (editorView.current = v), hoverLine } : {})}
           variant="code"
         />
       ) : (
@@ -319,7 +321,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
       ),
     // `check` closes over text; the editor itself only needs to be rebuilt when these change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [text, change, isCode, language, inThisFile, slot, code?.hasCheck, t, fresh, viewing, detail.support, savedLabel, isSld, cursorExtension],
+    [text, change, isCode, language, inThisFile, slot, code?.hasCheck, t, fresh, viewing, detail.support, savedLabel, isSld, cursorExtension, hoverLine],
   );
 
   /** The picture of an SLD tree was clicked: go to what it shows. */
@@ -331,7 +333,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
     v.dispatch({ selection: { anchor: at.from }, scrollIntoView: true });
     v.focus();
   };
-  const preview = isSld ? <SldTreeView tree={repl.loaded ? repl.sldTree : null} stale={repl.sldStale} problems={found} cursorLine={viewing === null ? cursorLine : 0} onSelectLine={jumpTo} /> : null;
+  const preview = isSld ? <SldTreeView tree={repl.loaded ? repl.sldTree : null} stale={repl.sldStale} problems={found} cursorLine={viewing === null ? cursorLine : 0} onSelectLine={jumpTo} onHoverLine={setHoverLine} /> : null;
 
   // The tabs under (or, in the wide layout, beside) the editor: what the interpreter or the reader says, and the tests.
   // For an SLD tree the picture is a tab too, unless the wide layout gives it a place of its own.
