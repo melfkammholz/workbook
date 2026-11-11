@@ -441,8 +441,9 @@ a.wb-external::after {
   /* Two cards side by side: the workspace itself is only the ground they lie on. */
   :root[data-warm] .wb-pane.wb-pane-ground { margin: 0; height: 100%; border: 0; border-radius: 0; box-shadow: none; background: transparent; overflow: visible; }
   /* The task: its page is a card as tall as its text, 14px from the outline. */
-  :root[data-warm] .wb-task-scroll { padding: 14px 0 14px 14px; }
-  :root[data-warm] .wb-task-scroll .wb-page { margin-block: 0; padding-top: 0.5rem; }
+  :root[data-warm] .wb-task-scroll { padding: 14px 0 14px 14px; scrollbar-width: none; }
+  :root[data-warm] .wb-task-scroll::-webkit-scrollbar { display: none; }
+  :root[data-warm] .wb-task-scroll .wb-page { margin-block: 0; padding-top: 1.5rem; }
   :root[data-warm] .wb-gutter { width: 10px; background: transparent; }
   :root[data-warm] .wb-gutter:hover, :root[data-warm] .wb-gutter[data-separator='active'] { background: transparent; }
   :root[data-warm] .wb-gutter::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 40px; margin: -20px 0 0 -2px; border-radius: 2px; background: var(--line-strong); opacity: 0; transition: opacity 0.15s; }
