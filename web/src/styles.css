@@ -309,8 +309,13 @@ a.wb-external::after {
 .prose-task .wb-diagram { margin-block: 1em; overflow-x: auto; }
 .prose-task hr.wb-line { border: 0; border-top: 1px solid var(--line-strong); margin-block: 1em; }
 .prose-task .wb-grid { margin-block: 0.8em; }
-/* Pictures are drawn for white paper: approximate a dark version without touching their hues. */
-:root[data-theme='dark'] .prose-task svg { filter: invert(0.9) hue-rotate(180deg); }
+/* Typst's pictures are drawn for white paper: approximate a dark version without touching their hues. Widgets draw
+   with the theme's tokens already, so their own SVGs (and icons) are left alone; Typst inside a widget's part (its own
+   .prose-task) is inverted again, and so on for a widget nested in a part. */
+:root[data-theme='dark'] .prose-task svg,
+:root[data-theme='dark'] .prose-task [data-widget] .prose-task svg { filter: invert(0.9) hue-rotate(180deg); }
+:root[data-theme='dark'] .prose-task [data-widget] svg,
+:root[data-theme='dark'] .prose-task [data-widget] .prose-task [data-widget] svg { filter: none; }
 
 /* A small burst from the middle of the screen. Silent, and not for anyone who asked for reduced motion. */
 .wb-confetti { position: fixed; left: 50%; top: 40%; z-index: 45; pointer-events: none; }
