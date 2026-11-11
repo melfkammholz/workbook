@@ -359,7 +359,7 @@ function Machine({ plan, given }: { plan: FoldPlan; given: boolean }) {
                 type="button"
                 {...drag.piece(x.id)}
                 className={clsx(
-                  'cursor-grab select-none rounded-[7px] border bg-sheet px-2.5 py-1 font-mono text-[13px] data-[dragging]:opacity-30',
+                  'cursor-grab select-none whitespace-nowrap rounded-[7px] border bg-sheet px-2.5 py-1 font-mono text-[13px] data-[dragging]:opacity-30',
                   drag.selected === x.id ? 'border-accent ring-3 ring-accent-soft' : 'border-line-strong hover:border-accent',
                 )}
               >

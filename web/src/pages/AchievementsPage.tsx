@@ -4,7 +4,7 @@ import { AnimalCollection } from "@/components/AnimalCollection";
 import { describeEvent } from "@/components/Celebration";
 import { FLOWERS, PlantPicture, Visitor, type Growth } from "@/components/Garden";
 import { Empty, clsx } from "@/components/ui";
-import { useAchievements, useOutline, useSettings } from "@/lib/api";
+import { useAchievements, useOutline, useSettings, useState_ } from "@/lib/api";
 import { BackLink } from "@/lib/history";
 import { useLang, useT } from "@/lib/i18n";
 import { useRewards } from "@/lib/rewards";
@@ -157,7 +157,6 @@ function ComebackScale({ from, to, label }: { from: number; to: number; label: s
       {STEPS.map((i) => (
         <circle key={i} cx={X(i)} cy={y} r={3} fill="var(--line-strong)" />
       ))}
-      <line x1={X(from)} x2={X(to)} y1={y} y2={y} stroke="color-mix(in srgb, var(--done) 55%, transparent)" strokeWidth={2.5} strokeLinecap="round" />
       <path d={`M${X(from)} ${y - 8} Q ${(X(from) + X(to)) / 2} ${y - 22} ${X(to) - 8} ${y - 9}`} fill="none" stroke="var(--done)" strokeWidth={1.4} strokeLinecap="round" />
       <path d={`M${X(to) - 13} ${y - 13} L ${X(to) - 8} ${y - 9} L ${X(to) - 14} ${y - 7}`} fill="none" stroke="var(--done)" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" />
       <circle cx={X(from)} cy={y} r={6} fill="var(--sheet)" stroke="var(--ink-3)" strokeWidth={1.5} />
@@ -175,6 +174,9 @@ const GROWTH: Record<0 | 1 | 2 | 3, Growth> = { 0: 0, 1: 1, 2: 3, 3: 4 };
 /** One garden bed per chapter, grouped by part. Each chapter has its own flower. */
 function Garden({ outline, earned }: { outline: Outline; earned: EarnedEvent[] }) {
   const t = useT();
+  const suggestions = useState_().data?.suggestions ?? [];
+  const next = suggestions.find((s) => s.reason === "continue") ?? suggestions.find((s) => s.reason === "next-up");
+  const currentId = next ? outline.chapters.find((c) => c.items.some((i) => i.id === next.id))?.id : undefined;
   const index = new Map(outline.chapters.map((c, i) => [c.id, i]));
   const groups = outline.parts.length
     ? outline.parts.map((p) => ({ id: p.id, title: p.title as string | null, chapters: outline.chapters.filter((c) => c.partId === p.id) }))
@@ -194,7 +196,11 @@ function Garden({ outline, earned }: { outline: Outline; earned: EarnedEvent[] }
                 const stage = stageOf(earned, c.id);
                 const visitor = stage === 3 ? (blooming++ % 2 ? "🦋" : "🐝") : null;
                 return (
-                  <li key={c.id} className="flex flex-col overflow-hidden rounded-xl border border-[color-mix(in_srgb,var(--leaf)_28%,var(--line))] bg-sheet">
+                  <li
+                    key={c.id}
+                    aria-current={c.id === currentId ? "true" : undefined}
+                    className={`flex flex-col overflow-hidden rounded-xl border bg-sheet ${c.id === currentId ? "border-accent ring-2 ring-accent-soft" : "border-[color-mix(in_srgb,var(--leaf)_28%,var(--line))]"}`}
+                  >
                     <div className="wb-bed-pic relative">
                       <PlantPicture stage={GROWTH[stage]} kind={FLOWERS[i % FLOWERS.length]!} seed={i} />
                       {visitor ? <Visitor emoji={visitor} seed={i * 2.3} nth={blooming} /> : null}

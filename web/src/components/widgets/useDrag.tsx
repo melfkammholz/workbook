@@ -84,7 +84,7 @@ export function useDrag(onDrop: (piece: number, target: string, el: HTMLElement)
     ? createPortal(
         <div
           aria-hidden
-          className={clsx('pointer-events-none fixed left-0 top-0 z-50 rounded-md border border-accent bg-sheet px-2.5 py-1 font-mono text-[13.5px] shadow-[var(--shadow)]')}
+          className={clsx('pointer-events-none fixed left-0 top-0 z-50 whitespace-nowrap rounded-md border border-accent bg-sheet px-2.5 py-1 font-mono text-[13.5px] shadow-[var(--shadow)]')}
           style={{ width: ghost.width, transform: `translate(${ghost.x - ghost.dx}px, ${ghost.y - ghost.dy}px) rotate(-2deg)` }}
           dangerouslySetInnerHTML={{ __html: ghost.html }}
         />,
