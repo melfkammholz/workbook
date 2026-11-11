@@ -1,5 +1,6 @@
 import { useQuery, type QueryClient } from '@tanstack/react-query';
-import { ANNOTATION_COLORS, locateQuote, type Annotation, type AnnotationColor, type AnnotationEntry, type AnnotationReview, type TextQuote } from '@wb/shared';
+import type { CSSProperties } from 'react';
+import { isCustomColor, locateQuote, type Annotation, type AnnotationColor, type AnnotationEntry, type AnnotationReview, type TextQuote } from '@wb/shared';
 import { api, useSettings } from './api';
 
 // ───────────────────────── data ─────────────────────────
@@ -12,8 +13,8 @@ export function useAnnotations() {
   return useQuery({ queryKey: annotationKey, queryFn: () => api.get<AnnotationEntry[]>('/api/annotations'), enabled: on, staleTime: 30_000 });
 }
 
-export type NewAnnotation = { target: string; part: string; color: AnnotationColor; comment?: string; review?: AnnotationReview | null } & TextQuote;
-export type AnnotationPatch = Partial<Pick<Annotation, 'color' | 'comment' | 'review'>>;
+export type NewAnnotation = { target: string; part: string; color: AnnotationColor; label?: string | null; comment?: string; review?: AnnotationReview | null } & TextQuote;
+export type AnnotationPatch = Partial<Pick<Annotation, 'color' | 'label' | 'comment' | 'review'>>;
 
 const setList = (qc: QueryClient, f: (list: AnnotationEntry[]) => AnnotationEntry[]) => qc.setQueryData<AnnotationEntry[]>(annotationKey, (l) => f(l ?? []));
 
@@ -117,6 +118,26 @@ let active: string | null = null;
 
 const supported = () => typeof CSS !== 'undefined' && 'highlights' in CSS && typeof Highlight !== 'undefined';
 
+/** What a color the student added looks like as a fill: the same over a light page and a dark one. */
+const customFill = (hex: string) => `color-mix(in srgb, ${hex} 55%, transparent)`;
+
+/** For a swatch or a bar in a highlight's color: the palette by name, an added color by its own style. */
+export function swatchProps(color: AnnotationColor): { 'data-color': string; style?: CSSProperties } {
+  return isCustomColor(color) ? { 'data-color': 'custom', style: { background: customFill(color) } } : { 'data-color': color };
+}
+
+const customStyle = (() => {
+  let el: HTMLStyleElement | null = null;
+  return (names: Set<string>) => {
+    el ??= Object.assign(document.createElement('style'), { id: 'wb-ann-custom' });
+    if (!el.isConnected) document.head.appendChild(el);
+    el.textContent = [...names].map((hex) => `::highlight(wb-ann-x-${hex.slice(1)}) { background-color: ${customFill(hex)}; }`).join('\n');
+  };
+})();
+
+/** The names `repaint` set last time, so those no longer used are taken away. */
+let paintedNames = new Set<string>();
+
 /** One `Highlight` per colour and state for all texts on screen: the browser paints them, the DOM stays as it is. */
 function repaint(): void {
   if (!supported()) return;
@@ -124,16 +145,18 @@ function repaint(): void {
   const put = (name: string, r: Range) => (groups.get(name) ?? groups.set(name, []).get(name)!).push(r);
   for (const list of layers.values())
     for (const { ann, range } of list) {
-      put(`wb-ann-${ann.color}`, range);
+      put(isCustomColor(ann.color) ? `wb-ann-x-${ann.color.slice(1)}` : `wb-ann-${ann.color}`, range);
       if (ann.review === 'open') put('wb-ann-review', range);
       else if (ann.comment.trim()) put('wb-ann-comment', range);
       if (ann.id === active) put('wb-ann-active', range);
     }
-  for (const name of [...ANNOTATION_COLORS.map((c) => `wb-ann-${c}`), 'wb-ann-review', 'wb-ann-comment', 'wb-ann-active']) {
+  customStyle(new Set([...groups.keys()].filter((n) => n.startsWith('wb-ann-x-')).map((n) => `#${n.slice(9)}`)));
+  for (const name of new Set([...paintedNames, ...groups.keys()])) {
     const ranges = groups.get(name);
     if (ranges?.length) CSS.highlights.set(name, new Highlight(...ranges));
     else CSS.highlights.delete(name);
   }
+  paintedNames = new Set(groups.keys());
 }
 
 /** Paints a text's highlights; returns those whose quote is not in it (any more). */
@@ -189,7 +212,7 @@ export function showAnnotationOnArrival(id: string): void {
 }
 
 /**
- * Called after painting: scrolls to the pending highlight if it is now on screen, and lights it up for a moment. A
+ * Called after painting: scrolls to the pending highlight if it is now on screen. A
  * highlight that does not appear soon (in a hint not yet shown) is given up on, so it does not jump up later.
  */
 export function revealPending(): void {
@@ -204,8 +227,6 @@ export function revealPending(): void {
   pending = null;
   const el = range.startContainer.parentElement;
   el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  setActiveAnnotation(id);
-  setTimeout(() => active === id && setActiveAnnotation(null), 1800);
 }
 
 // ───────────────────────── to Typst ─────────────────────────

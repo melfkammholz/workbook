@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { CourseErrorCode, CourseInfo, CoursesResponse, CourseUpdate } from '@wb/shared';
+import { targetHref, type CardHighlight, type CourseErrorCode, type CourseInfo, type CoursesResponse, type CourseUpdate } from '@wb/shared';
 import type { Config } from '../config.js';
 import { loadContent, type Content } from '../content/loader.js';
 import { ContentService } from '../content/service.js';
@@ -103,6 +103,7 @@ export class CourseManager {
         const found = this.findExercise(ref);
         return found ? { ref, ...found } : null;
       },
+      findHighlight: (ref) => this.findHighlight(ref),
       courses: () => this.ids().map((id) => ({ id: this.openCourse(id).content.current.outline.id, title: this.openCourse(id).content.current.outline.title })),
       language: () => {
         const ui = this.global.getSettings().uiLanguage;
@@ -265,6 +266,28 @@ export class CourseManager {
       };
     }
     return null;
+  }
+
+  /** What a card's `highlight: "course/<annotation id>"` points at; null once the highlight is gone. */
+  findHighlight(ref: string): CardHighlight | null {
+    const slash = ref.indexOf('/');
+    if (slash <= 0) return null;
+    const course = ref.slice(0, slash);
+    const annotationId = ref.slice(slash + 1);
+    for (const id of this.ids()) {
+      const open = this.openCourse(id);
+      if (open.content.current.outline.id !== course) continue;
+      const a = open.store.getAnnotation(annotationId);
+      if (!a) return null;
+      return { id: a.id, quote: a.quote, courseTitle: open.content.current.outline.title, href: id === this.activeId ? `#${targetHref(a.target)}` : null };
+    }
+    return null;
+  }
+
+  /** How a card made from a highlight in the open course names it. */
+  highlightRef(annotationId: string): string | null {
+    const course = this.active;
+    return course && course.store.getAnnotation(annotationId) ? `${course.content.current.outline.id}/${annotationId}` : null;
   }
 
   /** How a card made in the open course names the exercise it came from. */

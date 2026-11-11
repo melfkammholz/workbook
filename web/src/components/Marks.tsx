@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { itemOfTarget, targetHref, type AnnotationEntry } from '@wb/shared';
 import { Check, RotateCcw } from 'lucide-react';
 import { useLocation } from 'wouter';
-import { revealPending, showAnnotationOnArrival, updateAnnotation, useAnnotations } from '@/lib/annotations';
+import { revealPending, showAnnotationOnArrival, swatchProps, updateAnnotation, useAnnotations } from '@/lib/annotations';
 import { useOutline } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Title } from './Title';
@@ -23,7 +23,7 @@ export function useGoToAnnotation() {
 export function Quote({ a, className }: { a: AnnotationEntry; className?: string }) {
   return (
     <span className={clsx('flex min-w-0 gap-2', className)}>
-      <span data-color={a.color} aria-hidden className="wb-ann-swatch mt-[0.2em] w-1 shrink-0 self-stretch rounded-full" />
+      <span {...swatchProps(a.color)} aria-hidden className="wb-ann-swatch mt-[0.2em] w-1 shrink-0 self-stretch rounded-full" />
       <span className={clsx('min-w-0 break-words', !a.found && 'text-ink-3')}>{a.quote.trim()}</span>
     </span>
   );

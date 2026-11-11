@@ -7,6 +7,7 @@ import { Quiz, partsOfHtml } from '@/components/widgets';
 import { StrugglingCardView } from '@/components/StrugglingCardView';
 import { Button, Chip, Dialog, Spinner, clsx } from '@/components/ui';
 import { api } from '@/lib/api';
+import { showAnnotationOnArrival } from '@/lib/annotations';
 import { buryCard, cardKeys, nextCard, rateCard } from '@/lib/flashcards';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
@@ -177,17 +178,31 @@ export function FlashcardReview({ deckIds }: { deckIds: string[] }) {
                 <CardFace html={card.front} css={card.css} gap={card.gap} revealed={revealed && card.kind === 'cloze'} className="min-h-24 px-6 py-5 text-[15px]" />
               )}
               {revealed && card.kind !== 'cloze' && card.kind !== 'quiz' ? <CardFace html={card.back} css={card.css} gap={null} revealed className="border-t border-line bg-paper px-6 py-5 text-[15px]" /> : null}
-              {revealed && card.origin ? (
+              {revealed && (card.origin || card.highlight) ? (
                 <p className="border-t border-line px-6 py-2 text-[12.5px] text-ink-3">
                   {t.cardFrom}{' '}
-                  {card.origin.href ? (
-                    <a href={card.origin.href} className="text-accent hover:underline">
+                  {card.origin ? (
+                    card.origin.href ? (
+                      <a href={card.origin.href} className="text-accent hover:underline">
+                        <Title text={card.origin.title} />
+                      </a>
+                    ) : (
                       <Title text={card.origin.title} />
-                    </a>
-                  ) : (
-                    <Title text={card.origin.title} />
-                  )}{' '}
-                  · {card.origin.courseTitle}
+                    )
+                  ) : null}
+                  {card.highlight ? (
+                    <>
+                      {card.origin ? ', ' : ''}
+                      {card.highlight.href ? (
+                        <a href={card.highlight.href} onClick={() => showAnnotationOnArrival(card.highlight!.id)} className="text-accent hover:underline">
+                          “{card.highlight.quote.trim().slice(0, 80)}”
+                        </a>
+                      ) : (
+                        <>“{card.highlight.quote.trim().slice(0, 80)}”</>
+                      )}
+                    </>
+                  ) : null}{' '}
+                  · {(card.origin ?? card.highlight)!.courseTitle}
                 </p>
               ) : null}
             </div>

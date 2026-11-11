@@ -28,13 +28,15 @@ const bodies = {
     back: z.string().max(20_000).default(''),
     /** The exercise it is made in, in the open course. */
     exercise: z.string().max(200).nullable().default(null),
+    /** The highlight it is made from, in the open course. */
+    highlight: z.string().max(100).nullable().default(null),
     /** Right after this card, e.g. the second half of a split. Otherwise at the end. */
     after: z.string().max(100).nullable().default(null),
     tags: z.array(z.string().max(100)).max(30).default([]),
     /** Written as is, e.g. for the second half of a split card. `exercise` wins. */
     from: z.string().max(300).nullable().default(null),
   }),
-  edit: z.object({ kind: z.enum(['basic', 'both', 'cloze', 'quiz']), front: z.string().max(20_000), back: z.string().max(20_000).default(''), tags: z.array(z.string().max(100)).max(30).default([]) }),
+  edit: z.object({ kind: z.enum(['basic', 'both', 'cloze', 'quiz']), front: z.string().max(20_000), back: z.string().max(20_000).default(''), tags: z.array(z.string().max(100)).max(30).default([]), from: z.string().max(300).nullable().optional(), highlight: z.string().max(300).nullable().optional() }),
   move: z.union([z.object({ direction: z.union([z.literal(-1), z.literal(1)]) }), z.object({ to: z.number().int().min(0) })]),
   rate: z.object({ key: z.string().max(100), rating: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]) }),
   key: z.object({ key: z.string().max(100) }),
@@ -118,7 +120,7 @@ export function flashcardRoutes(app: FastifyInstance, d: Deps): void {
     if (!b.front.trim()) return reply.code(400).send({ error: 'empty' });
     const from = (b.exercise && d.courses.active?.content.current.get(b.exercise) ? d.courses.exerciseRef(b.exercise) : null) ?? b.from;
     try {
-      return f().addCard(req.params.id, b.kind, b.front, b.back, from, b.after, b.tags);
+      return f().addCard(req.params.id, b.kind, b.front, b.back, from, b.after, b.tags, b.highlight ? d.courses.highlightRef(b.highlight) : null);
     } catch (e) {
       return fail(e, reply);
     }
@@ -129,7 +131,7 @@ export function flashcardRoutes(app: FastifyInstance, d: Deps): void {
     if (!b) return;
     if (!b.front.trim()) return reply.code(400).send({ error: 'empty' });
     try {
-      return f().editCard(req.params.id, req.params.card, b.kind, b.front, b.back, b.tags);
+      return f().editCard(req.params.id, req.params.card, b.kind, b.front, b.back, b.tags, { from: b.from, highlight: b.highlight });
     } catch (e) {
       return fail(e, reply);
     }

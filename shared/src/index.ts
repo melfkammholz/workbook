@@ -1,5 +1,6 @@
 // Types shared by server and web. Keep this file free of runtime dependencies.
 
+import type { HighlightLabel } from './annotations';
 import type { SldTree } from './sld';
 
 // ───────────────────────── content model ─────────────────────────
@@ -343,6 +344,8 @@ export interface Settings {
   showFlashcards: boolean;
   /** Opt-in. While false, course text cannot be highlighted and no highlights are shown; they are kept. */
   showAnnotations: boolean;
+  /** The student's own names for highlights, each with a color. Empty: the plain colors. */
+  highlightLabels: HighlightLabel[];
   /** Opt-in. While false, nothing offers a prompt for an AI chat. */
   showAi: boolean;
   /** Language of the app itself. Exercises are not translated. `auto` follows the course. */
@@ -385,6 +388,7 @@ export const DEFAULT_SETTINGS: Settings = {
   rewardIcon: 'trophy',
   showFlashcards: false,
   showAnnotations: false,
+  highlightLabels: [],
   showAi: false,
   editorFontSize: 13.5,
   editorKeys: 'default',
@@ -643,6 +647,11 @@ export interface DeckCard {
   id: string | null;
   kind: CardKind;
   from: string | null;
+  /** The highlight it was made from, as written: `course/<annotation id>`. */
+  highlight?: string | null;
+  /** What `from` and `highlight` point at now; null when it is gone. Only where a card is shown for editing. */
+  origin?: CardOrigin | null;
+  highlightInfo?: CardHighlight | null;
   /** Written on the card. Those of its exercise come on top. */
   tags: string[];
   front: string;
@@ -763,6 +772,16 @@ export interface CardOrigin {
   href: string | null;
 }
 
+/** The highlight a card was made from. Gone when the highlight is. */
+export interface CardHighlight {
+  /** The annotation's id. */
+  id: string;
+  quote: string;
+  courseTitle: string;
+  /** Only when that course is open. */
+  href: string | null;
+}
+
 export interface ReviewCard {
   key: string;
   deckId: string;
@@ -777,6 +796,7 @@ export interface ReviewCard {
   back: string;
   css: string;
   origin: CardOrigin | null;
+  highlight: CardHighlight | null;
   isNew: boolean;
   /** Milliseconds until it comes up again, for each rating. */
   intervals: Record<CardRating, number>;

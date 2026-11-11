@@ -1,4 +1,4 @@
-import type { CardKind, RenderedCard } from '@wb/shared';
+import type { CardHighlight, CardKind, CardOrigin, RenderedCard } from '@wb/shared';
 import { Columns2, PanelBottom, X } from 'lucide-react';
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { ApiError } from '@/lib/api';
@@ -56,7 +56,7 @@ export function CardForm({
   autoFocus,
   fresh,
 }: {
-  initial?: Partial<CardFields>;
+  initial?: Partial<CardFields> & { origin?: CardOrigin | null; highlightInfo?: CardHighlight | null };
   /** Empty after saving even when it started with something, e.g. a quiz taken from a lesson. Editing keeps it. */
   fresh?: boolean;
   submitLabel: string;
@@ -72,6 +72,9 @@ export function CardForm({
   const [front, setFront] = useState(initial?.front ?? '');
   const [back, setBack] = useState(initial?.back ?? '');
   const [tags, setTags] = useState<string[]>(initial?.tags ?? []);
+  /** What the card points back to; each can be dropped. */
+  const [from, setFrom] = useState<string | null>(initial?.from ?? null);
+  const [highlight, setHighlight] = useState<string | null>(initial?.highlight ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ card: RenderedCard; css: string } | null>(null);
@@ -113,7 +116,7 @@ export function CardForm({
     setBusy(true);
     setError(null);
     try {
-      await onSubmit({ kind, front, back: single ? '' : back, tags });
+      await onSubmit({ kind, front, back: single ? '' : back, tags, from, highlight });
       if (fresh || !initial?.front) {
         setFront('');
         setBack('');
@@ -207,6 +210,16 @@ export function CardForm({
       )}
       {!single ? field(t.cardBack, back, setBack, 5, false) : null}
       <TagPicker tags={tags} onChange={setTags} />
+      {from || highlight ? (
+        <References
+          origin={from ? (initial?.origin ?? null) : null}
+          from={from}
+          mark={highlight ? (initial?.highlightInfo ?? null) : null}
+          highlight={highlight}
+          onDropFrom={() => setFrom(null)}
+          onDropHighlight={() => setHighlight(null)}
+        />
+      ) : null}
     </>
   );
 
@@ -249,6 +262,33 @@ export function CardForm({
           {error}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/** Where a card came from: its exercise and its highlight. Either can be dropped from the card. */
+function References({ origin, from, mark, highlight, onDropFrom, onDropHighlight }: { origin: CardOrigin | null; from: string | null; mark: CardHighlight | null; highlight: string | null; onDropFrom: () => void; onDropHighlight: () => void }) {
+  const t = useT();
+  const chip = (key: string, label: ReactNode, drop: () => void, dropLabel: string) => (
+    <li key={key} className="inline-flex max-w-full items-center gap-1 rounded-full bg-sunk px-2.5 py-0.5 text-[13px] text-ink-2">
+      <span className="min-w-0 truncate">{label}</span>
+      <button type="button" aria-label={dropLabel} title={dropLabel} onClick={drop} className="shrink-0 hover:text-ink">
+        <X size={12} />
+      </button>
+    </li>
+  );
+  return (
+    <div>
+      <span className="text-sm font-medium">{t.cardReferences}</span>
+      <ul className="mt-1 flex flex-wrap gap-1.5">
+        {from
+          ? chip('from', origin ? `${t.cardFrom} ${origin.title} · ${origin.courseTitle}` : `${t.cardFrom} ${from}`, onDropFrom, t.cardDropReference)
+          : null}
+        {highlight
+          ? chip('highlight', mark ? `${t.cardHighlight} “${mark.quote.trim().slice(0, 60)}”` : `${t.cardHighlight}: ${t.cardReferenceGone}`, onDropHighlight, t.cardDropReference)
+          : null}
+      </ul>
+      <p className="mt-1 text-[12px] text-ink-3">{t.cardReferencesHint}</p>
     </div>
   );
 }

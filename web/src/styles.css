@@ -305,7 +305,8 @@ a.wb-external::after {
 .prose-deck aside[data-wb="card"] > [data-side="text"] { grid-column: 1 / -1; }
 .prose-deck aside[data-wb="card"][data-kind="both"] > [data-side="back"]::before { content: "⇄"; float: right; color: var(--ink-3); margin-left: 0.5em; }
 .prose-deck .wb-card-from { grid-column: 1 / -1; margin: 0; padding: 0.35em 0.9em; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-3); }
-a.wb-card-from:hover { color: var(--accent); }
+.prose-deck .wb-card-from a { color: var(--accent); text-decoration: none; }
+.prose-deck .wb-card-from a:hover { text-decoration: underline; }
 .wb-card-course { margin-left: 0.4em; opacity: 0.8; }
 .wb-card-course::before { content: "· "; }
 @media (max-width: 640px) {
@@ -480,6 +481,7 @@ a.wb-card-from:hover { color: var(--accent); }
 ::highlight(wb-ann-green) { background-color: var(--ann-green); }
 ::highlight(wb-ann-blue) { background-color: var(--ann-blue); }
 ::highlight(wb-ann-pink) { background-color: var(--ann-pink); }
+
 ::highlight(wb-ann-comment) { text-decoration: underline dotted var(--ann-line) 1.5px; text-underline-offset: 3px; }
 ::highlight(wb-ann-review) { text-decoration: underline wavy var(--review) 1.5px; text-underline-offset: 3px; }
 ::highlight(wb-ann-active) { background-color: color-mix(in srgb, var(--accent) 28%, transparent); }

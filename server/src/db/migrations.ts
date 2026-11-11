@@ -199,4 +199,7 @@ export const MIGRATIONS: Migration[] = [
   );
   CREATE INDEX annotations_target ON annotations (target);
   `,
+  /* 9: a highlight may carry one of the student's own labels */ `
+  ALTER TABLE annotations ADD COLUMN label TEXT;
+  `,
 ];

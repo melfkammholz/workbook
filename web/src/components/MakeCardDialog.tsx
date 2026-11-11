@@ -11,9 +11,9 @@ import { Dialog } from './ui';
 
 /**
  * The quick way to a card: it only appends one card to the deck's text, the same
- * as typing it there. The card remembers the exercise it was made in.
+ * as typing it there. The card remembers the exercise it was made in, and the highlight if it was made from one.
  */
-export function MakeCardDialog({ open, onClose, exerciseId, initial }: { open: boolean; onClose: () => void; exerciseId: string | null; initial?: Partial<CardFields> }) {
+export function MakeCardDialog({ open, onClose, exerciseId, highlightId = null, initial }: { open: boolean; onClose: () => void; exerciseId: string | null; highlightId?: string | null; initial?: Partial<CardFields> }) {
   const t = useT();
   const qc = useQueryClient();
   const list = useFlashcards();
@@ -65,7 +65,7 @@ export function MakeCardDialog({ open, onClose, exerciseId, initial }: { open: b
         onSubmit={async (f) => {
           // The first deck is made on the way, and belongs to the course it was made in.
           const target = deckId ?? (await createDeck(t.defaultDeckTitle, true)).id;
-          const r = await addCard(target, { ...f, exercise: exerciseId });
+          const r = await addCard(target, { ...f, exercise: exerciseId, highlight: highlightId });
           setDeckId(target);
           setAdded({ deckId: target, cardId: r.cardId, title: deck?.title ?? t.defaultDeckTitle, cards: r.cards.length });
           // The deck, if it was open before, already has the card when it is opened again.

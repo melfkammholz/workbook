@@ -1,7 +1,22 @@
 // Highlights and comments on the course's text. Pure: no DOM, so the server and the tests can use it.
 
 export const ANNOTATION_COLORS = ['yellow', 'green', 'blue', 'pink'] as const;
-export type AnnotationColor = (typeof ANNOTATION_COLORS)[number];
+export type PaletteColor = (typeof ANNOTATION_COLORS)[number];
+/** One of the palette, or a color the student added: `#rrggbb`, lower case. */
+export type AnnotationColor = PaletteColor | `#${string}`;
+
+const HEX = /^#[0-9a-f]{6}$/;
+export const isCustomColor = (c: string): c is `#${string}` => HEX.test(c);
+export const isAnnotationColor = (c: string): c is AnnotationColor => (ANNOTATION_COLORS as readonly string[]).includes(c) || HEX.test(c);
+/** The same color written the same way, so two labels cannot have one color in two spellings. */
+export const normalizeColor = (c: string): string => c.toLowerCase();
+
+/** A name the student gives to highlights, with the color they get. Kept in the settings. */
+export interface HighlightLabel {
+  id: string;
+  name: string;
+  color: AnnotationColor;
+}
 
 /** `open`: the student marked it to come back to; `resolved`: they did. */
 export type AnnotationReview = 'open' | 'resolved';
@@ -28,6 +43,8 @@ export interface AnnotationPlace {
 export interface Annotation extends AnnotationPlace, TextQuote {
   id: string;
   color: AnnotationColor;
+  /** The id of one of the student's labels, or null. The color stays when the label is removed. */
+  label: string | null;
   /** Plain text. */
   comment: string;
   review: AnnotationReview | null;

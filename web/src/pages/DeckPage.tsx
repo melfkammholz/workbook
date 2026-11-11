@@ -13,6 +13,8 @@ import { MoreMenu } from '@/components/ExerciseView';
 import { TypstEditor } from '@/components/TypstEditor';
 import { Button, Dialog, Empty, IconButton, Segmented, Spinner, clsx } from '@/components/ui';
 import { useSettings } from '@/lib/api';
+import { showAnnotationOnArrival } from '@/lib/annotations';
+import { Title } from '@/components/Title';
 import { addCard, cardKeys, deckPrompt, deleteCard, downloadDeck, deleteDeck, editCard, moveCardBy, moveCardTo, previewDeck, saveDeckSource, updateDeck, useDeck, useFlashcards } from '@/lib/flashcards';
 import { useLang, useT } from '@/lib/i18n';
 import { readPref, writePref } from '@/lib/shell';
@@ -363,6 +365,28 @@ function CardRow({
           </span>
         ) : null}
         {card.kind === 'both' ? <span>{t.cardKind.both}</span> : null}
+        {card.origin ? (
+          card.origin.href ? (
+            <a href={card.origin.href} className="text-accent hover:underline">
+              {t.cardFrom} <Title text={card.origin.title} />
+            </a>
+          ) : (
+            <span>
+              {t.cardFrom} <Title text={card.origin.title} /> · {card.origin.courseTitle}
+            </span>
+          )
+        ) : null}
+        {card.highlightInfo ? (
+          card.highlightInfo.href ? (
+            <a href={card.highlightInfo.href} onClick={() => showAnnotationOnArrival(card.highlightInfo!.id)} className="max-w-full truncate text-accent hover:underline">
+              “{card.highlightInfo.quote.trim().slice(0, 60)}”
+            </a>
+          ) : (
+            <span className="max-w-full truncate">
+              “{card.highlightInfo.quote.trim().slice(0, 60)}” · {card.highlightInfo.courseTitle}
+            </span>
+          )
+        ) : null}
         {card.tags.map((tag) => (
           <span key={tag} className="rounded-full bg-sunk px-2 py-0.5">
             {tagLabel(tag)}

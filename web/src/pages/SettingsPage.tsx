@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
-import { DUSK_COLORS, type Settings, type UiLanguage } from '@wb/shared';
+import { useEffect, useRef, useState } from 'react';
+import { ANNOTATION_COLORS, DUSK_COLORS, isCustomColor, normalizeColor, type AnnotationColor, type HighlightLabel, type Settings, type UiLanguage } from '@wb/shared';
+import { Plus, X } from 'lucide-react';
 import { api, keys, useSaveSettings, useSettings } from '@/lib/api';
+import { swatchProps } from '@/lib/annotations';
 import { useT } from '@/lib/i18n';
 import { applyTheme } from '@/lib/theme';
 import { Button, Segmented, clsx } from '@/components/ui';
@@ -42,6 +44,106 @@ function Toggle({ checked, onChange, title, body }: { checked: boolean; onChange
         {body ? <span className="block text-[13px] text-ink-2">{body}</span> : null}
       </span>
     </label>
+  );
+}
+
+/** Colors offered for a new label once the four of the palette are taken. */
+const MORE_COLORS = ['#f2b36d', '#b9a3f2', '#7fd6d0', '#e58a8a', '#a8c97f', '#8fb4e8', '#d9a0d9', '#c9c27a'];
+
+/** A color to pick freely. Changes when the picker is closed, so a drag through colors is not saved on the way. */
+function CustomColor({ value, label, onPick }: { value: string; label: string; onPick: (hex: string) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const pick = useRef(onPick);
+  pick.current = onPick;
+  useEffect(() => {
+    const el = ref.current;
+    const on = () => el && pick.current(el.value);
+    el?.addEventListener('change', on);
+    return () => el?.removeEventListener('change', on);
+  }, []);
+  const custom = isCustomColor(value);
+  return (
+    <label title={label} className={clsx('relative grid size-7 cursor-pointer place-items-center rounded-md hover:bg-sunk', '[&:has(:focus-visible)]:ring-2 [&:has(:focus-visible)]:ring-accent')}>
+      <span
+        aria-hidden
+        {...(custom ? swatchProps(value) : {})}
+        className={clsx('wb-ann-swatch grid size-4.5 place-items-center rounded-full border border-ink/15', custom ? 'ring-2 ring-accent ring-offset-1 ring-offset-sheet' : 'border-dashed bg-transparent text-ink-3')}
+        style={custom ? swatchProps(value).style : { background: 'transparent' }}
+      >
+        {custom ? null : <Plus size={11} />}
+      </span>
+      <input ref={ref} type="color" defaultValue={custom ? value : '#f2b36d'} aria-label={label} className="absolute inset-0 size-full cursor-pointer opacity-0" />
+    </label>
+  );
+}
+
+/** The student's own names for highlights. Each has its own color: one of the palette, or one added. */
+function LabelsEditor({ labels, onChange }: { labels: HighlightLabel[]; onChange: (l: HighlightLabel[]) => void }) {
+  const t = useT();
+  const safe = !!useSettings().data?.safeColors;
+  const colorNames = safe ? t.annColorSafe : t.annColor;
+  const [taken, setTaken] = useState(false);
+  const change = (id: string, patch: Partial<HighlightLabel>) => onChange(labels.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+  const usedByOther = (id: string, color: string) => labels.some((l) => l.id !== id && l.color === color);
+  const setColor = (id: string, color: string) => {
+    const c = normalizeColor(color);
+    if (usedByOther(id, c)) return setTaken(true);
+    setTaken(false);
+    change(id, { color: c as AnnotationColor });
+  };
+  const free = [...ANNOTATION_COLORS, ...MORE_COLORS].find((c) => !labels.some((l) => l.color === c));
+  return (
+    <div className="ml-7 max-w-lg space-y-2">
+      <p className="text-sm font-medium">{t.annLabelsTitle}</p>
+      <p className="text-[13px] text-ink-2">{t.annLabelsBody}</p>
+      <ul className="space-y-1.5">
+        {labels.map((l) => (
+          <li key={l.id} className="flex items-center gap-2">
+            <input
+              defaultValue={l.name}
+              maxLength={60}
+              aria-label={t.annLabelName}
+              placeholder={t.annLabelPlaceholder}
+              onBlur={(e) => e.target.value !== l.name && change(l.id, { name: e.target.value.trim() })}
+              className="h-8.5 min-w-0 flex-1 rounded-md border border-line-strong bg-sheet px-2 focus:border-accent focus:outline-none"
+            />
+            <span role="group" aria-label={t.annLabelColor} className="flex items-center">
+              {ANNOTATION_COLORS.map((c) => {
+                const used = usedByOther(l.id, c);
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    disabled={used}
+                    onClick={() => setColor(l.id, c)}
+                    aria-pressed={l.color === c}
+                    aria-label={colorNames[c]}
+                    title={used ? t.annColorTaken(colorNames[c]) : colorNames[c]}
+                    className="grid size-7 place-items-center rounded-md hover:bg-sunk disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                  >
+                    <span data-color={c} className={clsx('wb-ann-swatch size-4.5 rounded-full border border-ink/15', l.color === c && 'ring-2 ring-accent ring-offset-1 ring-offset-sheet')} />
+                  </button>
+                );
+              })}
+              <CustomColor value={l.color} label={t.annColorOwn} onPick={(hex) => setColor(l.id, hex)} />
+            </span>
+            <button type="button" onClick={() => onChange(labels.filter((x) => x.id !== l.id))} aria-label={t.annLabelRemove(l.name)} title={t.annLabelRemove(l.name)} className="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-sunk hover:text-danger">
+              <X size={15} />
+            </button>
+          </li>
+        ))}
+      </ul>
+      {taken ? (
+        <p role="status" className="text-[13px] text-review">
+          {t.annColorUsed}
+        </p>
+      ) : null}
+      {free && labels.length < 30 ? (
+        <Button onClick={() => onChange([...labels, { id: crypto.randomUUID().slice(0, 8), name: '', color: free as AnnotationColor }])}>
+          <Plus size={14} /> {t.annLabelAdd}
+        </Button>
+      ) : null}
+    </div>
   );
 }
 
@@ -231,6 +333,7 @@ export function SettingsPage({ section }: { section?: string }) {
           ) : null}
           <Toggle checked={settings.showFlashcards} onChange={(v) => set({ showFlashcards: v })} title={t.showFlashcards} body={t.showFlashcardsBody} />
           <Toggle checked={settings.showAnnotations} onChange={(v) => set({ showAnnotations: v })} title={t.showAnnotations} body={t.showAnnotationsBody} />
+          {settings.showAnnotations ? <LabelsEditor labels={settings.highlightLabels} onChange={(l) => set({ highlightLabels: l })} /> : null}
           <Toggle checked={settings.showAi} onChange={(v) => set({ showAi: v })} title={t.showAi} body={t.showAiBody} />
         </div>
       ),

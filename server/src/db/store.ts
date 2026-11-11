@@ -353,12 +353,12 @@ export class Store {
     return r ? rowToAnnotation(r) : null;
   }
 
-  addAnnotation(a: AnnotationPlace & TextQuote & { color: AnnotationColor; comment?: string; review?: AnnotationReview | null }): Annotation {
+  addAnnotation(a: AnnotationPlace & TextQuote & { color: AnnotationColor; label?: string | null; comment?: string; review?: AnnotationReview | null }): Annotation {
     const id = randomUUID();
     const t = this.now();
     this.tx(() => {
       this.run(
-        'INSERT INTO annotations (id, target, part, quote, prefix, suffix, color, comment, review, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO annotations (id, target, part, quote, prefix, suffix, color, label, comment, review, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
         id,
         a.target,
         a.part,
@@ -366,6 +366,7 @@ export class Store {
         a.prefix,
         a.suffix,
         a.color,
+        a.label ?? null,
         (a.comment ?? '').slice(0, 4000),
         a.review ?? null,
         t,
@@ -377,12 +378,12 @@ export class Store {
   }
 
   /** Null when there is no such annotation. */
-  updateAnnotation(id: string, patch: { color?: AnnotationColor; comment?: string; review?: AnnotationReview | null }): Annotation | null {
+  updateAnnotation(id: string, patch: { color?: AnnotationColor; label?: string | null; comment?: string; review?: AnnotationReview | null }): Annotation | null {
     const prev = this.getAnnotation(id);
     if (!prev) return null;
     const next = { ...prev, ...patch, comment: (patch.comment ?? prev.comment).slice(0, 4000) };
     this.tx(() => {
-      this.run('UPDATE annotations SET color = ?, comment = ?, review = ?, updated_at = ? WHERE id = ?', next.color, next.comment, next.review, this.now(), id);
+      this.run('UPDATE annotations SET color = ?, label = ?, comment = ?, review = ?, updated_at = ? WHERE id = ?', next.color, next.label, next.comment, next.review, this.now(), id);
       this.reindexAnnotations(prev.target);
     });
     return this.getAnnotation(id);
@@ -622,6 +623,7 @@ function rowToAnnotation(r: Row): Annotation {
     prefix: r.prefix as string,
     suffix: r.suffix as string,
     color: r.color as AnnotationColor,
+    label: (r.label as string | null) ?? null,
     comment: r.comment as string,
     review: (r.review as AnnotationReview | null) ?? null,
     createdAt: Number(r.created_at),

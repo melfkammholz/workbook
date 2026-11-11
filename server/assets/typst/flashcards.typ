@@ -7,13 +7,14 @@
 
 #import "prelude.typ": _app-look
 
-#let _card(kind, id, from, lang, body) = html.elem(
+#let _card(kind, id, from, highlight, lang, body) = html.elem(
   "aside",
   attrs: (
     data-wb: "card",
     data-kind: kind,
     data-id: if id == none { "" } else { id },
     data-from: if from == none { "" } else { from },
+    data-highlight: if highlight == none { "" } else { highlight },
   ),
   {
     set raw(lang: lang) if lang != none
@@ -25,9 +26,9 @@
 #let _side(name, body, framed) = html.elem("div", attrs: (data-side: name), if framed { html.frame(block(width: 10cm, _app-look(body))) } else { body })
 
 /// A card with a front and a back. `both: true` also asks it the other way round.
-#let flashcard(id: none, from: none, both: false, tags: (), _lang: none, _framed: false, ..sides) = {
+#let flashcard(id: none, from: none, highlight: none, both: false, tags: (), _lang: none, _framed: false, ..sides) = {
   let s = sides.pos()
-  _card(if both { "both" } else { "basic" }, id, from, _lang, {
+  _card(if both { "both" } else { "basic" }, id, from, highlight, _lang, {
     _side("front", s.at(0, default: []), _framed)
     _side("back", s.at(1, default: []), _framed)
   })
@@ -37,11 +38,11 @@
 
 /// A text with gaps: `#cloze[`map` applies a function to {{every element}}.]`.
 /// Each gap is asked on its own.
-#let cloze(id: none, from: none, tags: (), _lang: none, body) = _card("cloze", id, from, _lang, html.elem("div", attrs: (data-side: "text"), body))
+#let cloze(id: none, from: none, highlight: none, tags: (), _lang: none, body) = _card("cloze", id, from, highlight, _lang, html.elem("div", attrs: (data-side: "text"), body))
 
 /// A question with answers to choose from, written as in a lesson:
 /// `#quiz([Frage], choice[falsch][warum], choice(correct: true)[richtig][warum])`.
-#let quiz(id: none, from: none, tags: (), _lang: none, _src: none, question, ..choices) = _card("quiz", id, from, _lang, {
+#let quiz(id: none, from: none, highlight: none, tags: (), _lang: none, _src: none, question, ..choices) = _card("quiz", id, from, highlight, _lang, {
   _side("front", {
     html.elem("div", attrs: (data-part: "question"), question)
     choices.pos().join()

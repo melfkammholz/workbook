@@ -119,6 +119,11 @@ describe('making a card', () => {
     expect(cardText('basic', ' Front ', 'Back\n\nmore', 'c/ex')).toBe('#flashcard(from: "c/ex")[\n  Front\n][\n  Back\n\n  more\n]');
     expect(cardText('both', 'A', 'B', null, 'k3f9', ['lists'])).toBe('#flashcard(id: "k3f9", both: true, tags: ("lists",))[\n  A\n][\n  B\n]');
     expect(cardText('cloze', 'x {{y}}', '', null)).toBe('#cloze[\n  x {{y}}\n]');
+    const text = cardText('basic', 'A', 'B', 'c/ex', 'k3f9', [], 'c/a1b2');
+    expect(text).toBe('#flashcard(id: "k3f9", from: "c/ex", highlight: "c/a1b2")[\n  A\n][\n  B\n]');
+    expect(scanCards(text)[0]).toMatchObject({ from: 'c/ex', highlight: 'c/a1b2' });
+    // Editing a card keeps the highlight it came from.
+    expect(replaceCard(text, 'k3f9', 'basic', 'A2', 'B2', [])).toContain('highlight: "c/a1b2"');
     expect(appendCard('= Deck\n\n', '#flashcard[a][b]')).toBe('= Deck\n\n#flashcard[a][b]\n');
     expect(appendCard('', '#flashcard[a][b]')).toBe('#flashcard[a][b]\n');
   });

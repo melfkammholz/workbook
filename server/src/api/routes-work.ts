@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { AchievementsResponse, HowSolved, ReviewChecklistEntry, ReviewData } from '@wb/shared';
+import { isAnnotationColor, type AchievementsResponse, type HowSolved, type ReviewChecklistEntry, type ReviewData } from '@wb/shared';
 import { qualifiesFor } from '../achievements.js';
 import { hasTests, sharedOwner } from '../content/loader.js';
 import type { Deps } from './deps.js';
@@ -40,6 +40,7 @@ const bodies = {
       rewardIcon: z.enum(['trophy', 'paw']),
       showFlashcards: z.boolean(),
       showAnnotations: z.boolean(),
+      highlightLabels: z.array(z.object({ id: z.string().min(1).max(100), name: z.string().max(60), color: z.string().transform((c) => c.toLowerCase()).refine(isAnnotationColor, 'a palette color or #rrggbb') })).max(30).refine((l) => new Set(l.map((x) => x.color)).size === l.length, 'one label for each color'),
       showAi: z.boolean(),
       safeColors: z.boolean(),
       editorFontSize: z.number().min(10).max(24),

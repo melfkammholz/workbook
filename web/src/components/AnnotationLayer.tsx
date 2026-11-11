@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { ANNOTATION_COLORS, MAX_QUOTE, itemOfTarget, quoteAt, type Annotation, type AnnotationColor, type TextQuote } from '@wb/shared';
+import { ANNOTATION_COLORS, MAX_QUOTE, isAnnotationColor, itemOfTarget, quoteAt, type Annotation, type AnnotationColor, type HighlightLabel, type PaletteColor, type TextQuote } from '@wb/shared';
 import { Check, Layers, MessageSquare, NotebookPen, RotateCcw, Trash2, Undo2 } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -9,11 +9,12 @@ import {
   annotationAt,
   appendToOpenNote,
   deleteAnnotation,
-  escapeMarkup,
   noteSnippet,
   offsetsOf,
   paintedRange,
   setActiveAnnotation,
+  showAnnotationOnArrival,
+  swatchProps,
   textModel,
   updateAnnotation,
   useAnnotations,
@@ -34,7 +35,7 @@ const LAST_COLOR = 'wb-ann-color';
 const lastColor = (): AnnotationColor => {
   try {
     const c = localStorage.getItem(LAST_COLOR);
-    return ANNOTATION_COLORS.includes(c as AnnotationColor) ? (c as AnnotationColor) : 'yellow';
+    return c && isAnnotationColor(c) ? c : 'yellow';
   } catch {
     return 'yellow';
   }
@@ -58,7 +59,10 @@ function Layer() {
   const [pop, setPop] = useState<Pop | null>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const [location] = useLocation();
-  const [card, setCard] = useState<{ exerciseId: string | null; front: string; back: string } | null>(null);
+  const [card, setCard] = useState<{ exerciseId: string | null; highlightId: string } | null>(null);
+  const swatches = useSwatches();
+  const cards = !!useSettings().data?.showFlashcards;
+  const annotations = useAnnotations().data;
 
   const close = useCallback(() => setPop(null), []);
   useEffect(close, [location]);
@@ -107,6 +111,16 @@ function Layer() {
     };
   }, [t]);
 
+  // A link to a highlight (in a deck's text) scrolls to it on arrival.
+  useEffect(() => {
+    const onLink = (e: MouseEvent) => {
+      const id = (e.target as Element).closest<HTMLElement>('a[data-highlight]')?.dataset.highlight;
+      if (id) showAnnotationOnArrival(id);
+    };
+    document.addEventListener('click', onLink);
+    return () => document.removeEventListener('click', onLink);
+  }, []);
+
   // A pointer over a highlight says it can be clicked.
   useEffect(() => {
     let frame = 0;
@@ -130,7 +144,7 @@ function Layer() {
     };
   }, []);
 
-  const create = async (color: AnnotationColor, then?: 'comment' | 'review') => {
+  const create = async (color: AnnotationColor, then?: 'comment' | 'review' | 'card', label: string | null = null) => {
     if (pop?.kind !== 'new') return;
     try {
       localStorage.setItem(LAST_COLOR, color);
@@ -138,20 +152,37 @@ function Layer() {
       /* only a convenience */
     }
     getSelection()?.removeAllRanges();
-    const made = await addAnnotation(qc, { target: pop.target, part: pop.part, ...pop.quote, color, review: then === 'review' ? 'open' : null });
-    setPop(then ? { kind: 'edit', id: made.id, focus: then === 'comment' } : null);
+    const made = await addAnnotation(qc, { target: pop.target, part: pop.part, ...pop.quote, color, label, review: then === 'review' ? 'open' : null });
+    if (then === 'card') setCard({ exerciseId: itemOfTarget(made.target), highlightId: made.id });
+    setPop(then === 'comment' || then === 'review' ? { kind: 'edit', id: made.id, focus: then === 'comment' } : null);
   };
 
-  // Keys while the colours are offered: 1 to 4 for a colour, c to comment, r to come back to it.
+  // Keys while the colours are offered: 1 to 9 for a colour or label, c to comment, r to come back to it, m to make a card.
   useEffect(() => {
     if (pop?.kind !== 'new') return;
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      const i = '1234'.indexOf(e.key);
-      const action = i >= 0 ? () => create(ANNOTATION_COLORS[i]!) : e.key === 'c' ? () => create(lastColor(), 'comment') : e.key === 'r' ? () => create(lastColor(), 'review') : null;
+      const i = '123456789'.indexOf(e.key);
+      const action = i >= 0 && swatches[i] ? () => create(swatches[i]!.color, undefined, swatches[i]!.label) : e.key === 'm' && cards ? () => create(lastColor(), 'card') : e.key === 'c' ? () => create(lastColor(), 'comment') : e.key === 'r' ? () => create(lastColor(), 'review') : null;
       if (!action) return;
       e.preventDefault();
       void action();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  });
+
+  // The same key makes a card from an open highlight, unless a text is being written.
+  useEffect(() => {
+    if (pop?.kind !== 'edit' || !cards) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'm' || e.ctrlKey || e.metaKey || e.altKey) return;
+      if ((e.target as Element | null)?.closest('input, textarea, select, [contenteditable]')) return;
+      const a = annotations?.find((x) => x.id === pop.id);
+      if (!a) return;
+      e.preventDefault();
+      setCard({ exerciseId: itemOfTarget(a.target), highlightId: a.id });
+      close();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -176,14 +207,14 @@ function Layer() {
       {pop ? (
         <Floating anchor={anchor} popRef={popRef} wide={pop.kind === 'edit'}>
           {pop.kind === 'new' ? (
-            <NewHighlight onPick={(c, then) => void create(c, then)} />
+            <NewHighlight onPick={(c, then, label) => void create(c, then, label)} />
           ) : pop.kind === 'notice' ? (
             <p className="max-w-xs px-3 py-2 text-[13px] text-ink-2">{pop.text}</p>
           ) : pop.kind === 'removed' ? (
             <Removed
               onUndo={async () => {
                 const { ann } = pop;
-                const back = await addAnnotation(qc, { target: ann.target, part: ann.part, quote: ann.quote, prefix: ann.prefix, suffix: ann.suffix, color: ann.color, comment: ann.comment, review: ann.review });
+                const back = await addAnnotation(qc, { target: ann.target, part: ann.part, quote: ann.quote, prefix: ann.prefix, suffix: ann.suffix, color: ann.color, label: ann.label, comment: ann.comment, review: ann.review });
                 setPop({ kind: 'edit', id: back.id, focus: false });
               }}
               onGone={close}
@@ -195,7 +226,7 @@ function Layer() {
               focus={pop.focus}
               onRemove={(a) => void remove(a)}
               onCard={(a) => {
-                setCard({ exerciseId: itemOfTarget(a.target), front: a.comment.trim() ? escapeMarkup(a.comment.trim()) : '', back: escapeMarkup(a.quote.trim()) });
+                setCard({ exerciseId: itemOfTarget(a.target), highlightId: a.id });
                 close();
               }}
               onGone={close}
@@ -203,7 +234,7 @@ function Layer() {
           )}
         </Floating>
       ) : null}
-      {card ? <MakeCardDialog open onClose={() => setCard(null)} exerciseId={card.exerciseId} initial={{ kind: 'basic', front: card.front, back: card.back }} /> : null}
+      {card ? <MakeCardDialog open onClose={() => setCard(null)} exerciseId={card.exerciseId} highlightId={card.highlightId} /> : null}
     </>
   );
 }
@@ -250,44 +281,89 @@ function Floating({ anchor, popRef, wide, children }: { anchor: () => { rects: D
   );
 }
 
-function Swatches({ value, onPick }: { value?: AnnotationColor; onPick: (c: AnnotationColor) => void }) {
+interface Swatch {
+  key: string;
+  color: AnnotationColor;
+  /** The student's label, if the swatch is one. */
+  label: string | null;
+  name: string;
+}
+
+/** What a selection can be highlighted as: the student's labels, or the plain colors while there are none. */
+function useSwatches(): Swatch[] {
   const t = useT();
-  const safe = !!useSettings().data?.safeColors;
-  const names = safe ? t.annColorSafe : t.annColor;
+  const settings = useSettings().data;
+  const names = settings?.safeColors ? t.annColorSafe : t.annColor;
+  const labels = settings?.highlightLabels ?? [];
+  return labels.length
+    ? labels.map((l: HighlightLabel) => ({ key: l.id, color: l.color, label: l.id, name: l.name.trim() || names[l.color as PaletteColor] || l.color }))
+    : ANNOTATION_COLORS.map((c) => ({ key: c, color: c, label: null, name: names[c] }));
+}
+
+function Swatches({ value, onPick }: { value?: { color: AnnotationColor; label: string | null }; onPick: (s: Swatch) => void }) {
+  const t = useT();
+  const items = useSwatches();
+  const labelled = items.some((s) => s.label);
   return (
     <div className="flex items-center gap-1">
-      {ANNOTATION_COLORS.map((c, i) => (
-        <button
-          key={c}
-          type="button"
-          onClick={() => onPick(c)}
-          aria-label={t.annHighlightIn(names[c])}
-          aria-pressed={value === undefined ? undefined : value === c}
-          title={value === undefined ? `${t.annHighlightIn(names[c])} (${i + 1})` : names[c]}
-          className="grid size-7 place-items-center rounded-md hover:bg-sunk"
-        >
-          <span data-color={c} className={clsx('wb-ann-swatch grid size-4.5 place-items-center rounded-full border border-ink/15', value === c && 'ring-2 ring-accent ring-offset-1 ring-offset-sheet')}>
-            {value === c ? <Check size={11} strokeWidth={3} className="text-ink" /> : null}
-          </span>
-        </button>
-      ))}
+      {items.map((s, i) => {
+        const selected = value ? (labelled ? value.label === s.label : value.color === s.color) : false;
+        return (
+          <button
+            key={s.key}
+            type="button"
+            onClick={() => onPick(s)}
+            aria-label={labelled ? s.name : t.annHighlightIn(s.name)}
+            aria-pressed={value === undefined ? undefined : selected}
+            title={value === undefined && i < 9 ? `${labelled ? s.name : t.annHighlightIn(s.name)} (${i + 1})` : s.name}
+            className="grid size-7 place-items-center rounded-md hover:bg-sunk"
+          >
+            <span {...swatchProps(s.color)} className={clsx('wb-ann-swatch grid size-4.5 place-items-center rounded-full border border-ink/15', selected && 'ring-2 ring-accent ring-offset-1 ring-offset-sheet')}>
+              {selected ? <Check size={11} strokeWidth={3} className="text-ink" /> : null}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
 
-function NewHighlight({ onPick }: { onPick: (c: AnnotationColor, then?: 'comment' | 'review') => void }) {
+function NewHighlight({ onPick }: { onPick: (c: AnnotationColor, then?: 'comment' | 'review' | 'card', label?: string | null) => void }) {
   const t = useT();
+  const showCards = !!useSettings().data?.showFlashcards;
+  const last = lastColor();
   return (
     <div className="flex items-center gap-1 p-1">
-      <Swatches onPick={(c) => onPick(c)} />
+      <Swatches onPick={(s) => onPick(s.color, undefined, s.label)} />
       <span className="mx-0.5 h-5 w-px bg-line" />
-      <PopButton onClick={() => onPick(lastColor(), 'comment')} title={`${t.annComment} (c)`}>
-        <MessageSquare size={14} /> {t.annComment}
-      </PopButton>
-      <PopButton onClick={() => onPick(lastColor(), 'review')} title={`${t.annComeBack} (r)`}>
-        <RotateCcw size={14} /> {t.annComeBack}
-      </PopButton>
+      <IconAction onClick={() => onPick(last, 'comment')} label={`${t.annComment} (c)`}>
+        <MessageSquare size={15} />
+      </IconAction>
+      <IconAction onClick={() => onPick(last, 'review')} label={`${t.annComeBack} (r)`}>
+        <RotateCcw size={15} />
+      </IconAction>
+      {showCards ? (
+        <IconAction onClick={() => onPick(last, 'card')} label={`${t.annMakeCard} (m)`}>
+          <Layers size={15} />
+        </IconAction>
+      ) : null}
     </div>
+  );
+}
+
+/** A button with an icon only; its name shows on hover and is read out. */
+function IconAction({ children, onClick, label, pressed }: { children: ReactNode; onClick: () => void; label: string; pressed?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      aria-pressed={pressed}
+      className={clsx('grid size-7 place-items-center rounded-md hover:bg-sunk', pressed ? 'bg-review-soft text-review' : 'text-ink-2 hover:text-ink')}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -332,11 +408,41 @@ function EditHighlight({ id, focus, onRemove, onCard, onGone }: { id: string; fo
     setNoted(true);
   };
 
+  const review = ann.review;
   return (
     <div className="p-2">
       <div className="flex items-center gap-1">
-        <Swatches value={ann.color} onPick={(color) => void updateAnnotation(qc, id, { color })} />
+        <Swatches value={ann} onPick={(s) => void updateAnnotation(qc, id, { color: s.color, label: s.label })} />
         <span className="flex-1" />
+        {review === 'open' ? (
+          <IconAction pressed onClick={() => void updateAnnotation(qc, id, { review: 'resolved' })} label={`${t.annMarked}: ${t.annClearUp}`}>
+            <RotateCcw size={15} />
+          </IconAction>
+        ) : review === 'resolved' ? (
+          <IconAction onClick={() => void updateAnnotation(qc, id, { review: 'open' })} label={`${t.annIsClearedUp}: ${t.annReopen}`}>
+            <Check size={15} className="text-done" />
+          </IconAction>
+        ) : (
+          <IconAction onClick={() => void updateAnnotation(qc, id, { review: 'open' })} label={t.annComeBack}>
+            <RotateCcw size={15} />
+          </IconAction>
+        )}
+        {item ? (
+          <IconAction onClick={() => void toNote()} label={noted ? t.annToNoteDone : t.annToNote}>
+            {noted ? <Check size={15} className="text-done" /> : <NotebookPen size={15} />}
+          </IconAction>
+        ) : null}
+        {settings?.showFlashcards ? (
+          <IconAction
+            onClick={() => {
+              save.flush();
+              onCard({ ...ann, comment: draft });
+            }}
+            label={`${t.annMakeCard} (m)`}
+          >
+            <Layers size={15} />
+          </IconAction>
+        ) : null}
         <button type="button" onClick={() => onRemove(ann)} aria-label={t.annRemove} title={t.annRemove} className="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-sunk hover:text-danger">
           <Trash2 size={15} />
         </button>
@@ -357,45 +463,6 @@ function EditHighlight({ id, focus, onRemove, onCard, onGone }: { id: string; fo
           className="block w-full resize-y rounded-md border border-line-strong bg-paper px-2.5 py-1.5 text-[14px] leading-snug placeholder:text-ink-3 focus:border-accent focus:outline-none"
         />
       </label>
-      <div className="mt-1.5 flex flex-wrap items-center gap-1">
-        {ann.review === 'open' ? (
-          <>
-            <span className="inline-flex h-7 items-center gap-1.5 px-1.5 text-[13px] font-medium text-review">
-              <RotateCcw size={14} /> {t.annMarked}
-            </span>
-            <PopButton onClick={() => void updateAnnotation(qc, id, { review: 'resolved' })}>
-              <Check size={14} /> {t.annClearUp}
-            </PopButton>
-          </>
-        ) : ann.review === 'resolved' ? (
-          <>
-            <span className="inline-flex h-7 items-center gap-1.5 px-1.5 text-[13px] font-medium text-done">
-              <Check size={14} /> {t.annIsClearedUp}
-            </span>
-            <PopButton onClick={() => void updateAnnotation(qc, id, { review: 'open' })}>{t.annReopen}</PopButton>
-          </>
-        ) : (
-          <PopButton onClick={() => void updateAnnotation(qc, id, { review: 'open' })}>
-            <RotateCcw size={14} /> {t.annComeBack}
-          </PopButton>
-        )}
-        <span className="flex-1" />
-        {item ? (
-          <PopButton onClick={() => void toNote()} title={t.annToNote}>
-            {noted ? <Check size={14} className="text-done" /> : <NotebookPen size={14} />} {noted ? t.annToNoteDone : t.annToNote}
-          </PopButton>
-        ) : null}
-        {settings?.showFlashcards ? (
-          <PopButton
-            onClick={() => {
-              save.flush();
-              onCard({ ...ann, comment: draft });
-            }}
-          >
-            <Layers size={14} /> {t.annMakeCard}
-          </PopButton>
-        ) : null}
-      </div>
     </div>
   );
 }

@@ -28,6 +28,8 @@ export interface CardCall {
   /** Where the id's text is, without the quotes. */
   idSpan: Span | null;
   from: string | null;
+  /** The highlight it was made from: `course/<annotation id>`. */
+  highlight: string | null;
   /** Its own tags, besides those of its exercise. */
   tags: string[];
   /** Content blocks, without their brackets. */
@@ -125,6 +127,7 @@ class Scanner {
       const argText = args ? s.slice(args.from + 1, args.to) : '';
       const idMatch = /(?:^|[\s,])id\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(argText);
       const fromMatch = /(?:^|[\s,])from\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(argText);
+      const highlightMatch = /(?:^|[\s,])highlight\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(argText);
       const both = /(?:^|[\s,])both\s*:\s*true\b/.test(argText);
       // `tags: ("a", "b")`, or a single `tags: "a"`.
       const tagMatch = /(?:^|[\s,])tags\s*:\s*(\([^)]*\)|"(?:[^"\\]|\\.)*")/.exec(argText);
@@ -143,6 +146,7 @@ class Scanner {
         id: idMatch ? idMatch[1]! : null,
         idSpan,
         from: fromMatch ? fromMatch[1]! : null,
+        highlight: highlightMatch ? highlightMatch[1]! : null,
         tags,
         bodies,
         end: i,
