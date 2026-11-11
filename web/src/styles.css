@@ -440,10 +440,9 @@ a.wb-external::after {
   :root[data-warm] .wb-strip { margin: 14px 0 14px 14px; height: calc(100% - 28px); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--page-shadow); }
   /* Two cards side by side: the workspace itself is only the ground they lie on. */
   :root[data-warm] .wb-pane.wb-pane-ground { margin: 0; height: 100%; border: 0; border-radius: 0; box-shadow: none; background: transparent; overflow: visible; }
-  /* The task: its page is a card as tall as its text, 14px from the outline. */
-  :root[data-warm] .wb-task-scroll { padding: 14px 0 14px 14px; scrollbar-width: none; }
-  :root[data-warm] .wb-task-scroll::-webkit-scrollbar { display: none; }
-  :root[data-warm] .wb-task-scroll .wb-page { margin-block: 0; padding-top: 1.5rem; }
+  /* The task: the card fills the pane and its text scrolls inside it, 14px from the outline. */
+  :root[data-warm] .wb-task-scroll { height: calc(100% - 28px); margin: 14px 0 14px 14px; background: var(--sheet); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--page-shadow); }
+  :root[data-warm] .wb-task-scroll .wb-page { margin-block: 0; padding-top: 1.5rem; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
   :root[data-warm] .wb-gutter { width: 10px; background: transparent; }
   :root[data-warm] .wb-gutter:hover, :root[data-warm] .wb-gutter[data-separator='active'] { background: transparent; }
   :root[data-warm] .wb-gutter::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 40px; margin: -20px 0 0 -2px; border-radius: 2px; background: var(--line-strong); opacity: 0; transition: opacity 0.15s; }
