@@ -120,6 +120,14 @@ describe('the layout of a tree', () => {
   });
 });
 
+describe('labels with the clause number', () => {
+  it('shows the number of the clause and the substitution instead of the renamed clause', () => {
+    const t = { tree: node(1, 'p(X)', [step(2, 'resolve', node(4, 'true'), { rule: 'p(X1) :- q(X1)', clause: 2, subst: [{ var: 'X1', term: 'X' }] }), step(5, 'builtin', node(7, 'true'), { subst: [{ var: 'Y', term: '2' }] })]), negations: [] };
+    const l = layoutSld(t, m);
+    expect(l.edges.map((e) => e.label)).toEqual([['(2) {X1 ↦ X}'], ['builtin {Y ↦ 2}']]);
+  });
+});
+
 describe('long labels', () => {
   it('are broken sooner than goals when asked to, which leaves the neighbours more room', () => {
     const rule = 'ancestor(X2, Y2) :- parent(X2, Z2), ancestor(Z2, Y2)';

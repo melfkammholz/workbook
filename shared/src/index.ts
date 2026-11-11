@@ -338,6 +338,8 @@ export interface Settings {
   theme: 'system' | 'light' | 'dusk' | 'dark';
   /** The colour of the dusk theme's bar, outline and buttons. */
   duskColor: DuskColor;
+  /** A dimmer, warmer background with lessons and tasks on white pages. Works with every theme. */
+  warmPaper: boolean;
   /** Colours that work with colour vision deficiency (orange and blue) and patterns wherever colour carries meaning. */
   safeColors: boolean;
   /** Opt-in. While false, flashcards appear nowhere; decks are kept. */
@@ -376,6 +378,7 @@ export const DEFAULT_SETTINGS: Settings = {
   displayName: '',
   theme: 'system',
   duskColor: 'indigo',
+  warmPaper: true,
   safeColors: false,
   uiLanguage: 'auto',
   setupDone: false,

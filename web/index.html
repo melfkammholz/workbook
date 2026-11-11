@@ -10,6 +10,7 @@
       try {
         var t = localStorage.getItem('wb-theme');
         document.documentElement.dataset.dusk = localStorage.getItem('wb-dusk') || 'indigo';
+        if (localStorage.getItem('wb-warm') !== '0') document.documentElement.dataset.warm = '';
         if (t === 'dusk') document.documentElement.dataset.theme = 'dusk';
         else if (t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.dataset.theme = 'dark';
       } catch (e) {}

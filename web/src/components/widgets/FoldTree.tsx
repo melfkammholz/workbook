@@ -101,7 +101,7 @@ function Fold({ plan, decl, cfg, root }: { plan: FoldPlan; decl: string; cfg: Co
           <TreePicture tree={tree} label={(n) => n.term.text} done={new Set()} valueOf={valueOf} aria={value} widest={widest} />
         </Column>
         {stage === 0 ? (
-          <div className="grid min-h-32 place-items-center rounded-md border border-dashed border-line-strong bg-paper p-3 text-center font-mono text-[13px] text-ink-3">{t.hold}</div>
+          <div className="grid min-h-32 place-items-center rounded-md border border-dashed border-line-strong bg-stage p-3 text-center font-mono text-[13px] text-ink-3">{t.hold}</div>
         ) : (
           <Column
             caption={
@@ -153,7 +153,7 @@ function Fold({ plan, decl, cfg, root }: { plan: FoldPlan; decl: string; cfg: Co
 
 function Column({ caption, children }: { caption: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1.5 rounded-md border border-line bg-paper p-2">
+    <div className="flex min-w-0 flex-col gap-1.5 rounded-[10px] border border-line bg-stage p-2">
       {children}
       <p className="min-h-[3em] text-center font-mono text-[13px] font-medium text-ink-2 [overflow-wrap:anywhere]">{caption}</p>
     </div>
@@ -280,8 +280,18 @@ export function TreePicture({
           n.children.map((c, i) => {
             const a = home.get(n)!;
             const b = home.get(c)!;
-            // From the parent's bottom to the child's top: a line between centres would cross the boxes beside the child.
-            return <line key={`${ni}-${i}`} x1={a.x} y1={a.y + 15} x2={b.x} y2={b.y - 15} className="transition-opacity duration-300" style={{ stroke: 'var(--line-strong)', strokeWidth: 2, opacity: hidden(c) ? 0 : 1 }} />;
+            // From the parent's bottom to the child's top, curved like the SLD trees' edges: a line between centres
+            // would cross the boxes beside the child.
+            const mid = (a.y + b.y) / 2;
+            return (
+              <path
+                key={`${ni}-${i}`}
+                d={`M${a.x} ${a.y + 15} C ${a.x} ${mid + 4}, ${b.x} ${mid - 4}, ${b.x} ${b.y - 15}`}
+                fill="none"
+                className="transition-opacity duration-300"
+                style={{ stroke: 'var(--line-strong)', strokeWidth: 1.25, opacity: hidden(c) ? 0 : 1 }}
+              />
+            );
           }),
         )}
         {/* Children first, so a node folded into its parent slides under it rather than over it. */}
@@ -301,20 +311,30 @@ export function TreePicture({
                 transition: hidden(n) ? 'transform 500ms cubic-bezier(0.4, 0, 0.2, 1), opacity 180ms 340ms' : 'transform 500ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms',
               }}
             >
+              {/* The diagrams' one look: a soft halo on what the last step changed, a small drop under each node, a 1px border. */}
+              {n === now ? <rect x={-w / 2 - 4} y={-19} width={w + 8} height={38} rx={12} style={{ fill: 'var(--accent-soft)', stroke: 'color-mix(in srgb, var(--accent) 40%, transparent)', strokeWidth: 1 }} /> : null}
+              <rect
+                x={-w / 2}
+                y={-13}
+                width={w}
+                height={30}
+                rx={9}
+                style={{ fill: value ? 'color-mix(in srgb, var(--accent) 55%, #000)' : k ? 'color-mix(in srgb, var(--k) 30%, var(--sheet))' : 'var(--line)' }}
+              />
               <rect
                 x={-w / 2}
                 y={-15}
                 width={w}
                 height={30}
-                rx={7}
+                rx={9}
                 style={{
                   fill: value ? 'var(--accent)' : k ? 'var(--ks)' : 'var(--sunk)',
-                  stroke: value ? 'var(--accent)' : k ? 'var(--k)' : 'var(--line-strong)',
-                  strokeWidth: n === now ? 3 : 1.5,
+                  stroke: value ? 'var(--accent)' : k ? 'color-mix(in srgb, var(--k) 45%, transparent)' : 'var(--line-strong)',
+                  strokeWidth: 1,
                   strokeDasharray: dim?.has(n) ? '4 4' : undefined,
                 }}
               />
-              <text textAnchor="middle" dominantBaseline="central" className="font-mono text-[14px]" style={{ fill: value ? 'var(--accent-ink)' : 'var(--ink)', fontWeight: value ? 650 : 500 }}>
+              <text textAnchor="middle" dominantBaseline="central" className="font-mono text-[14px]" style={{ fill: value ? 'var(--accent-ink)' : k ? 'var(--k)' : 'var(--ink)', fontWeight: value ? 650 : k ? 600 : 500 }}>
                 {shown(n)}
               </text>
             </g>

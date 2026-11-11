@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Clock, Compass, ExternalLink, Flag, Flame, Lightbulb, MessageCircle, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, Clock, Compass, ExternalLink, Flag, Flame, Lightbulb, MessageCircle, Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import type { ExerciseMeta, ItemDetail, ItemMeta, Outline, StudentState, ThreadInfo } from '@wb/shared';
@@ -11,6 +11,7 @@ import { watchLesson } from '@/lib/lessonToc';
 import { Checklist } from './Checklist';
 import { ChapterMarks, OpenMarks } from './Marks';
 import { Prose } from './Prose';
+import { MarginNotes } from './MarginNotes';
 import { Button, Chip, Level, StatusMark, clsx } from './ui';
 import { Title, plainTitle } from '@/components/Title';
 import { KIND_ICONS } from '@/lib/kinds';
@@ -19,7 +20,7 @@ import { KIND_ICONS } from '@/lib/kinds';
  * The one column every text is read in: exercises, pages, lessons, chapter intros, adventure pages. Text and
  * widgets share its width, so everything lines up on one axis; `#wide` breaks out of it on both sides.
  */
-export const READING_COLUMN = 'max-w-[56rem] px-6 sm:px-8 w-full mx-auto';
+export const READING_COLUMN = 'wb-page max-w-[56rem] px-6 sm:px-8 w-full mx-auto';
 
 interface Props {
   detail: ItemDetail;
@@ -61,7 +62,7 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
   const outside = ex ? !inFocus(ex, focusOf(state)) : !itemInFocus(meta, focusOf(state));
 
   return (
-    <article ref={article} className={clsx('settle mx-auto flex flex-col pb-24 pt-7', READING_COLUMN)}>
+    <article ref={article} className={clsx('settle relative mx-auto flex flex-col pb-24 pt-7', READING_COLUMN)}>
       <header className="mb-6">
         {chapter ? (
           // The way up, to the chapter this belongs to.
@@ -70,7 +71,10 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
           </Link>
         ) : null}
         {lesson || extra ? (
-          <p className="mb-1.5 text-[13px] font-medium text-accent">{[lesson ? t.lesson : null, extra ? t.extraMaterial : null].filter(Boolean).join(' · ')}</p>
+          <p className="mb-1.5 mt-3 flex items-center gap-1.5 text-[13px] font-medium text-accent">
+            {lesson ? <BookOpen size={15} aria-hidden /> : null}
+            {[lesson ? t.lesson : null, extra ? t.extraMaterial : null].filter(Boolean).join(' · ')}
+          </p>
         ) : null}
         <h1 className={clsx('text-balance font-semibold leading-tight', reading ? 'text-[2rem] tracking-[-0.025em]' : 'text-[1.75rem] tracking-[-0.02em]')}>
           {ex?.startHere && ex.emoji ? (
@@ -159,6 +163,7 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
       <Prose html={rendered.task} css={rendered.css} className={clsx('wb-reading', reading && 'wb-lesson')} annotate={{ target: meta.id, part: 'task' }} />
 
       {meta.type === 'checklist' ? <Checklist id={meta.id} questions={rendered.questions} /> : null}
+      <MarginNotes target={meta.id} page={article} />
 
       {rendered.remarks.length ? (
         <div className="mt-8 space-y-3">

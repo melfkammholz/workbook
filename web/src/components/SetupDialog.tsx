@@ -63,7 +63,7 @@ export function SetupDialog() {
             value={settings.theme}
             options={(['system', 'light', 'dusk', 'dark'] as const).map((th) => [th, t.themes[th]])}
             onChange={(th) => {
-              applyTheme(th, settings?.duskColor);
+              applyTheme(th, settings?.duskColor, settings?.warmPaper ?? true);
               set({ theme: th });
             }}
           />

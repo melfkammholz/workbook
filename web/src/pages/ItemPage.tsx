@@ -40,7 +40,8 @@ export function ItemPage({ id, group = null }: { id: string; group?: string | nu
 }
 
 /** The width of the strip the task folds into, in the wide layout. */
-const TASK_STRIP_PX = 44;
+/** With warm paper the strip is a card of its own, 44 wide, with the background around it. */
+const TASK_STRIP_PX = 58;
 
 function Loaded({ id, group }: { id: string; group: string | null }) {
   const t = useT();
@@ -192,7 +193,7 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
   const task = (
     // A container, so wide widgets in a lesson know how much room the page has. Relative, so nothing positioned
     // inside (a hidden `sr-only` line) can reach past it and make the whole window scroll.
-    <div className="@container relative h-full overflow-y-auto">
+    <div className={clsx('@container relative h-full overflow-y-auto', ex && w && 'wb-task-scroll')}>
       <TaskColumn
         detail={detail}
         outline={outline}
@@ -225,6 +226,7 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
           next={around.next}
           group={group}
           onMakeCard={flashcardsOn ? () => setMakingCard(true) : undefined}
+          lessonOptions
         />
         {status === 'done' && upNext ? <ContinueBanner next={upNext} /> : null}
         <div className="min-h-0 flex-1">{task}</div>
@@ -268,6 +270,7 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
       next={around.next}
       group={group}
       onMakeCard={flashcardsOn ? () => setMakingCard(true) : undefined}
+      layoutSwitch={wide && !!ex.code?.runnable}
     />
   );
 
@@ -361,7 +364,7 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
         <Group orientation="horizontal" className="h-full">
           <Panel panelRef={taskPanel} defaultSize={strip ? TASK_STRIP_PX : '46'} minSize="28" collapsible collapsedSize={TASK_STRIP_PX}>
             {strip ? (
-              <div className="flex h-full flex-col items-center gap-3 bg-sheet py-2">
+              <div className="wb-strip flex h-full flex-col items-center gap-3 bg-sheet py-2">
                 <IconButton label={taskOpen ? t.hideTask : t.showTask} aria-pressed={taskOpen} onClick={() => setTaskOpen((open) => !open)}>
                   <BookOpen size={17} />
                 </IconButton>
@@ -371,7 +374,7 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
               task
             )}
           </Panel>
-          <ResizeHandle direction="row" disabled={strip} />
+          <ResizeHandle direction="row" disabled={strip} gutter />
           <Panel defaultSize="54" minSize="28">
             {workspace}
           </Panel>

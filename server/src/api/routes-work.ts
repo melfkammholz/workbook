@@ -43,6 +43,7 @@ const bodies = {
       highlightLabels: z.array(z.object({ id: z.string().min(1).max(100), name: z.string().max(60), color: z.string().transform((c) => c.toLowerCase()).refine(isAnnotationColor, 'a palette color or #rrggbb') })).max(30).refine((l) => new Set(l.map((x) => x.color)).size === l.length, 'one label for each color'),
       showAi: z.boolean(),
       safeColors: z.boolean(),
+      warmPaper: z.boolean(),
       editorFontSize: z.number().min(10).max(24),
       editorKeys: z.enum(['default', 'vim']),
       aiPromptTemplate: z.string().max(20_000),

@@ -1,6 +1,7 @@
 import { ArrowRight, Bookmark, Check, ChevronLeft, ChevronRight, Layers, LifeBuoy, Pause, Play, RotateCcw, Timer, X } from 'lucide-react';
 import { Link } from 'wouter';
 import { useState } from 'react';
+import { useWorkLayout } from '@/lib/workLayout';
 import type { ItemMeta, Status } from '@wb/shared';
 import { itemHref } from '@/lib/api';
 import { formatClock } from '@/lib/attention';
@@ -8,6 +9,7 @@ import { useT } from '@/lib/i18n';
 import { altKey } from '@/lib/keys';
 import { Button, IconButton, clsx } from './ui';
 import { StatusControl } from './StatusControl';
+import { LessonOptions } from './QuickMenus';
 import { plainTitle } from '@/components/Title';
 import { Title } from './Title';
 
@@ -30,6 +32,8 @@ export function ExerciseBar({
   next,
   group,
   onMakeCard,
+  layoutSwitch = false,
+  lessonOptions = false,
 }: {
   status: Status;
   onStatus: (s: Status) => void;
@@ -48,6 +52,10 @@ export function ExerciseBar({
   group?: string | null;
   /** Flashcards are on: a card can be worth making at any moment, so it is always at hand. */
   onMakeCard?: (() => void) | undefined;
+  /** An exercise with code, on a screen with room: the workspace can be split or wide. It changes more than the editor, so it is here. */
+  layoutSwitch?: boolean;
+  /** A lesson: its own options (highlights, sections in the outline) sit beside the card. */
+  lessonOptions?: boolean;
 }) {
   const t = useT();
   const label = finished ? t.timerFinished : paused ? t.timerPaused : t.timeOnExercise;
@@ -85,7 +93,9 @@ export function ExerciseBar({
           </button>
         </>
       ) : null}
+      {lessonOptions ? <LessonOptions /> : null}
       <div className="ml-auto flex items-center gap-2">
+        {layoutSwitch ? <LayoutSwitch /> : null}
         {confidenceLabel ? (
           <button type="button" onClick={onRate} className="hidden rounded-md px-2 py-1 text-[13px] text-ink-2 hover:bg-sunk md:block" title={t.changeRating}>
             {t.confidenceIs(confidenceLabel)}
@@ -208,6 +218,53 @@ export function HelpPrompt({
           <X size={14} /> {t.stuckDismiss}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** The task beside the editor, feedback under it. */
+function SplitIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M10 3v18M10 13h11" />
+    </svg>
+  );
+}
+
+/** The task folded to a strip, the editor beside the feedback. */
+function WideIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M7 3v18M14 3v18" />
+    </svg>
+  );
+}
+
+function LayoutSwitch() {
+  const t = useT();
+  const [layout, setLayout] = useWorkLayout();
+  const options = [
+    { value: 'standard', label: t.layoutSplitShort, title: t.layoutStandard, icon: <SplitIcon /> },
+    { value: 'wide', label: t.layoutWideShort, title: t.layoutWide, icon: <WideIcon /> },
+  ] as const;
+  return (
+    <div role="group" aria-label={t.workspaceLayout} className="hidden items-center gap-0.5 rounded-lg border border-line bg-sunk p-0.5 lg:flex">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          title={o.title}
+          aria-label={o.label}
+          aria-pressed={layout === o.value}
+          onClick={() => setLayout(o.value)}
+          className={clsx('inline-flex h-6 items-center gap-1.5 rounded-md px-2 text-[12.5px]', layout === o.value ? 'bg-sheet text-ink shadow-[0_0_0_1px_var(--line)]' : 'text-ink-3 hover:text-ink')}
+        >
+          {o.icon}
+          <span className="hidden xl:inline">{o.label}</span>
+        </button>
+      ))}
     </div>
   );
 }

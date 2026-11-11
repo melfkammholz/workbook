@@ -1,5 +1,5 @@
 import * as Popover from '@radix-ui/react-popover';
-import { ChevronDown, Clock, Compass, FileText, Flame, GraduationCap, ListChecks, ListFilter, Search, X } from 'lucide-react';
+import { BookOpen, ChevronDown, Clock, Compass, FileText, Flame, ListChecks, ListFilter, Search, X } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useRoute } from 'wouter';
 import type { ChapterMeta, ExerciseKind, ItemMeta, Outline as OutlineT, PartMeta, Status, StudentState, ThreadInfo } from '@wb/shared';
@@ -73,8 +73,8 @@ export function OutlinePanel({ outline, state, currentId, filters, patch, reset,
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-6">
         {filtering ? null : <KindLinks outline={outline} state={state} onNavigate={onNavigate} />}
-        {outline.parts.map((part) => (
-          <PartBlock key={part.id} outline={outline} part={part} chapters={visible.filter((v) => v.chapter.partId === part.id)} state={state} currentId={currentId} filtering={filtering} onNavigate={onNavigate} />
+        {outline.parts.map((part, i) => (
+          <PartBlock key={part.id} number={i + 1} outline={outline} part={part} chapters={visible.filter((v) => v.chapter.partId === part.id)} state={state} currentId={currentId} filtering={filtering} onNavigate={onNavigate} />
         ))}
         {visible
           .filter((v) => v.chapter.partId === null)
@@ -156,6 +156,7 @@ type VisibleChapter = { chapter: ChapterMeta; items: ItemMeta[] };
 
 /** The top level. Collapses as a whole, so a course in two big parts can show one at a time. */
 function PartBlock({
+  number,
   outline,
   part,
   chapters,
@@ -164,6 +165,7 @@ function PartBlock({
   filtering,
   onNavigate,
 }: {
+  number: number;
   outline: OutlineT;
   part: PartMeta;
   chapters: VisibleChapter[];
@@ -178,6 +180,18 @@ function PartBlock({
     if (containsCurrent) setOpen(true);
   }, [containsCurrent]);
   useEffect(() => writeOpen(`part-${part.id}`, open), [part.id, open]);
+  // The band's height wraps with the title, so its chapters learn where to stick from the band itself.
+  const section = useRef<HTMLElement>(null);
+  const band = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const b = band.current;
+    if (!b) return;
+    const set = () => section.current?.style.setProperty('--band', `${b.offsetHeight}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(b);
+    return () => ro.disconnect();
+  }, []);
 
   const exercises = focusExercises(chapters.flatMap((v) => v.chapter.items), state);
   const done = exercises.filter((i) => statusOf(state, i.id) === 'done').length;
@@ -185,19 +199,26 @@ function PartBlock({
   if (filtering && chapters.every((v) => v.items.length === 0)) return null;
 
   return (
-    <section className="border-b border-line">
+    // Its chapters' headers stick just below the band (its measured height), so the two never cover each other.
+    <section ref={section} className="border-b border-line">
       {/* The top level, so it reads as one: a band of its own, and it stays in view while its chapters scroll by. */}
       <button
+        ref={band}
         type="button"
         onClick={() => setOpen(!open)}
         aria-expanded={expanded}
-        className="sticky top-0 z-10 flex w-full items-center gap-2 border-b border-line bg-sunk px-3 py-2.5 text-left hover:bg-line/60"
+        className="sticky top-0 z-10 flex w-full items-center gap-2.5 border-b border-line bg-[color-mix(in_srgb,var(--paper)_55%,var(--sheet))] py-[9px] pl-3.5 pr-3 text-left hover:bg-[color-mix(in_srgb,var(--paper)_80%,var(--sheet))]"
       >
-        <ChevronDown size={16} className={clsx('shrink-0 text-ink-2 transition-transform', !expanded && '-rotate-90')} />
-        <span className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-tight text-ink">{part.title}</span>
-        <span className="shrink-0 text-xs font-medium tabular-nums text-ink-2">
+        {/* Numbered, so the course's parts read as the level above its chapters. */}
+        <span aria-hidden className="grid size-[26px] shrink-0 place-items-center rounded-[7px] border border-line bg-sheet text-[13px] font-bold tabular-nums text-accent">{number}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14px] font-bold leading-tight text-ink">{part.title}</span>
+          {part.summary ? <span className="block truncate text-xs leading-snug text-ink-3">{part.summary}</span> : null}
+        </span>
+        <span className="shrink-0 text-xs tabular-nums text-ink-3">
           {done}/{exercises.length}
         </span>
+        <ChevronDown size={14} className={clsx('shrink-0 text-ink-3 transition-transform', !expanded && '-rotate-90')} />
       </button>
       {expanded
         ? chapters.map(({ chapter, items }) => <ChapterBlock key={chapter.id} outline={outline} chapter={chapter} items={items} state={state} currentId={currentId} forceOpen={filtering} onNavigate={onNavigate} />)
@@ -244,9 +265,9 @@ function ChapterBlock({
   return (
     <section className="pb-1.5">
       {/* Stays in sight while the chapter's rows scroll by, and leaves with the last of them. Its own ground marks where a chapter starts. */}
-      <div className="group sticky top-0 z-10 flex w-full items-center gap-1 border-y border-line bg-[color-mix(in_srgb,var(--paper)_45%,var(--sheet))] pl-1.5 pr-3 hover:bg-paper">
+      <div className="group sticky top-[var(--band,0px)] z-[9] flex w-full items-center gap-1 bg-sheet pl-[9px] pr-3 hover:bg-[color-mix(in_srgb,var(--paper)_45%,var(--sheet))]">
         <button type="button" onClick={() => setOpen(!open)} aria-expanded={expanded} aria-label={expanded ? t.collapseChapter(chapter.title) : t.expandChapter(chapter.title)} className="shrink-0 rounded p-1 text-ink-3 hover:text-ink">
-          <ChevronDown size={15} className={clsx('transition-transform', !expanded && '-rotate-90')} />
+          <ChevronDown size={14} className={clsx('transition-transform', !expanded && '-rotate-90')} />
         </button>
         <Link
           href={`/chapter/${chapter.id}`}
@@ -254,17 +275,13 @@ function ChapterBlock({
             setOpen(true);
             onNavigate?.();
           }}
-          className="flex min-w-0 flex-1 items-center gap-2 py-2"
+          className="flex min-w-0 flex-1 items-center gap-2 py-[9px]"
         >
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13.5px] font-semibold tracking-tight">
-              {chapter.number !== null ? <span className="mr-1.5 font-mono text-xs font-normal text-ink-3">{chapter.number}</span> : null}
-              {chapter.title}
-            </span>
-          </span>
+          {chapter.number !== null ? <span className="w-4 shrink-0 text-right text-[13.5px] font-medium tabular-nums text-ink-3">{chapter.number}</span> : null}
+          <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold">{chapter.title}</span>
           {reviewing > 0 ? <span className="text-xs font-medium text-review">{t.toReview(reviewing)}</span> : null}
           <Plant chapterId={chapter.id} className="shrink-0 text-[13px] leading-none" />
-          <span className="shrink-0 text-xs tabular-nums text-ink-3">
+          <span className="shrink-0 text-xs font-medium tabular-nums text-ink-3">
             {done}/{exercises.length}
           </span>
         </Link>
@@ -311,11 +328,10 @@ function ChapterBlock({
 /** Exercises outside the focus, folded into one quiet line on the thread. */
 function FoldRow({ text, open, first, last, onClick }: { text: string; open: boolean; first: boolean; last: boolean; onClick: () => void }) {
   return (
-    <li className="relative">
-      <span aria-hidden className={clsx('absolute left-[21px] w-px bg-line-strong', first ? 'top-1/2' : 'top-0', last ? 'bottom-1/2' : 'bottom-0')} />
-      <button type="button" onClick={onClick} aria-expanded={open} className="relative flex w-full items-center gap-2.5 py-[5px] pl-[14px] pr-3 text-left text-[12.5px] text-ink-3 hover:text-ink">
+    <li className="relative" data-first={first || undefined} data-last={last || undefined}>
+      <button type="button" onClick={onClick} aria-expanded={open} className="relative flex w-full items-center gap-[9px] py-[5px] pl-[13px] pr-3.5 text-left text-[12.5px] text-ink-3 hover:text-ink">
         <span className="flex w-4 shrink-0 justify-center">
-          <span aria-hidden className="size-[5px] rounded-full bg-line-strong ring-[3px] ring-sheet" />
+          <span aria-hidden className="size-[5px] rounded-full bg-line-strong" />
         </span>
         <span className="min-w-0 flex-1 truncate">{text}</span>
         <ChevronDown size={13} className={clsx('shrink-0 transition-transform', open ? 'rotate-180' : '')} />
@@ -327,17 +343,16 @@ function FoldRow({ text, open, first, last, onClick }: { text: string; open: boo
 function SectionLabel({ title, adventure, onNavigate }: { title: string; adventure: ThreadInfo | undefined; onNavigate?: () => void }) {
   const t = useT();
   const here = useRoute(`/adventure/${adventure?.id ?? ''}`)[0] && !!adventure;
-  const text = 'relative ml-[36px] pb-1 pr-3 pt-3.5 text-[13px] font-semibold';
+  const text = 'relative pb-[3px] pl-[38px] pr-3.5 pt-2.5 text-xs font-semibold';
   return (
     <li className="relative">
-      <span aria-hidden className="absolute inset-y-0 left-[21px] w-px bg-line-strong" />
       {adventure ? (
-        <Link href={`/adventure/${adventure.id}`} onClick={onNavigate} aria-current={here ? 'page' : undefined} title={t.openAdventure} className={clsx(text, 'flex items-center gap-1.5 hover:underline', here ? 'text-accent' : 'text-ink')}>
+        <Link href={`/adventure/${adventure.id}`} onClick={onNavigate} aria-current={here ? 'page' : undefined} title={t.openAdventure} className={clsx(text, 'flex items-center gap-1.5 hover:underline', here ? 'text-accent' : 'text-ink-3')}>
           <span className="min-w-0 truncate">{title}</span>
-          <Compass size={13} className="shrink-0 text-accent" aria-hidden />
+          <Compass size={12} className="shrink-0 text-accent" aria-hidden />
         </Link>
       ) : (
-        <p className={clsx(text, 'truncate text-ink')}>{title}</p>
+        <p className={clsx(text, 'truncate text-ink-3')}>{title}</p>
       )}
     </li>
   );
@@ -353,37 +368,32 @@ function Row({ item, status, answered, current, first, last, wide, outside, onNa
     if (current) row.current?.scrollIntoView({ block: 'nearest' });
   }, [current]);
   return (
-    <li ref={row} className={clsx('relative scroll-mt-10', wide && 'mt-1.5')}>
-      {/* The thread: one segment per row so finished stretches can be coloured. */}
+    <li ref={row} className={clsx('relative scroll-mt-10', wide && 'mt-1.5')} data-first={first || undefined} data-last={last || undefined}>
       {/* A short rule inside the chapter, not across the pane, so it does not read as the start of the next chapter. */}
-      {wide ? <span aria-hidden className="absolute left-[14px] right-3 top-0 h-px bg-line" /> : null}
-      {wide ? null : (
-        <span
-          aria-hidden
-          className={clsx('absolute left-[21px] w-px', first ? 'top-1/2' : 'top-0', last ? 'bottom-1/2' : 'bottom-0', done ? 'bg-done' : 'bg-line-strong')}
-        />
-      )}
+      {wide ? <span aria-hidden className="absolute left-[14px] right-3.5 top-0 h-px bg-line" /> : null}
       <Link
         href={`/item/${item.id}`}
         onClick={onNavigate}
         aria-current={current ? 'page' : undefined}
         className={clsx(
-          'relative flex items-center gap-2.5 py-[7px] text-[13.5px] leading-snug transition-colors',
-          'pl-[14px] pr-3',
-          current ? 'bg-accent-soft font-medium text-ink' : 'text-ink-2 hover:bg-paper/70 hover:text-ink',
+          'relative flex min-h-[30px] items-center gap-[9px] py-1 text-[13.5px] leading-[1.35] transition-colors',
+          'pl-[13px] pr-3.5',
+          current ? 'bg-accent-soft text-accent' : 'text-ink hover:bg-paper',
         )}
       >
         {current ? <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-accent" /> : null}
         <span className="flex w-4 shrink-0 justify-center bg-transparent">
           {ex ? (
             <StatusMark status={status} />
+          ) : item.type === 'checklist' ? (
+            <ListChecks size={15} strokeWidth={1.75} className={answered ? 'text-done' : current ? 'text-accent' : 'text-ink-3'} />
+          ) : item.type === 'lesson' ? (
+            <BookOpen size={15} strokeWidth={1.75} className={done ? 'text-done' : current ? 'text-accent' : 'text-ink-3'} />
           ) : (
-            <span className="grid size-4 place-items-center rounded-[4px] bg-sheet text-ink-3 ring-1 ring-line-strong">
-              {item.type === 'checklist' ? <ListChecks size={10} className={answered ? 'text-done' : undefined} /> : item.type === 'lesson' ? <GraduationCap size={10} className={done ? 'text-done' : undefined} /> : <FileText size={10} />}
-            </span>
+            <FileText size={15} strokeWidth={1.75} className={current ? 'text-accent' : 'text-ink-3'} />
           )}
         </span>
-        <span className={clsx('min-w-0 flex-1', (status === 'done' || outside) && !current && 'text-ink-3')} title={outside ? t.outsideFocus : undefined}>
+        <span className={clsx('min-w-0 flex-1', outside && !current && 'text-ink-3')} title={outside ? t.outsideFocus : undefined}>
           <span className={clsx('line-clamp-2', outside && 'italic')}><Title text={item.title} /></span>
           {outside ? <span className="sr-only">, {t.outsideFocus}</span> : null}
         </span>
@@ -396,7 +406,7 @@ function Row({ item, status, answered, current, first, last, wide, outside, onNa
                 {ex.emoji}
               </span>
             ) : null}
-            <span className="flex w-[17px] justify-end"><Level level={ex.level} compact /></span>
+            <span className="flex w-[14px] justify-end"><Level level={ex.level} compact className="gap-[2.5px] [&>span]:size-[3.5px] [&>span]:opacity-55" /></span>
           </span>
         ) : null}
       </Link>
@@ -412,7 +422,7 @@ function LessonSections({ id }: { id: string }) {
   const on = useSettings().data?.showLessonOutline ?? true;
   if (!on || toc?.id !== id || toc.sections.length < 2) return null;
   return (
-    <ol aria-label={t.lessonSections} className="relative pb-1.5 pt-0.5">
+    <ol aria-label={t.lessonSections} className="relative mb-1 ml-10 border-l border-line">
       {toc.sections.map((s, i) => (
         <li key={i}>
           <button
@@ -420,8 +430,8 @@ function LessonSections({ id }: { id: string }) {
             aria-current={i === toc.active ? 'location' : undefined}
             onClick={() => s.el.scrollIntoView({ behavior: 'smooth', block: 'start' })}
             className={clsx(
-              'ml-[30px] block w-[calc(100%-30px)] py-1 pl-3 pr-3 text-left text-[13px] leading-snug transition-colors',
-              i === toc.active ? 'font-medium text-ink shadow-[inset_2px_0_0_var(--accent)]' : 'text-ink-3 hover:text-ink',
+              'block w-full px-2.5 py-[3px] text-left text-[12.5px] leading-[1.35] transition-colors',
+              i === toc.active ? 'text-accent shadow-[inset_2px_0_0_var(--accent)]' : 'text-ink-3 hover:text-ink',
             )}
           >
             <Title text={s.title} />

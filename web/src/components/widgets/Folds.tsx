@@ -48,7 +48,7 @@ export function ExprTrees({ config }: { config: string }) {
         {cfg.trees.map((t, i) => {
           const tree = nodeOf(treeOf(t.expr, cfg.colors ?? {}));
           return (
-            <div key={i} className="flex min-w-0 flex-col gap-1.5 rounded-md border border-line bg-paper p-2">
+            <div key={i} className="flex min-w-0 flex-col gap-1.5 rounded-[10px] border border-line bg-stage p-2">
               <TreePicture tree={tree} label={(n) => n.term.text} done={new Set()} valueOf={() => ''} aria={t.expr} />
               <p className="text-center font-mono text-[13px] font-medium text-ink-2 [overflow-wrap:anywhere]">
                 <Code>{t.caption ?? t.expr}</Code>
@@ -142,7 +142,7 @@ export function FoldList({ config }: { config: string }) {
         </Row>
       ) : null}
       <StepBar at={k} count={n + 1} onGo={setK} />
-      <div className="grid grid-cols-[max-content_minmax(0,1fr)] items-center gap-x-4 gap-y-3 rounded-md border border-line bg-paper p-3">
+      <div className="grid grid-cols-[max-content_minmax(0,1fr)] items-center gap-x-4 gap-y-3 rounded-[10px] border border-line bg-stage p-3">
         <span className="text-[13px] text-ink-3">{t.input}</span>
         <span className="flex min-h-9 flex-wrap items-center gap-1.5 font-mono">
           <span className="text-ink-3">[</span>

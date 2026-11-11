@@ -205,7 +205,8 @@ Siehe auch #xref("symbolic-differentiation").
 | `#draft-note[…]` | A note to yourself. Never reaches students. |
 | `#check[…]`, `#refs[…]` | Highlighted boxes inline in the text. |
 | `#diagram[…]` | Draws anything (shapes, `cetz`) as a picture. |
-| `#note[…]` | Footnote. |
+| `#note[…]` | A note or a source. The text shows a small number with the note in a card on hover; all notes gather at the end under “Sources and notes”. |
+| `#remark(quote(block: true, attribution: […])[…])` | A quote: a remark that starts with a quote is shown as one, the source quietly beneath. |
 
 Inline code and blocks that name no language are highlighted in the language of what they belong to: the exercise's `code`, otherwise the chapter's `scratch`, or the thread's `language` on an adventure page. Name another language where it differs (```` ```haskell (++)``` ````), use `text` for what is not code (```` ```text RegExp.hs``` ````, program output), or start a file with `#set raw(lang: "python")` to change it for the whole file.
 
@@ -340,7 +341,9 @@ More for lessons:
 
 | Helper | Effect |
 | --- | --- |
-| `#practice("id", "id2")` | The exercises that go with a lesson, as a list to click through: each title and whether it is done. The app puts a heading “Exercises” above it, so write no call to action (“Jetzt bist du dran”) before it. `lint` checks the ids. |
+| `#practice("id", "id2", note: […], comments: ("id2": […]))` | The exercises that go with a lesson, as a list to click through: each title, level and whether it is done. The app puts the headline “Exercises for this lesson” above it, so write no call to action (“Jetzt bist du dran”) before it. Optional: `note`, one line under the headline, and `comments`, a short word beside an exercise (e.g. `[Extra]`). `lint` checks the ids. |
+| `#flow(flow-node("a", "Start", kind: "start"), flow-node("b", "Fertig?", at: (0, 1), kind: "decision"), flow-edge("a", "b", label: "ja"))` | A flowchart drawn in the look of the lesson. Each box has an id, a plain-text label, a place on a grid (`at: (column, row)`, from 0) and optionally a `kind` (`start`, `decision`, `good`, `bad`) and a quieter second line `note`. Arrows go straight down within a column, straight across within a row, up and around for a loop back, and in a small loop for a box to itself. Put it in `#figure(…, caption: […])` for a caption. Use it instead of a Graphviz `#diagram` for flowcharts. |
+| `#open-question[Frage][Hinweis]` | A question to think about, with no answer to pick. The hint under it is optional. Students can write the question into their notes or make a card of it. |
 | `#muted[…]` | A quiet note inside a line, e.g. in a table cell. |
 | `#wide[…]` | More room for a dense widget, e.g. two trees side by side: wider than the text (up to 70rem), as far as the page allows. |
 | `#expr-trees((expr: "f 1 (f 2 z)", caption: "…"), …, colors: (f: 3, z: 1))` | Expressions drawn as trees, side by side. |

@@ -1,6 +1,8 @@
-import { ChevronLeft, ChevronRight, Eye, Layers, RotateCcw } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, CircleHelp, Eye, Layers, ListChecks, NotebookPen, RotateCcw } from 'lucide-react';
 import { useRoute } from 'wouter';
-import { useSettings } from '@/lib/api';
+import { useQueryClient } from '@tanstack/react-query';
+import { api, keys, saveNote, useSettings, type Work } from '@/lib/api';
+import { appendToOpenNote, escapeMarkup } from '@/lib/annotations';
 import { MakeCardDialog } from '../MakeCardDialog';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { highlightToHtml } from '@/lib/highlight';
@@ -10,6 +12,7 @@ import { clsx } from '../ui';
 import { Compare } from './Compare';
 import { FoldExplorer } from './FoldExplorer';
 import { FoldSignature } from './FoldSignature';
+import { Flow } from './Flow';
 import { FoldSteps } from './FoldSteps';
 import { FoldTree } from './FoldTree';
 import { Bracketing, ExprTrees, FoldList } from './Folds';
@@ -86,6 +89,8 @@ export function Widget({ host }: { host: WidgetHost }) {
       return <Tabs parts={host.parts.filter((p) => p.name === 'tab')} label={host.attrs.label} />;
     case 'recipe':
       return <Recipe parts={host.parts} />;
+    case 'flow':
+      return <Flow config={host.attrs.config ?? '{}'} />;
     case 'fold-signature':
       return <FoldSignature decl={host.attrs.decl ?? ''} fold={host.attrs.fold} given={host.attrs.given === 'true'} />;
     case 'fold-explorer':
@@ -97,7 +102,9 @@ export function Widget({ host }: { host: WidgetHost }) {
     case 'bracketing':
       return <Bracketing config={host.attrs.config ?? '{}'} />;
     case 'practice':
-      return <Practice ids={(host.attrs.ids ?? '').split(',').filter(Boolean)} />;
+      return <Practice ids={(host.attrs.ids ?? '').split(',').filter(Boolean)} parts={host.parts} />;
+    case 'open-question':
+      return <OpenQuestion parts={host.parts} />;
     case 'compare':
       return <Compare parts={host.parts} config={host.attrs.config ?? '{}'} />;
     case 'fold-steps':
@@ -158,7 +165,7 @@ export function Frame({ children, className, bare }: { children: React.ReactNode
   const nested = useContext(Nested) || !!bare;
   return (
     <Nested.Provider value>
-      <div className={clsx('relative flex min-w-0 flex-col gap-3 text-[15px]', !nested && 'rounded-lg border border-line bg-sheet p-4', className)}>{children}</div>
+      <div className={clsx('relative flex min-w-0 flex-col gap-3 text-[15px]', !nested && 'rounded-xl border border-line bg-sheet px-4 py-3.5', className)}>{children}</div>
     </Nested.Provider>
   );
 }
@@ -270,45 +277,117 @@ export function Quiz({
 
   return (
     <Frame bare={bare}>
-      <div className="flex items-start gap-1">
-        {question ? <Prose html={question.html} className="min-w-0 flex-1 pt-1 pr-2 font-semibold" /> : <span className="flex-1" />}
-        {src && flashcards ? (
-          <button type="button" aria-label={t.makeQuizCard} title={t.makeQuizCard} onClick={() => setMaking(true)} className="grid size-8 shrink-0 place-items-center rounded-md text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
-            <Layers size={16} />
-          </button>
+      <div className="flex items-start gap-3">
+        {/* In a lesson, a quiz is one of the blocks: its icon on the left, on the question's first line. */}
+        {!bare ? (
+          <span aria-hidden className="mt-1 flex h-6 shrink-0 items-center text-accent">
+            <ListChecks size={18} />
+          </span>
         ) : null}
-        {!solved && !bare ? <Reveal label={t.showAnswer} onClick={() => setLast(choices.findIndex((c) => c.correct))} /> : null}
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          {question ? <Prose html={question.html} className="pt-1 font-semibold" /> : null}
+          <div className="flex flex-wrap gap-1.5">
+            {choices.map((c, i) => (
+              <button
+                key={i}
+                ref={(el) => {
+                  buttons.current[i] = el;
+                }}
+                type="button"
+                disabled={!!solved}
+                onClick={() => pick(i)}
+                className={clsx(
+                  'rounded-lg border px-3 py-1.5 text-left text-[14.5px] transition-colors',
+                  solved && c.correct ? 'border-done/45 bg-done-soft font-semibold' : wrong.includes(i) ? 'border-danger/40 bg-danger-soft' : 'border-line-strong bg-sheet hover:border-accent',
+                  solved && !c.correct && 'opacity-60',
+                )}
+              >
+                <Inline html={c.label} />
+              </button>
+            ))}
+          </div>
+          {feedback ? (
+            <div aria-live="polite">
+              {feedback.why ? (
+                <Prose html={feedback.why} className={clsx('text-[14.5px]', feedback.correct ? 'text-ink' : 'text-ink-2')} />
+              ) : (
+                <p className="text-[14.5px] text-ink-2">{feedback.correct ? '✓' : t.tryAgain}</p>
+              )}
+            </div>
+          ) : null}
+        </div>
+        {(!solved && !bare) || (src && flashcards) ? (
+          <div className="-mr-2 flex shrink-0 gap-0.5">
+            {!solved && !bare ? <Reveal label={t.showAnswer} onClick={() => setLast(choices.findIndex((c) => c.correct))} /> : null}
+            {src && flashcards ? (
+              <button type="button" aria-label={t.makeQuizCard} title={t.makeQuizCard} onClick={() => setMaking(true)} className="grid size-8 shrink-0 place-items-center rounded-md text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
+                <Layers size={16} />
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       {src && flashcards ? <MakeCardDialog open={making} onClose={() => setMaking(false)} exerciseId={params?.id ?? null} initial={{ kind: 'quiz', front: src, back: '' }} /> : null}
-      <div className="flex flex-wrap gap-1.5">
-        {choices.map((c, i) => (
-          <button
-            key={i}
-            ref={(el) => {
-              buttons.current[i] = el;
-            }}
-            type="button"
-            disabled={!!solved}
-            onClick={() => pick(i)}
-            className={clsx(
-              'rounded-md border px-3 py-1.5 text-left text-[14.5px] transition-colors',
-              solved && c.correct ? 'border-done bg-done-soft font-semibold' : wrong.includes(i) ? 'border-danger bg-danger-soft' : 'border-line-strong bg-sheet hover:border-accent',
-              solved && !c.correct && 'opacity-60',
-            )}
-          >
-            <Inline html={c.label} />
-          </button>
-        ))}
-      </div>
-      {feedback ? (
-        <div aria-live="polite">
-          {feedback.why ? (
-            <Prose html={feedback.why} className={clsx('text-[14.5px]', feedback.correct ? 'text-ink' : 'text-ink-2')} />
-          ) : (
-            <p className="text-[14.5px] text-ink-2">{feedback.correct ? '✓' : t.tryAgain}</p>
-          )}
+    </Frame>
+  );
+}
+
+// ───────────────────────── open question ─────────────────────────
+
+/**
+ * A question to think about, with no answer to pick. One of the lesson's blocks: a question mark on the left, the
+ * question and an optional hint, and on the right the ways to keep it: into the notes of this lesson, or onto a card.
+ */
+function OpenQuestion({ parts }: { parts: Part[] }) {
+  const t = useT().widget;
+  const qc = useQueryClient();
+  const flashcards = !!useSettings().data?.showFlashcards;
+  const [, params] = useRoute('/item/:id');
+  const item = params?.id ?? null;
+  const [making, setMaking] = useState(false);
+  const [noted, setNoted] = useState(false);
+  const question = parts.find((p) => p.name === 'question');
+  const hint = parts.find((p) => p.name === 'hint');
+  const text = () => {
+    const el = document.createElement('div');
+    el.innerHTML = question?.html ?? '';
+    return escapeMarkup((el.textContent ?? '').replace(/\s+/g, ' ').trim());
+  };
+  const note = async () => {
+    if (!item) return;
+    const snippet = `#quote(block: true)[${text()}]\n\n`;
+    if (!appendToOpenNote(item, snippet)) {
+      const work = await api.get<Work>(`/api/work/${encodeURIComponent(item)}`);
+      const before = work.note?.content.trimEnd() ?? '';
+      await saveNote(item, 'typst', before ? `${before}\n\n${snippet}` : snippet);
+      void qc.invalidateQueries({ queryKey: keys.work(item) });
+    }
+    setNoted(true);
+  };
+  return (
+    <Frame>
+      <div className="flex items-start gap-3">
+        <span aria-hidden className="flex h-[1.4rem] shrink-0 items-center text-review">
+          <CircleHelp size={18} />
+        </span>
+        <div className="min-w-0 flex-1">
+          {question ? <Prose html={question.html} className="text-[15.5px] font-semibold leading-snug" /> : null}
+          {hint ? <Prose html={hint.html} className="mt-1 !text-[14px] !text-ink-3" /> : null}
         </div>
-      ) : null}
+        <div className="-mr-2 -mt-1 flex shrink-0 gap-0.5">
+          {item ? (
+            <button type="button" aria-label={noted ? t.inYourNotes : t.writeInNotes} title={noted ? t.inYourNotes : t.writeInNotes} onClick={() => void note()} className={clsx('grid size-8 place-items-center rounded-md transition-colors hover:bg-sunk hover:text-ink', noted ? 'text-done' : 'text-ink-3')}>
+              {noted ? <Check size={16} /> : <NotebookPen size={16} />}
+            </button>
+          ) : null}
+          {flashcards ? (
+            <button type="button" aria-label={t.makeCardOf} title={t.makeCardOf} onClick={() => setMaking(true)} className="grid size-8 place-items-center rounded-md text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
+              <Layers size={16} />
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {flashcards && making ? <MakeCardDialog open onClose={() => setMaking(false)} exerciseId={item} initial={{ kind: 'basic', front: text(), back: '' }} /> : null}
     </Frame>
   );
 }

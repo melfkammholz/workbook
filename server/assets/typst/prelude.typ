@@ -134,12 +134,25 @@
 })
 
 /// Exercises to do next, as a list the student can click through: `#practice("fold-maybe-either", "fold-maximum")`.
-/// The app shows each one's title and whether it is done. Write the call to action before it, once.
-#let practice(..ids) = _widget(
+/// The app shows each one's title, level and whether it is done, under the headline "Exercises for this lesson".
+/// Optional: `note: [...]`, one line under the headline, and `comments: ("fold-maximum": [Extra])`, a short word
+/// beside an exercise.
+#let practice(note: none, comments: (:), ..ids) = _widget(
   "practice",
   attrs: (data-ids: ids.pos().join(",")),
-  list(..ids.pos().map(id => xref(id))),
+  {
+    list(..ids.pos().map(id => xref(id)))
+    if note != none { _part("note", note) }
+    for (id, c) in comments { _part("comment", attrs: (data-id: id), c) }
+  },
 )
+
+/// A question to think about, with no answer to pick: `#open-question[Was weißt du jetzt?][Denk an die Eingaben.]`.
+/// The optional second argument is a hint under it. Students can write it into their notes or make a card of it.
+#let open-question(question, ..hint) = _widget("open-question", {
+  _part("question", question)
+  for h in hint.pos() { _part("hint", h) }
+})
 
 /// Expressions drawn as trees, side by side: `(expr: "f 1 (f 2 z)", caption: "foldr f z [1, 2]")`.
 /// `colors` gives names a constructor colour (1 to 4): `(f: 3, z: 1)`.
@@ -165,6 +178,29 @@
   attrs: (data-config: _config(ops: ops)),
   raw(ops.map(o => "(" + o.op + ")").join(" "), lang: "haskell", block: true),
 )
+
+/// One box of a `flow`: an id, its text, its place on a grid (`at: (column, row)`, both from 0), and how it looks:
+/// `kind: "start"`, `"decision"`, `"good"`, `"bad"` or none. `note` is a second, quieter line.
+#let flow-node(id, label, at: (0, 0), kind: none, note: none) = (id: id, label: label, at: at, kind: kind, note: note)
+
+/// An arrow of a `flow` from one box to another (or to itself), with an optional short label ("ja").
+#let flow-edge(from, to, label: none) = (from: from, to: to, label: label)
+
+/// A flowchart, drawn by the app in the look of the lesson: boxes on a grid, arrows between them.
+/// `#flow(flow-node("a", "Start", kind: "start"), flow-node("b", "Fertig?", at: (0, 1), kind: "decision"), flow-edge("a", "b"))`.
+/// Texts are plain strings.
+#let flow(..items) = {
+  let nodes = items.pos().filter(x => "at" in x)
+  let edges = items.pos().filter(x => "from" in x)
+  _widget(
+    "flow",
+    attrs: (data-config: _config(nodes: nodes, edges: edges)),
+    list(..edges.map(e => {
+      let name(id) = nodes.find(n => n.id == id).label
+      [#name(e.from) → #name(e.to)#if e.label != none [ (#e.label)]]
+    })),
+  )
+}
 
 /// A quiet aside inside a line, e.g. a note in a table cell.
 #let muted(body) = html.elem("span", attrs: (class: "wb-muted"), body)

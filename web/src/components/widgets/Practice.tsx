@@ -1,15 +1,19 @@
-import { Bookmark, Check, ChevronRight, GraduationCap, PencilLine } from 'lucide-react';
+import { BookOpen, ChevronRight, PencilLine } from 'lucide-react';
 import { Link } from 'wouter';
 import { statusOf, useOutline, useState_ } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Title } from '../Title';
-import { clsx } from '../ui';
+import { Level, StatusMark, clsx } from '../ui';
+import { Prose } from '../Prose';
+import { Inline, type Part } from './index';
 
 /**
- * Exercises (or lessons) to do next, at the end of a lesson: a list to click through. Each row says what it is and whether
- * it is done; the row itself is the way there. A heading says what the list is, so the text needs no call to action.
+ * Exercises (or lessons) to do next, at the end of a lesson: a list to click through. A heading says what the list is,
+ * so the text needs no call to action.
  */
-export function Practice({ ids }: { ids: string[] }) {
+export function Practice({ ids, parts = [] }: { ids: string[]; parts?: Part[] }) {
+  const note = parts.find((p) => p.name === 'note');
+  const comment = (id: string) => parts.find((p) => p.name === 'comment' && p.attrs.id === id);
   const t = useT();
   const outline = useOutline().data;
   const state = useState_().data?.state;
@@ -18,38 +22,45 @@ export function Practice({ ids }: { ids: string[] }) {
     return item ? [item] : [];
   });
   if (!items.length) return null;
+  const head = `practice-${items[0]!.id}`;
+  // One of the lesson's blocks: the pencil on the left, a headline, then a row per item. Each row says what it is and
+  // whether it is done; the row itself is the way there.
   return (
-    <section aria-labelledby={`practice-${items[0]!.id}`} className="mt-8">
-      <h3 id={`practice-${items[0]!.id}`} className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-ink-2">
-        <PencilLine size={14} className="text-accent" /> {t.practiceTitle}
-      </h3>
-      <div role="list" className="space-y-1.5">
-      {items.map((item) => {
-        const status = statusOf(state, item.id);
-        const done = status === 'done';
-        // The tile says how far the student is; before that, what it is: an exercise or a lesson.
-        const tile =
-          done ? { cls: 'bg-done-soft text-done', icon: <Check size={16} strokeWidth={2.75} /> }
-          : status === 'review' ? { cls: 'bg-review-soft text-review', icon: <Bookmark size={15} /> }
-          : status === 'in_progress' ? { cls: 'bg-accent text-accent-ink', icon: item.type === 'lesson' ? <GraduationCap size={15} /> : <PencilLine size={15} /> }
-          : { cls: 'bg-accent-soft text-accent', icon: item.type === 'lesson' ? <GraduationCap size={15} /> : <PencilLine size={15} /> };
-        return (
-          <div role="listitem" key={item.id}>
-            <Link
-              href={`/item/${item.id}`}
-              className="group flex items-center gap-3 rounded-lg border border-line bg-sheet px-3 py-2.5 !text-ink !no-underline shadow-[0_1px_2px_rgb(26_32_51/0.05)] transition-[border-color,box-shadow,transform] hover:-translate-y-px hover:border-accent/50 hover:shadow-[0_3px_10px_-4px_rgb(26_32_51/0.18)]"
-            >
-              <span className={clsx('grid size-8 shrink-0 place-items-center rounded-lg', tile.cls)} title={t.status[status]}>
-                {tile.icon}
-              </span>
-              <span className={clsx('min-w-0 flex-1 text-[15px] font-medium', done && 'text-ink-2')}>
-                <Title text={item.title} />
-              </span>
-              <ChevronRight size={18} className="shrink-0 text-ink-3 transition-transform group-hover:translate-x-0.5 group-hover:text-accent" />
-            </Link>
-          </div>
-        );
-      })}
+    <section aria-labelledby={head} className="flex gap-3 rounded-xl border border-line bg-sheet px-4 py-3.5">
+      <span aria-hidden className="flex h-[22.5px] shrink-0 items-center text-done">
+        <PencilLine size={18} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <h3 id={head} className="!mb-1 !mt-0 !text-[15.5px] !font-semibold !leading-[22.5px] !text-ink">
+          {t.practiceTitle}
+        </h3>
+        {note ? <Prose html={note.html} className="-mt-1 mb-1.5 !text-[14px] !text-ink-3" /> : null}
+        <div role="list" className="-mb-1.5 -ml-2">
+          {items.map((item) => {
+            const status = statusOf(state, item.id);
+            const done = status === 'done';
+            const remark = comment(item.id);
+            return (
+              <div role="listitem" key={item.id}>
+                <Link
+                  href={`/item/${item.id}`}
+                  className="group grid grid-cols-[16px_minmax(0,1fr)_auto_auto_16px] items-center gap-2.5 rounded-lg px-2 py-[7px] text-[14px] !text-ink !no-underline transition-colors hover:bg-sunk"
+                >
+                  {/* What it is and how far the student is: a status circle for an exercise, a book for a lesson. */}
+                  <span className="flex justify-center">
+                    {item.type === 'exercise' ? <StatusMark status={status} /> : <BookOpen size={15} strokeWidth={1.75} className={done ? 'text-done' : 'text-ink-3'} aria-label={t.status[status]} />}
+                  </span>
+                  <span className={clsx('min-w-0', done && 'text-ink-2')}>
+                    <Title text={item.title} />
+                  </span>
+                  <span className="text-[12.5px] text-ink-3">{remark ? <Inline html={remark.html} className="hidden sm:inline" /> : null}</span>
+                  <span className="flex justify-end">{item.type === 'exercise' ? <Level level={item.level} compact /> : null}</span>
+                  <ChevronRight size={15} className="text-ink-3 transition-transform group-hover:translate-x-0.5 group-hover:text-accent" />
+                </Link>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </section>
   );

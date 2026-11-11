@@ -1,5 +1,5 @@
 import * as Popover from '@radix-ui/react-popover';
-import { ChevronDown, ChevronUp, Clock, Columns3, Download, GitCompare, History, MoreHorizontal, PanelLeft, Repeat, RotateCcw, Eye, Lock, PencilLine } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clock, Download, GitCompare, History, MoreHorizontal, Repeat, RotateCcw, Eye, Lock, PencilLine } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EditorView } from '@codemirror/view';
 import { Group, Panel, usePanelRef } from 'react-resizable-panels';
@@ -63,7 +63,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
   const isSld = language === 'sld';
   // The wide layout: the task folds away, the editor takes the middle and feedback (and the picture of an SLD tree)
   // moves to the right. Only where there is room, and only for code.
-  const [layout, setLayout] = useWorkLayout();
+  const [layout] = useWorkLayout();
   const roomy = useMediaQuery('(min-width: 1024px)');
   const side = !!code && runnable && roomy && layout === 'wide';
   const slots = code?.files ?? ['text'];
@@ -80,7 +80,8 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
   // For sending everything to the interpreter, which always gets all of the files.
   const latest = useRef(texts);
   const [tab, setTab] = useState<TopTab>('answer');
-  const [bottom, setBottom] = useState<BottomTab>('interpreter');
+  // An SLD tree opens on its picture.
+  const [bottom, setBottom] = useState<BottomTab>(isSld ? 'preview' : 'interpreter');
   const panel = usePanelRef();
   const [collapsed, setCollapsed] = useState(false);
   const [saved, setSaved] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -401,8 +402,9 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
     </div>
   );
 
-  return (
-    <div className="flex h-full min-h-0 flex-col bg-sheet">
+  // The tabs of the workspace, the files, and what is said about them: the top of the editor's card.
+  const head = (
+    <>
       <div className="flex items-center justify-between border-b border-line pl-2 pr-3">
         <div role="tablist" aria-label={t.workspace} className="flex">
           {(['answer', 'notes', ...(aiOn ? ['ai'] : [])] as TopTab[]).map((name) => (
@@ -425,11 +427,6 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
               <span className="text-xs text-ink-3" aria-live="polite">
                 {savedLabel}
               </span>
-            ) : null}
-            {code && runnable && roomy ? (
-              <IconButton label={layout === 'wide' ? t.layoutStandard : t.layoutWide} aria-pressed={layout === 'wide'} onClick={() => setLayout(layout === 'wide' ? 'standard' : 'wide')}>
-                {layout === 'wide' ? <PanelLeft size={16} /> : <Columns3 size={16} />}
-              </IconButton>
             ) : null}
             <IconButton label={isCode ? t.downloadCode : t.downloadAnswer} onClick={download}>
               <Download size={16} />
@@ -515,45 +512,27 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1">
+    </>
+  );
+  const body = (
+<div className="min-h-0 flex-1">
         {tab === 'notes' ? (
           <NotesPanel id={meta.id} initial={work.note?.content ?? ''} />
         ) : tab === 'ai' && aiOn ? (
           <AiPanel id={meta.id} answer={answerForAi} tests={run?.compiled ? run.results.map(({ name, status, message }) => ({ name: name === SLD_TREE_TEST ? t.treeCorrect : name, status, message })) : null} />
         ) : runnable ? (
           side ? (
-            <Group orientation="horizontal" className="h-full">
-              <Panel defaultSize="42" minSize="25">
-                {editor}
-              </Panel>
-              <ResizeHandle direction="row" />
-              <Panel defaultSize="58" minSize="25">
-                {isSld ? (
-                  // The picture on top, as large as the tree needs; what the code says about itself below it.
-                  <Group orientation="vertical" className="h-full">
-                    <Panel defaultSize="62" minSize="15">
-                      {preview}
-                    </Panel>
-                    <ResizeHandle direction="column" />
-                    <Panel panelRef={panel} defaultSize={startCollapsed ? TAB_ROW_PX : '38'} minSize="15" collapsible collapsedSize={TAB_ROW_PX} onResize={() => setCollapsed(panel.current?.isCollapsed() ?? false)}>
-                      {feedback}
-                    </Panel>
-                  </Group>
-                ) : (
-                  feedback
-                )}
-              </Panel>
-            </Group>
+            editor
           ) : (
             <Group orientation="vertical" className="h-full">
-              <Panel defaultSize="62" minSize="20">
+              <Panel defaultSize={isSld ? '45' : '62'} minSize="20">
                 {editor}
               </Panel>
               <ResizeHandle direction="column" />
               <Panel
                 panelRef={panel}
-                // A collapsed panel stays collapsed across exercises with code.
-                defaultSize={startCollapsed ? TAB_ROW_PX : '38'}
+                // A collapsed panel stays collapsed across exercises with code. The picture of an SLD tree needs room.
+                defaultSize={startCollapsed ? TAB_ROW_PX : isSld ? '55' : '38'}
                 minSize="15"
                 collapsible
                 collapsedSize={TAB_ROW_PX}
@@ -570,6 +549,56 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
           </div>
         )}
       </div>
+  );
+  // The wide layout: the editor and what is said about it are two cards side by side. For an SLD tree, the picture is
+  // on top of the second card, with the syntax and the tests below it.
+  const sideCards = (
+    <Group orientation="horizontal" className="h-full">
+      <Panel defaultSize="46" minSize="25">
+        <div className="wb-pane wb-pane-left flex h-full min-h-0 flex-col bg-sheet">
+          {head}
+          {body}
+        </div>
+      </Panel>
+      <ResizeHandle direction="row" gutter />
+      <Panel defaultSize="54" minSize="25">
+        <div className="wb-pane flex h-full min-h-0 flex-col bg-sheet">
+          {isSld && tab === 'answer' ? (
+            <Group orientation="vertical" className="h-full">
+              <Panel defaultSize="62" minSize="15">
+                <div className="flex h-full min-h-0 flex-col">
+                  <div className="flex shrink-0 items-center border-b border-line bg-sheet px-2" style={{ height: TAB_ROW_PX + 3 }}>
+                    <span className="relative px-3 py-2.5 text-[13px] font-medium text-ink">
+                      {t.preview}
+                      <span aria-hidden className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-accent" />
+                    </span>
+                  </div>
+                  <div className="min-h-0 flex-1">{preview}</div>
+                </div>
+              </Panel>
+              <ResizeHandle direction="column" />
+              <Panel panelRef={panel} defaultSize={startCollapsed ? TAB_ROW_PX : '38'} minSize="15" collapsible collapsedSize={TAB_ROW_PX} onResize={() => setCollapsed(panel.current?.isCollapsed() ?? false)}>
+                {feedback}
+              </Panel>
+            </Group>
+          ) : (
+            feedback
+          )}
+        </div>
+      </Panel>
+    </Group>
+  );
+
+  return (
+    <div className={clsx('wb-pane flex h-full min-h-0 flex-col bg-sheet', side && runnable && 'wb-pane-ground')}>
+      {side && runnable ? (
+        sideCards
+      ) : (
+        <>
+          {head}
+          {body}
+        </>
+      )}
 
       <HistoryDialog open={history} onClose={() => setHistory(false)} id={meta.id} slot={slot} language={isCode ? language : null} onRestore={(c) => replaceText(c, 'restore')} />
       <ConfirmDialog

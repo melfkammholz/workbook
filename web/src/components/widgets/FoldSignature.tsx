@@ -45,7 +45,7 @@ const tilesOf = (texts: string[]): Tile[] => mix(texts).map((text, id) => ({ id,
 /** The declaration with one colour per constructor. */
 export function Declaration({ plan }: { plan: FoldPlan }) {
   return (
-    <div className="overflow-x-auto whitespace-pre rounded-md border border-line bg-sunk px-4 py-3 font-mono text-[13.5px] leading-relaxed">
+    <div className="overflow-x-auto whitespace-pre rounded-lg border border-line bg-sunk px-3.5 py-[9px] font-mono text-[13.5px] leading-relaxed">
       <Code>{`data ${plan.self} =`}</Code>{' '}
       {plan.constructors.map((c, i) => (
         <span key={c.name}>
@@ -219,8 +219,8 @@ function Machine({ plan, given }: { plan: FoldPlan; given: boolean }) {
         : done ? t.done : t.assemble;
   const forMe = done ? null : step === 0 ? t.buildForMe : step === 1 ? t.replaceForMe : t.assembleForMe;
   /** Gaps and types have the same height and at least the same width, so nothing moves when one becomes the other. */
-  const box7 = 'relative inline-flex h-7 items-center rounded-md';
-  const gap = clsx(box7, 'min-w-[4.2em] justify-center border-[1.5px] border-dashed bg-sheet px-2 data-[hot]:border-solid data-[hot]:border-accent data-[hot]:bg-accent-soft');
+  const box7 = 'relative inline-flex h-[30px] items-center rounded-[7px] whitespace-nowrap';
+  const gap = clsx(box7, 'min-w-[58px] justify-center border border-dashed bg-sheet px-2 data-[hot]:border-solid data-[hot]:border-accent data-[hot]:bg-accent-soft');
   const active = drag.selected !== null || drag.dragging;
 
   return (
@@ -237,31 +237,31 @@ function Machine({ plan, given }: { plan: FoldPlan; given: boolean }) {
 
       <Declaration plan={plan} />
 
-      <p className="min-h-[3em] text-[14.5px] leading-normal" aria-live="polite">
+      <p className="text-[14px] leading-normal text-ink-2" aria-live="polite">
         <Message text={instruction} />
       </p>
 
       <div className="overflow-x-auto pb-1 pt-1">
         <div ref={box} className="relative flex min-w-0 flex-col">
-          <div className="relative grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, 14rem), 1fr))` }}>
+          <div className="relative flex flex-wrap justify-center gap-2.5">
             {cons.map((c, ci) => (
               <div
                 key={c.name}
                 ref={(el) => {
                   cards.current[ci] = el;
                 }}
-                className={clsx(kClass(ci), 'flex flex-col gap-1.5 rounded-lg border px-3 py-2')}
+                className={clsx(kClass(ci), 'inline-flex min-w-[150px] max-w-full flex-col gap-1.5 rounded-[10px] border px-3 pb-2.5 pt-2')}
                 style={{ background: 'var(--ks)', borderColor: 'color-mix(in srgb, var(--k) 35%, transparent)' }}
               >
-                <span className="font-mono text-[13.5px] font-semibold" style={{ color: 'var(--k)' }}>
+                <span className="font-mono text-[13px] font-semibold" style={{ color: 'var(--k)' }}>
                   {c.name} ::
                 </span>
-                <span className="flex min-h-7 flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-[14px]">
+                <span className="flex min-h-[30px] flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-[13px]">
                   {step === 0
                     ? need[ci]!.map((n, k) => (
                         <Piece key={k} first={k === 0}>
                           {built[ci]![k] ? (
-                            <span className={clsx(box7, 'min-w-[4.2em] justify-center bg-sheet/70 px-1.5')}>
+                            <span className={clsx(box7, 'min-w-[58px] justify-center border border-[color-mix(in_srgb,var(--k)_45%,transparent)] bg-sheet px-2')}>
                               <Code>{n}</Code>
                               {ticked(`b${ci}:${k}`)}
                             </span>
@@ -270,7 +270,7 @@ function Machine({ plan, given }: { plan: FoldPlan; given: boolean }) {
                               type="button"
                               aria-label={`${c.name}: ${k === need[ci]!.length - 1 ? t.builds : t.field(k + 1)}`}
                               {...drag.target(`${ci}:${k}`)}
-                              className={clsx(gap, active ? 'border-accent/70' : 'border-line-strong')}
+                              className={clsx(gap, active ? 'cursor-pointer border-accent bg-[color-mix(in_srgb,var(--accent-soft)_50%,var(--sheet))]' : 'border-[color-mix(in_srgb,var(--k)_50%,transparent)]')}
                             />
                           )}
                         </Piece>
@@ -302,16 +302,16 @@ function Machine({ plan, given }: { plan: FoldPlan; given: boolean }) {
             ))}
           </div>
 
-          <div className="relative mt-12 flex flex-wrap items-start justify-center gap-1.5 font-mono text-[14px]">
-            <span className="pt-2 font-semibold">{plan.fold} ::</span>
+          <div className={clsx('relative flex flex-wrap items-start justify-center gap-1.5 font-mono text-[14px]', step === 2 ? 'mt-12' : 'mt-[18px]')}>
+            <span className="mr-1 font-semibold leading-[30px]">{plan.fold} ::</span>
             {plan.signature.map((sig, i) => {
               const k = i < cons.length ? kClass(i) : i === cons.length + 1 ? 'wb-kr' : null;
               const label = i < cons.length ? cons[i]!.name : i === cons.length ? t.value : t.result;
               const filled = step === 2 && sigFilled[i];
               return (
                 <span key={i} className="flex items-start gap-1.5">
-                  {i ? <span className="pt-2 text-ink-3">-&gt;</span> : null}
-                  <span className="flex flex-col items-center gap-0.5">
+                  {i ? <span className="leading-[30px] text-ink-3">-&gt;</span> : null}
+                  <span className="flex flex-col items-center gap-[3px]">
                     <button
                       type="button"
                       ref={(el) => {
@@ -321,16 +321,17 @@ function Machine({ plan, given }: { plan: FoldPlan; given: boolean }) {
                       disabled={step !== 2 || filled}
                       {...(step === 2 && !filled ? drag.target(`${i}:0`) : {})}
                       className={clsx(
-                        'relative h-9 min-w-16 rounded-md border-[1.5px] px-2.5 text-center',
+                        'relative h-[30px] min-w-[58px] whitespace-nowrap rounded-[7px] border px-2 text-center text-[13px]',
                         filled ? clsx(k, 'border-solid text-ink') : 'border-dashed bg-sheet data-[hot]:border-solid data-[hot]:border-accent data-[hot]:bg-accent-soft',
-                        !filled && (step === 2 && active ? 'border-accent/70' : 'border-line-strong'),
+                        !filled && (step === 2 && active ? 'border-accent bg-[color-mix(in_srgb,var(--accent-soft)_50%,var(--sheet))]' : 'border-line-strong'),
+                        step !== 2 && 'opacity-60',
                       )}
                       style={filled ? { borderColor: k ? 'var(--k)' : 'var(--line-strong)', background: k ? 'var(--ks)' : 'var(--sunk)' } : undefined}
                     >
                       {filled ? <Code>{sig}</Code> : null}
                       {filled ? ticked(`s${i}`) : null}
                     </button>
-                    <span className="font-sans text-xs text-ink-3">{label}</span>
+                    <span className="font-sans text-[11.5px] text-ink-3">{label}</span>
                   </span>
                 </span>
               );
@@ -349,7 +350,7 @@ function Machine({ plan, given }: { plan: FoldPlan; given: boolean }) {
       </div>
 
       {pool && pool.some((x) => !x.used) ? (
-        <div role="group" aria-label={t.pieces} className="flex flex-wrap justify-center gap-2 rounded-lg border border-dashed border-line-strong bg-paper p-2.5">
+        <div role="group" aria-label={t.pieces} className="flex flex-wrap justify-center gap-2 rounded-[10px] border border-dashed border-line-strong bg-stage p-2.5">
           {pool
             .filter((x) => !x.used)
             .map((x) => (
@@ -358,7 +359,7 @@ function Machine({ plan, given }: { plan: FoldPlan; given: boolean }) {
                 type="button"
                 {...drag.piece(x.id)}
                 className={clsx(
-                  'cursor-grab select-none rounded-md border bg-sheet px-2.5 py-1 font-mono text-[13.5px] data-[dragging]:opacity-30',
+                  'cursor-grab select-none rounded-[7px] border bg-sheet px-2.5 py-1 font-mono text-[13px] data-[dragging]:opacity-30',
                   drag.selected === x.id ? 'border-accent ring-3 ring-accent-soft' : 'border-line-strong hover:border-accent',
                 )}
               >

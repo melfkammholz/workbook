@@ -8,15 +8,10 @@ import { useT } from '@/lib/i18n';
 import { applyTheme } from '@/lib/theme';
 import { Button, Segmented, clsx } from '@/components/ui';
 import { SectionedPage, type PageSection } from '@/components/SectionedPage';
+import { FONT_SIZES } from '@/components/QuickMenus';
 
 const inputClass = 'h-9 w-full rounded-md border border-line bg-paper px-3 text-sm placeholder:text-ink-3 focus:border-accent focus:outline-none';
 
-const FONT_SIZES = [
-  [12.5, 'small'],
-  [13.5, 'normal'],
-  [15, 'large'],
-  [17, 'larger'],
-] as const;
 
 /** A text field that saves when it loses focus, so typing does not write on every key. */
 function SavedInput({ value, onSave, ...p }: { value: string; onSave: (v: string) => void } & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'onBlur'>) {
@@ -235,7 +230,7 @@ export function SettingsPage({ section }: { section?: string }) {
               value={settings.theme}
               options={(['system', 'light', 'dusk', 'dark'] as const).map((th) => [th, t.themes[th]])}
               onChange={(th) => {
-                applyTheme(th, settings.duskColor);
+                applyTheme(th, settings.duskColor, settings.warmPaper);
                 set({ theme: th });
               }}
             />
@@ -251,7 +246,7 @@ export function SettingsPage({ section }: { section?: string }) {
                     role="radio"
                     aria-checked={settings.duskColor === c}
                     onClick={() => {
-                      applyTheme('dusk', c);
+                      applyTheme('dusk', c, settings.warmPaper);
                       set({ duskColor: c });
                     }}
                     data-dusk={c}
@@ -267,6 +262,7 @@ export function SettingsPage({ section }: { section?: string }) {
               </div>
             </fieldset>
           ) : null}
+          <Toggle checked={settings.warmPaper} onChange={(v) => set({ warmPaper: v })} title={t.warmPaper} body={t.warmPaperBody} />
           <Toggle checked={settings.safeColors} onChange={(v) => set({ safeColors: v })} title={t.safeColors} body={t.safeColorsBody} />
           <Toggle checked={settings.showLessonOutline} onChange={(v) => set({ showLessonOutline: v })} title={t.showLessonOutline} body={t.showLessonOutlineBody} />
         </div>

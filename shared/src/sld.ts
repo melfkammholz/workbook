@@ -236,11 +236,17 @@ function measure(node: SldNode, m: SldMetrics): Measured {
 function edgeLabel(step: SldStep, m: SldMetrics): string[] {
   const max = m.labelChars ?? m.maxChars;
   const subst = step.subst ? wrapSubst(step.subst, max) : [];
+  /** `(2) {X ↦ 1}`: which clause (or `builtin`), then the substitution, on one line where it fits. */
+  const tagged = (tag: string) => {
+    const rest = step.subst ? wrapSubst(step.subst, Math.max(8, max - tag.length - 1)) : [];
+    return rest.length ? [`${tag} ${rest[0]}`, ...rest.slice(1).map((l) => ' '.repeat(tag.length + 1) + l)] : [tag];
+  };
   switch (step.kind) {
     case 'resolve':
-      return [...wrapRule(`${step.rule ?? ''}.`, max), ...subst];
+      // Where sldcheck says which clause was used, its number stands for the renamed clause, which is in the code.
+      return step.clause !== undefined ? tagged(`(${step.clause})`) : [...wrapRule(`${step.rule ?? ''}.`, max), ...subst];
     case 'builtin':
-      return ['built-in', ...subst];
+      return tagged('builtin');
     case 'cut':
       return ['!'];
     case 'negation':

@@ -258,7 +258,7 @@ function Steps({ plan, decl, cfg, root }: { plan: FoldPlan; decl: string; cfg: C
       </p>
 
       {options ? (
-        <div className="flex flex-col gap-2 rounded-md border border-line bg-paper p-3">
+        <div className="flex flex-col gap-2 rounded-[10px] border border-line bg-stage p-3">
           <p className="text-[14.5px] font-semibold">
             <Message text={t.ask(call)} />
           </p>
@@ -294,7 +294,7 @@ function Steps({ plan, decl, cfg, root }: { plan: FoldPlan; decl: string; cfg: C
         </div>
       ) : null}
 
-      <div className="rounded-md border border-line bg-paper p-2">
+      <div className="rounded-[10px] border border-line bg-stage p-2">
         <TreePicture tree={tree} label={label} done={done} valueOf={valueOf} aria={show(root)} dim={unused} now={now} gone={gone} widest={widest} />
       </div>
 

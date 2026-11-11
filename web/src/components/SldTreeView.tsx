@@ -84,9 +84,16 @@ export function SldTreeView({ tree, stale, problems, cursorLine, onSelectLine }:
     const k = Math.max(LEAST_FIT, Math.min(1, (size.w - 2 * MARGIN) / Math.max(1, layout.width), (size.h - 2 * MARGIN) / Math.max(1, layout.height)));
     setView({ k, x: (size.w - layout.width * k) / 2, y: Math.max(MARGIN, (size.h - layout.height * k) / 2) });
   }, [layout, size]);
+  /** At its real size, so that the text reads as in the editor: all of it if it fits, otherwise its root at the top centre. */
+  const start = useCallback(() => {
+    if (!layout || size.w === 0 || size.h === 0) return;
+    if (layout.width <= size.w - 2 * MARGIN) return setView({ k: 1, x: (size.w - layout.width) / 2, y: MARGIN });
+    const root = layout.boxes.find((b) => !layout.edges.some((e) => e.to === b.id)) ?? layout.boxes[0];
+    setView({ k: 1, x: root ? size.w / 2 - (root.x + root.w / 2) : MARGIN, y: MARGIN });
+  }, [layout, size]);
   useEffect(() => {
-    if (following.current) fit();
-  }, [fit]);
+    if (following.current) start();
+  }, [start]);
 
   const zoomAt = useCallback((factor: number, cx: number, cy: number) => {
     following.current = false;
@@ -143,6 +150,19 @@ export function SldTreeView({ tree, stale, problems, cursorLine, onSelectLine }:
     return m;
   }, [problems]);
   const active = useMemo(() => (layout ? sldAtLine(layout, cursorLine) : new Set<string>()), [layout, cursorLine]);
+  // Hovering a box traces its path from the root: the boxes and edges that led to it.
+  const [hovered, setHovered] = useState<string | null>(null);
+  const path = useMemo(() => {
+    const ids = new Set<string>();
+    if (!layout || !hovered) return ids;
+    const into = new Map(layout.edges.map((e) => [e.to, e]));
+    for (let at: string | undefined = hovered; at; at = into.get(at)?.from) {
+      ids.add(at);
+      const e = into.get(at);
+      if (e) ids.add(e.id);
+    }
+    return ids;
+  }, [layout, hovered]);
 
   const save = () => {
     const content = svg.current?.querySelector<SVGGElement>('g[data-content]');
@@ -196,8 +216,10 @@ export function SldTreeView({ tree, stale, problems, cursorLine, onSelectLine }:
                 {title.text}
               </text>
             ))}
-            {layout?.edges.map((e) => <Edge key={e.id} e={e} state={worst.get(e.line) ?? (active.has(e.id) ? 'active' : null)} />)}
-            {layout?.boxes.map((b) => <Box key={b.id} b={b} state={worst.get(b.line) ?? (active.has(b.id) ? 'active' : null)} />)}
+            {layout?.edges.map((e) => <Edge key={e.id} e={e} state={worst.get(e.line) ?? (active.has(e.id) ? 'active' : null)} onPath={path.has(e.id)} />)}
+            {layout?.boxes.map((b) => (
+              <Box key={b.id} b={b} state={worst.get(b.line) ?? (active.has(b.id) ? 'active' : null)} onPath={path.has(b.id)} measure={measure} onHover={(on) => setHovered(on ? b.id : null)} />
+            ))}
           </g>
         </g>
       </svg>
@@ -234,63 +256,168 @@ export function SldTreeView({ tree, stale, problems, cursorLine, onSelectLine }:
 
 type State = 'error' | 'warning' | 'active' | null;
 
+// The same language as the lesson's trees: thin borders in a soft tint, a small drop under each box, curved edges.
 const strokeOf = (state: State, normal: string) => (state === 'error' ? 'stroke-danger' : state === 'warning' ? 'stroke-warn' : state === 'active' ? 'stroke-accent' : normal);
-const widthOf = (state: State) => (state ? 2.5 : 1.5);
+const widthOf = (state: State) => (state ? 1.75 : 1);
 
-function Edge({ e, state }: { e: SldEdge; state: State }) {
+/** ↦ sits low in most monospace fonts: lifted a little, so a substitution reads on one line. */
+function Lifted({ text }: { text: string }) {
+  const parts = text.split('↦');
+  return (
+    <>
+      {parts.map((part, i) => (
+        <tspan key={i}>
+          {i > 0 ? (
+            <>
+              <tspan dy={-1.6}>↦</tspan>
+              <tspan dy={1.6}>{part}</tspan>
+            </>
+          ) : (
+            part
+          )}
+        </tspan>
+      ))}
+    </>
+  );
+}
+
+/** A curve from the parent down into the child; with a label, it stops at the label and goes on below it, so no line runs through text. */
+function edgePath(e: SldEdge): string[] {
+  const curve = (x1: number, y1: number, x2: number, y2: number) => {
+    const my = (y1 + y2) / 2;
+    return `M${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`;
+  };
+  if (e.lw <= 0) return [curve(e.x1, e.y1, e.x2, e.y2)];
+  const top = e.ly - e.lh / 2 - 2;
+  const bottom = e.ly + e.lh / 2 + 2;
+  return bottom < e.y2 ? [curve(e.x1, e.y1, e.x2, top), `M${e.x2} ${bottom} V${e.y2}`] : [curve(e.x1, e.y1, e.x2, top)];
+}
+
+function Edge({ e, state, onPath }: { e: SldEdge; state: State; onPath: boolean }) {
+  const d = edgePath(e);
   return (
     <g data-line={e.line} className="cursor-pointer">
-      <line x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2} stroke="transparent" strokeWidth={12} />
-      <line x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2} className={strokeOf(state, 'stroke-line-strong')} strokeWidth={widthOf(state)} strokeDasharray={e.dashed ? '5 4' : undefined} />
+      {d.map((p, i) => (
+        <path key={`h${i}`} d={p} fill="none" stroke="transparent" strokeWidth={12} />
+      ))}
+      {d.map((p, i) => (
+        <path
+          key={i}
+          d={p}
+          fill="none"
+          strokeLinecap="round"
+          className={clsx('transition-[stroke,stroke-width]', state ? strokeOf(state, '') : onPath ? 'stroke-accent' : 'stroke-line-strong')}
+          strokeWidth={state ? widthOf(state) : onPath ? 1.75 : 1.25}
+          strokeDasharray={e.dashed ? '3 4' : undefined}
+        />
+      ))}
       {e.lw > 0 ? (
         <>
-          <rect x={e.lx - e.lw / 2} y={e.ly - e.lh / 2} width={e.lw} height={e.lh} rx={4} className={clsx('fill-sheet', strokeOf(state, 'stroke-transparent'))} strokeWidth={state ? 1.5 : 0} />
-          {e.label.map((line, i) => (
-            <text
-              key={i}
-              x={e.lx}
-              y={e.ly - e.lh / 2 + LABEL_PAD + LINE * (i + 0.5)}
-              textAnchor="middle"
-              dominantBaseline="central"
-              className={clsx('font-mono', line.startsWith('{') || line.startsWith(' ') ? 'fill-ink-3' : 'fill-ink')}
-              style={{ fontSize: FONT_SIZE, whiteSpace: 'pre' }}
-            >
-              {line}
-            </text>
-          ))}
+          {state ? <rect x={e.lx - e.lw / 2} y={e.ly - e.lh / 2} width={e.lw} height={e.lh} rx={5} className={clsx('fill-transparent', strokeOf(state, ''))} strokeWidth={1.25} /> : null}
+          {e.label.map((line, i) => {
+            // `(2)` or `builtin` first, in the accent; the substitution quieter; a renamed clause as written.
+            const tag = /^(\(\d+\)|builtin)( |$)/.exec(line)?.[1];
+            return (
+              <text
+                key={i}
+                x={e.lx - e.lw / 2 + LABEL_PAD}
+                y={e.ly - e.lh / 2 + LABEL_PAD + LINE * (i + 0.5)}
+                dominantBaseline="central"
+                className={clsx('font-mono', tag || line.startsWith('{') || line.startsWith(' ') ? 'fill-ink-2' : 'fill-ink')}
+                style={{ fontSize: FONT_SIZE, whiteSpace: 'pre' }}
+              >
+                {tag ? (
+                  <>
+                    <tspan className="fill-accent font-semibold">{tag}</tspan>
+                    <Lifted text={line.slice(tag.length)} />
+                  </>
+                ) : (
+                  <Lifted text={line} />
+                )}
+              </text>
+            );
+          })}
         </>
       ) : null}
     </g>
   );
 }
 
-const KINDS: Record<SldBox['kind'], { fill: string; stroke: string; dashed: boolean }> = {
-  goal: { fill: 'fill-sheet', stroke: 'stroke-line-strong', dashed: false },
-  success: { fill: 'fill-done-soft', stroke: 'stroke-done', dashed: false },
-  failure: { fill: 'fill-danger-soft', stroke: 'stroke-danger/50', dashed: false },
-  pruned: { fill: 'fill-sunk', stroke: 'stroke-ink-3', dashed: true },
-  missing: { fill: 'fill-review-soft', stroke: 'stroke-review', dashed: true },
+// Fill, border and the drop under the box, each from the theme.
+const KINDS: Record<SldBox['kind'], { fill: string; stroke: string; drop: string; dashed: boolean }> = {
+  goal: { fill: 'fill-sheet', stroke: 'stroke-line-strong', drop: 'fill-line', dashed: false },
+  success: { fill: 'fill-done-soft', stroke: 'stroke-done/45', drop: 'fill-done/25', dashed: false },
+  failure: { fill: 'fill-danger-soft', stroke: 'stroke-danger/35', drop: 'fill-danger/15', dashed: false },
+  pruned: { fill: 'fill-sunk', stroke: 'stroke-ink-3/60', drop: 'fill-line', dashed: true },
+  missing: { fill: 'fill-review-soft', stroke: 'stroke-review/60', drop: 'fill-review/20', dashed: true },
 };
 
-function Box({ b, state }: { b: SldBox; state: State }) {
+/** The literal the selection function picks next: the leftmost one, up to the first comma outside brackets. */
+function selected(goal: string): [string, string] | null {
+  if (!goal.startsWith('?- ') || goal === '?- true.') return null;
+  const body = goal.slice(3);
+  let depth = 0;
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i];
+    if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') depth--;
+    else if (c === ',' && depth === 0) return [body.slice(0, i), body.slice(i)];
+  }
+  // One literal: all of it but the end dot. A goal broken over lines has no dot on its first line.
+  return body.endsWith('.') ? [body.slice(0, -1), '.'] : null;
+}
+
+function Box({ b, state, onPath, measure, onHover }: { b: SldBox; state: State; onPath: boolean; measure: ((text: string) => number) | null; onHover: (on: boolean) => void }) {
   const kind = KINDS[b.kind];
+  // The answer of a success is written under its box, not in it.
+  const inside = b.lines.filter((l) => l.role !== 'answer');
+  const answer = b.lines.filter((l) => l.role === 'answer');
+  const w = answer.length && measure ? Math.max(...inside.map((l) => measure(l.text))) + 2 * PAD_X : b.w;
+  const h = inside.length * LINE + 2 * PAD_Y;
+  const x = b.x + (b.w - w) / 2;
+  const first = inside[0]?.role === 'goal' ? selected(inside[0].text) : null;
+  const stroke = state ? strokeOf(state, '') : onPath ? 'stroke-accent/60' : kind.stroke;
   return (
-    <g data-line={b.line} className="cursor-pointer">
-      <rect x={b.x} y={b.y} width={b.w} height={b.h} rx={7} className={clsx(kind.fill, strokeOf(state, kind.stroke))} strokeWidth={widthOf(state)} strokeDasharray={kind.dashed ? '5 4' : undefined} />
-      {b.lines.map((l, i) => (
+    <g data-line={b.line} className="cursor-pointer" onPointerEnter={() => onHover(true)} onPointerLeave={() => onHover(false)}>
+      <rect x={x} y={b.y + 1.5} width={w} height={h} rx={9} className={kind.drop} />
+      <rect x={x} y={b.y} width={w} height={h} rx={9} className={clsx(kind.fill, stroke, 'transition-[stroke]')} strokeWidth={widthOf(state)} strokeDasharray={kind.dashed ? '4 3' : undefined} />
+      {first && measure ? (
+        <rect x={x + PAD_X + measure('?- ') - 2.5} y={b.y + PAD_Y + 1} width={measure(first[0]) + 5} height={LINE - 2} rx={4} className="fill-accent/10" />
+      ) : null}
+      {inside.map((l, i) => (
         <text
           key={i}
-          x={b.x + PAD_X}
+          x={x + PAD_X}
           y={b.y + PAD_Y + LINE * (i + 0.5)}
           dominantBaseline="central"
-          className={clsx('font-mono', l.role === 'answer' ? 'fill-done' : l.role === 'note' ? 'fill-ink-2' : 'fill-ink')}
+          className={clsx('font-mono', b.kind === 'failure' ? 'fill-danger' : l.role === 'note' ? 'fill-ink-2' : 'fill-ink')}
           style={{ fontSize: FONT_SIZE, whiteSpace: 'pre' }}
         >
-          {l.text}
+          {l.role === 'goal' && l.text.startsWith('?- ') ? (
+            <>
+              <tspan className="fill-accent">?-</tspan>
+              {l.text.slice(2)}
+            </>
+          ) : (
+            l.text
+          )}
+        </text>
+      ))}
+      {answer.map((l, i) => (
+        <text
+          key={`a${i}`}
+          x={b.x + b.w / 2}
+          y={b.y + h + 6 + LINE * (i + 0.5)}
+          textAnchor="middle"
+          dominantBaseline="central"
+          className="fill-done font-mono font-semibold"
+          style={{ fontSize: FONT_SIZE, whiteSpace: 'pre' }}
+        >
+          <Lifted text={l.text} />
         </text>
       ))}
       {b.name ? (
-        <text x={b.x + b.w - 4} y={b.y - 6} textAnchor="end" className="fill-accent font-mono" style={{ fontSize: 11 }}>
+        <text x={x + w - 4} y={b.y - 6} textAnchor="end" className="fill-accent font-mono" style={{ fontSize: 11 }}>
           @{b.name}
         </text>
       ) : null}

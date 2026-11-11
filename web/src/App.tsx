@@ -1,4 +1,4 @@
-import { ArrowLeft, CircleHelp, ClipboardList, Layers, Menu, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Settings as SettingsIcon, Trophy, X } from 'lucide-react';
+import { ArrowLeft, CircleHelp, ClipboardList, Layers, Menu, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Trophy, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Route, Router, Switch, useLocation, useRoute } from 'wouter';
 import { useAppLocation } from '@/lib/history';
@@ -8,6 +8,7 @@ import { CourseMenu, FocusQuestion } from '@/components/Focus';
 import { OutlinePanel } from '@/components/Outline';
 import { SearchDialog } from '@/components/SearchDialog';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { QuickSettings } from '@/components/QuickMenus';
 import { SetupDialog } from '@/components/SetupDialog';
 import { Empty, IconButton, Spinner, clsx } from '@/components/ui';
 import { useQueryClient } from '@tanstack/react-query';
@@ -56,8 +57,8 @@ function Shell() {
   const settings = useSettings().data;
 
   useEffect(() => {
-    if (settings) applyTheme(settings.theme, settings.duskColor);
-  }, [settings?.theme, settings?.duskColor]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (settings) applyTheme(settings.theme, settings.duskColor, settings.warmPaper);
+  }, [settings?.theme, settings?.duskColor, settings?.warmPaper]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (settings) document.documentElement.dataset.colors = settings.safeColors ? 'safe' : 'default';
@@ -366,9 +367,7 @@ function CourseShell() {
           >
             <CircleHelp size={18} />
           </Link>
-          <IconButton label={t.settings} onClick={() => navigate('/settings')}>
-            <SettingsIcon size={18} />
-          </IconButton>
+          <QuickSettings />
         </div>
       </header>
 

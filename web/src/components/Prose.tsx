@@ -16,6 +16,7 @@ import { Widget, takeWidgets, type WidgetHost } from './widgets';
 export function Prose({ html, css, className, lang: langProp, annotate }: { html: string; css?: string; className?: string; lang?: string; annotate?: AnnotationPlace }) {
   const ref = useRef<HTMLDivElement>(null);
   const copyLabel = useT().copyCode;
+  const sourcesLabel = useT().sourcesAndNotes;
   // The text is in the language of the course, whatever the app is set to: hyphenation depends on it.
   const courseLang = useOutline().data?.language;
   const lang = langProp ?? courseLang;
@@ -75,8 +76,9 @@ export function Prose({ html, css, className, lang: langProp, annotate }: { html
     });
     // After highlighting, which works on plain text: gaps in code are marks in that text.
     wrapGaps(root);
+    cleanups.push(citeCards(root, sourcesLabel));
     return () => cleanups.forEach((c) => c());
-  }, [html, copyLabel]);
+  }, [html, copyLabel, sourcesLabel]);
 
   const on = !!useSettings().data?.showAnnotations && !!annotate;
   useHighlights(ref, on ? annotate : undefined, html);
@@ -173,6 +175,50 @@ function wrapGaps(root: HTMLElement): void {
     }
     text.replaceWith(frag);
   }
+}
+
+/**
+ * Notes (`#note`, Typst's footnotes) as citations: the small number shows its note in a card on hover or focus, and the
+ * notes gather at the end under a heading. The card floats outside the text, so the text highlights are anchored in
+ * stays as it is.
+ */
+function citeCards(root: HTMLElement, heading: string): () => void {
+  root.querySelectorAll<HTMLElement>('section[role="doc-endnotes"]').forEach((s) => (s.dataset.title = heading));
+  const refs = [...root.querySelectorAll<HTMLAnchorElement>('sup[role="doc-noteref"] a[href^="#"]')];
+  if (!refs.length) return () => undefined;
+  let card: HTMLDivElement | null = null;
+  const hide = () => {
+    card?.remove();
+    card = null;
+  };
+  const show = (a: HTMLAnchorElement) => {
+    const note = root.querySelector(`li[id="${CSS.escape(a.getAttribute('href')!.slice(1))}"]`);
+    if (!note) return;
+    hide();
+    card = document.createElement('div');
+    card.className = 'wb-cite-card prose-task';
+    card.setAttribute('role', 'tooltip');
+    card.innerHTML = note.innerHTML;
+    card.querySelector('sup[role="doc-backlink"]')?.remove();
+    document.body.appendChild(card);
+    const r = a.getBoundingClientRect(), w = card.offsetWidth, h = card.offsetHeight;
+    const left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+    const top = r.top - h - 8 > 8 ? r.top - h - 8 : r.bottom + 8;
+    card.style.left = `${left}px`;
+    card.style.top = `${top}px`;
+  };
+  const on: [HTMLAnchorElement, string, EventListener][] = [];
+  for (const a of refs) {
+    const enter = () => show(a);
+    for (const [type, f] of [['mouseenter', enter], ['focus', enter], ['mouseleave', hide], ['blur', hide]] as const) {
+      a.addEventListener(type, f);
+      on.push([a, type, f]);
+    }
+  }
+  return () => {
+    hide();
+    on.forEach(([a, type, f]) => a.removeEventListener(type, f));
+  };
 }
 
 const COPY_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';

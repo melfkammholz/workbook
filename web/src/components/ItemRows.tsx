@@ -1,4 +1,4 @@
-import { ArrowRight, FileText, GraduationCap, ListChecks } from 'lucide-react';
+import { ArrowRight, FileText, BookOpen, ListChecks } from 'lucide-react';
 import { Link } from 'wouter';
 import type { ItemMeta, StudentState } from '@wb/shared';
 import { itemHref, statusOf } from '@/lib/api';
@@ -17,7 +17,7 @@ export function ItemRow({ item, state, outside = false, className, group }: { it
       ) : item.type === 'checklist' ? (
         <ListChecks size={16} className={answered ? 'text-done' : 'text-ink-3'} />
       ) : item.type === 'lesson' ? (
-        <GraduationCap size={16} className={statusOf(state, item.id) === 'done' ? 'text-done' : 'text-ink-3'} />
+        <BookOpen size={16} className={statusOf(state, item.id) === 'done' ? 'text-done' : 'text-ink-3'} />
       ) : (
         <FileText size={16} className="text-ink-3" />
       )}
