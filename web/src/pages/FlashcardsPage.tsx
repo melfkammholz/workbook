@@ -165,7 +165,7 @@ export function FlashcardsPage() {
               onChange={(e) => setTitle(e.target.value)}
               maxLength={200}
               placeholder={t.deckTitlePlaceholder}
-              className="h-8.5 min-w-0 flex-1 rounded-md border border-line-strong bg-paper px-3 text-sm focus:border-accent focus:outline-none"
+              className="h-8.5 min-w-0 flex-1 wb-field px-3 text-sm"
             />
             <button
               type="submit"
@@ -203,7 +203,7 @@ function DeckRow({ deck: d, picked, onPick, onEdit }: { deck: DeckSummary; picke
   const big = d.settings.maxCards > 0 && d.cards > d.settings.maxCards;
   return (
     <li className="flex items-center gap-3 px-4 py-3">
-      <input type="checkbox" checked={picked} onChange={onPick} aria-label={t.pickDeck(d.title)} className="size-4 shrink-0 accent-[var(--accent)]" />
+      <input type="checkbox" checked={picked} onChange={onPick} aria-label={t.pickDeck(d.title)} className="wb-check shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-3">
           <Link href={`/flashcards/review/${d.id}`} className="truncate font-medium hover:text-accent" title={t.reviewDeck}>

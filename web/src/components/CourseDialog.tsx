@@ -26,7 +26,7 @@ export function CourseUrlField({ value, onChange, busy, error, autoFocus }: { va
           spellCheck={false}
           onChange={(e) => onChange(e.target.value)}
           placeholder="https://github.com/…/….git"
-          className="h-9 w-full rounded-md border border-line bg-paper px-3 text-sm placeholder:text-ink-3 focus:border-accent focus:outline-none disabled:opacity-60"
+          className="h-9 w-full wb-field px-3 text-sm placeholder:text-ink-3 disabled:opacity-60"
         />
       </label>
       <p className="mt-1 text-[13px] text-ink-3">{t.courseUrlHint}</p>

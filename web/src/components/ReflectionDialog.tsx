@@ -106,7 +106,7 @@ export function ReflectionDialog({
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           rows={review ? 3 : 2}
-          className="w-full resize-none rounded-md border border-line bg-paper px-3 py-2 text-sm placeholder:text-ink-3 focus:border-accent focus:outline-none"
+          className="w-full resize-none wb-field px-3 py-2 text-sm placeholder:text-ink-3"
           placeholder={review ? t.openPlaceholder : t.unclearPlaceholder}
         />
       </label>

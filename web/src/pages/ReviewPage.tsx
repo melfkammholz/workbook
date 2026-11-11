@@ -246,7 +246,7 @@ function QuestionBlock({ id, question }: { id: string; question: string }) {
   if (draft !== null) {
     return (
       <div>
-        <textarea autoFocus rows={3} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t.questionPlaceholder} className="w-full resize-y rounded-md border border-line bg-paper px-3 py-2 text-sm placeholder:text-ink-3 focus:border-accent focus:outline-none" />
+        <textarea autoFocus rows={3} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t.questionPlaceholder} className="w-full resize-y wb-field px-3 py-2 text-sm placeholder:text-ink-3" />
         <div className="mt-2 flex gap-2">
           <Button size="sm" variant="primary" onClick={() => void store(draft)}>
             {t.saveQuestion}

@@ -47,7 +47,7 @@ export function SetupDialog() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={t.namePlaceholder}
-            className="h-9 w-full rounded-md border border-line bg-paper px-3 text-sm placeholder:text-ink-3 focus:border-accent focus:outline-none"
+            className="h-9 w-full wb-field px-3 text-sm placeholder:text-ink-3"
           />
         </label>
 
@@ -70,28 +70,28 @@ export function SetupDialog() {
         </fieldset>
 
         <label className="mt-4 flex items-start gap-3">
-          <input type="checkbox" checked={settings.showAchievements} onChange={(e) => set({ showAchievements: e.target.checked })} className="mt-1 size-4 accent-[var(--accent)]" />
+          <input type="checkbox" checked={settings.showAchievements} onChange={(e) => set({ showAchievements: e.target.checked })} className="mt-1 wb-check" />
           <span>
             <span className="block text-sm font-medium">{t.showAchievements}</span>
             <span className="block text-[13px] text-ink-2">{t.showAchievementsBody}</span>
           </span>
         </label>
         <label className="mt-3 flex items-start gap-3">
-          <input type="checkbox" checked={settings.showFlashcards} onChange={(e) => set({ showFlashcards: e.target.checked })} className="mt-1 size-4 accent-[var(--accent)]" />
+          <input type="checkbox" checked={settings.showFlashcards} onChange={(e) => set({ showFlashcards: e.target.checked })} className="mt-1 wb-check" />
           <span>
             <span className="block text-sm font-medium">{t.showFlashcards}</span>
             <span className="block text-[13px] text-ink-2">{t.showFlashcardsBody}</span>
           </span>
         </label>
         <label className="mt-3 flex items-start gap-3">
-          <input type="checkbox" checked={settings.showAnnotations} onChange={(e) => set({ showAnnotations: e.target.checked })} className="mt-1 size-4 accent-[var(--accent)]" />
+          <input type="checkbox" checked={settings.showAnnotations} onChange={(e) => set({ showAnnotations: e.target.checked })} className="mt-1 wb-check" />
           <span>
             <span className="block text-sm font-medium">{t.showAnnotations}</span>
             <span className="block text-[13px] text-ink-2">{t.showAnnotationsBody}</span>
           </span>
         </label>
         <label className="mt-3 flex items-start gap-3">
-          <input type="checkbox" checked={settings.showAi} onChange={(e) => set({ showAi: e.target.checked })} className="mt-1 size-4 accent-[var(--accent)]" />
+          <input type="checkbox" checked={settings.showAi} onChange={(e) => set({ showAi: e.target.checked })} className="mt-1 wb-check" />
           <span>
             <span className="block text-sm font-medium">{t.showAi}</span>
             <span className="block text-[13px] text-ink-2">{t.showAiBody}</span>

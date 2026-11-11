@@ -84,7 +84,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && first && go(first)}
           placeholder={t.searchPlaceholder}
-          className="h-10 w-full rounded-md border border-line bg-paper pl-9 pr-3 focus:border-accent focus:outline-none"
+          className="h-10 w-full wb-field pl-9 pr-3"
         />
       </label>
       <div className="mt-3 max-h-[50vh] overflow-y-auto">

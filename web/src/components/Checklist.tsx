@@ -72,7 +72,7 @@ function Question({ checklistId, question, saved }: { checklistId: string; quest
           setNote(e.target.value);
           later.call(confidence, e.target.value);
         }}
-        className="mt-3 w-full resize-y rounded-md border border-line bg-paper px-3 py-2 text-sm placeholder:text-ink-3 focus:border-accent focus:outline-none"
+        className="mt-3 w-full resize-y wb-field px-3 py-2 text-sm placeholder:text-ink-3"
       />
       {failed ? (
         <p className="mt-1 text-[13px] text-danger" role="alert">

@@ -10,7 +10,7 @@ import { Button, Segmented, clsx } from '@/components/ui';
 import { SectionedPage, type PageSection } from '@/components/SectionedPage';
 import { FONT_SIZES } from '@/components/QuickMenus';
 
-const inputClass = 'h-9 w-full rounded-md border border-line bg-paper px-3 text-sm placeholder:text-ink-3 focus:border-accent focus:outline-none';
+const inputClass = 'h-9 w-full wb-field px-3 text-sm placeholder:text-ink-3';
 
 
 /** A text field that saves when it loses focus, so typing does not write on every key. */
@@ -33,7 +33,7 @@ function SavedInput({ value, onSave, ...p }: { value: string; onSave: (v: string
 function Toggle({ checked, onChange, title, body }: { checked: boolean; onChange: (v: boolean) => void; title: string; body?: string }) {
   return (
     <label className="flex items-start gap-3">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-1 size-4 shrink-0 accent-[var(--accent)]" />
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-1 wb-check shrink-0" />
       <span>
         <span className="block text-sm font-medium">{title}</span>
         {body ? <span className="block text-[13px] text-ink-2">{body}</span> : null}
@@ -100,7 +100,7 @@ function LabelsEditor({ labels, onChange }: { labels: HighlightLabel[]; onChange
               aria-label={t.annLabelName}
               placeholder={t.annLabelPlaceholder}
               onBlur={(e) => e.target.value !== l.name && change(l.id, { name: e.target.value.trim() })}
-              className="h-8.5 min-w-0 flex-1 rounded-md border border-line-strong bg-sheet px-2 focus:border-accent focus:outline-none"
+              className="h-8.5 min-w-0 flex-1 wb-field px-2"
             />
             <span role="group" aria-label={t.annLabelColor} className="flex items-center">
               {ANNOTATION_COLORS.map((c) => {
@@ -285,7 +285,7 @@ export function SettingsPage({ section }: { section?: string }) {
                 const n = Number(e.target.value);
                 if (Number.isInteger(n) && n >= 0 && n <= 1440) set({ helpAfterMinutes: n });
               }}
-              className="mx-1 h-8 w-20 rounded-md border border-line bg-paper px-2 text-sm focus:border-accent focus:outline-none"
+              className="mx-1 h-8 w-20 wb-field px-2 text-sm"
             />{' '}
             {t.minutes}
             <span className="block text-[13px] text-ink-3">{t.helpAfterBody}</span>

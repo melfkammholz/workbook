@@ -51,7 +51,7 @@ export function OutlinePanel({ outline, state, currentId, filters, patch, reset,
             value={filters.q}
             onChange={(e) => patch({ q: e.target.value })}
             placeholder={t.filterPlaceholder}
-            className="h-8 w-full rounded-md border border-line bg-paper pl-8 pr-7 text-[13.5px] placeholder:text-ink-3 focus:border-accent focus:outline-none"
+            className="h-8 w-full wb-field pl-8 pr-7 text-[13.5px] placeholder:text-ink-3"
           />
           {filters.q ? (
             <button type="button" aria-label={t.clearFilterText} onClick={() => patch({ q: '' })} className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-ink-3 hover:text-ink">

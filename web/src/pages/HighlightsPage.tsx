@@ -186,7 +186,7 @@ function Row({ a, onCard, onRemove }: { a: AnnotationEntry; onCard?: () => void;
             save.flush();
             setEditing(false);
           }}
-          className="mt-2 block w-full resize-y rounded-md border border-line-strong bg-paper px-2.5 py-1.5 text-[14px] focus:border-accent focus:outline-none"
+          className="mt-2 block w-full resize-y wb-field px-2.5 py-1.5 text-[14px]"
         />
       ) : a.comment.trim() ? (
         <button type="button" onClick={() => setEditing(true)} className="mt-1.5 block w-full whitespace-pre-wrap rounded-md py-0.5 pl-3 text-left text-[14px] text-ink-2 hover:bg-sunk">

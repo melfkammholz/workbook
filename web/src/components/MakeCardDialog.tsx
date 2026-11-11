@@ -76,7 +76,7 @@ export function MakeCardDialog({ open, onClose, exerciseId, highlightId = null, 
           decks.length ? (
             <label className="block min-w-0 flex-1">
               <span className="text-sm font-medium">{t.intoDeck}</span>
-              <select value={deckId ?? ''} onChange={(e) => setDeckId(e.target.value)} className="mt-1 block h-8.5 w-full rounded-md border border-line-strong bg-sheet px-2 focus:border-accent focus:outline-none">
+              <select value={deckId ?? ''} onChange={(e) => setDeckId(e.target.value)} className="mt-1 block h-8.5 w-full wb-field px-2">
                 {decks.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.title} ({t.deckCounts(d.cards)})

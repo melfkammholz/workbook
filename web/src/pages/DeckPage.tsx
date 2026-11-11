@@ -574,7 +574,7 @@ function SettingsForm({ deck, onChange }: { deck: DeckDoc; onChange: (s: Partial
   const s = deck.settings;
   const [retention, setRetention] = useState(Math.round(s.retention * 100));
   const [readyBy, setReadyBy] = useState(s.readyBy ?? '');
-  const input = 'h-8 rounded-md border border-line-strong bg-sheet px-2 text-sm focus:border-accent focus:outline-none';
+  const input = 'h-8 wb-field px-2 text-sm';
   const date = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(lang, { day: 'numeric', month: 'short', year: 'numeric' });
   const setDate = (d: string) => {
     setReadyBy(d);
@@ -596,7 +596,7 @@ function SettingsForm({ deck, onChange }: { deck: DeckDoc; onChange: (s: Partial
           onChange={(e) => setRetention(Number(e.target.value))}
           onPointerUp={() => onChange({ retention: retention / 100 })}
           onKeyUp={() => onChange({ retention: retention / 100 })}
-          className="mt-2 w-full accent-[var(--accent)]"
+          className="mt-2 w-full wb-range"
         />
         <span className="mt-1 block text-[12.5px] text-ink-3">{t.retentionHint}</span>
       </label>
@@ -645,7 +645,7 @@ function SettingsForm({ deck, onChange }: { deck: DeckDoc; onChange: (s: Partial
                   type="checkbox"
                   checked={s.courses.includes(c.id)}
                   onChange={(e) => onChange({ courses: e.target.checked ? [...s.courses, c.id] : s.courses.filter((x) => x !== c.id) })}
-                  className="size-4 accent-[var(--accent)]"
+                  className="wb-check"
                 />
                 {c.title}
               </label>
@@ -707,7 +707,7 @@ function CheckDeckDialog({ open, onClose, deckId }: { open: boolean; onClose: ()
         </p>
       ) : null}
       {prompt !== null && copied === 'failed' ? (
-        <textarea readOnly value={prompt} rows={10} aria-label={t.aiShowPrompt} onFocus={(e) => e.target.select()} className="mt-3 w-full resize-y rounded-md border border-line bg-sunk p-3 font-mono text-[12px] leading-relaxed focus:outline-none" />
+        <textarea readOnly value={prompt} rows={10} aria-label={t.aiShowPrompt} onFocus={(e) => e.target.select()} className="mt-3 w-full resize-y wb-field wb-field-sunk p-3 font-mono text-[12px] leading-relaxed" />
       ) : null}
     </Dialog>
   );

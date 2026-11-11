@@ -460,7 +460,7 @@ function EditHighlight({ id, focus, onRemove, onCard, onGone }: { id: string; fo
             save.call(e.target.value);
           }}
           onBlur={() => save.flush()}
-          className="block w-full resize-y rounded-md border border-line-strong bg-paper px-2.5 py-1.5 text-[14px] leading-snug placeholder:text-ink-3 focus:border-accent focus:outline-none"
+          className="block w-full resize-y wb-field px-2.5 py-1.5 text-[14px] leading-snug placeholder:text-ink-3"
         />
       </label>
     </div>

@@ -89,7 +89,7 @@ export function AiPanel({ id, answer, tests }: { id: string; answer: string; tes
         {prompt !== null ? (
           <details className="mt-3 text-sm" open={copied === 'failed'}>
             <summary className="cursor-pointer font-medium text-ink-2">{t.aiShowPrompt}</summary>
-            <textarea readOnly value={prompt} rows={10} aria-label={t.aiShowPrompt} onFocus={(e) => e.target.select()} className="mt-2 w-full resize-y rounded-md border border-line bg-sunk p-3 font-mono text-[12px] leading-relaxed focus:outline-none" />
+            <textarea readOnly value={prompt} rows={10} aria-label={t.aiShowPrompt} onFocus={(e) => e.target.select()} className="mt-2 w-full resize-y wb-field wb-field-sunk p-3 font-mono text-[12px] leading-relaxed" />
           </details>
         ) : null}
         <p className="mt-3 text-xs text-ink-3">{t.aiCopyNote}</p>
@@ -110,7 +110,7 @@ export function AiPanel({ id, answer, tests }: { id: string; answer: string; tes
             aria-label={t.aiEditTemplate}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => void storeTemplate().catch((e: Error) => setError(e.message))}
-            className="mt-2 w-full resize-y rounded-md border border-line bg-paper p-3 font-mono text-[12px] leading-relaxed focus:border-accent focus:outline-none"
+            className="mt-2 w-full resize-y wb-field p-3 font-mono text-[12px] leading-relaxed"
           />
           {!template.includes('{answer}') ? (
             <p className="mt-1 text-[13px] font-medium text-danger" role="status">
