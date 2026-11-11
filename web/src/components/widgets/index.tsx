@@ -217,6 +217,101 @@ export function Reveal({ label, onClick }: { label: string; onClick: () => void 
   );
 }
 
+// ───────────────────────── question box ─────────────────────────
+
+/** The plain words of some rendered question, for a note or a card. */
+function plainOf(html: string): string {
+  const el = document.createElement('div');
+  el.innerHTML = html;
+  return escapeMarkup((el.textContent ?? '').replace(/\s+/g, ' ').trim());
+}
+
+const ACTION = 'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[13px] text-ink-3 transition-colors hover:bg-sunk hover:text-ink';
+
+/**
+ * The card every question in a lesson sits on: an icon on the left, the question and what belongs to it, and below
+ * the same actions everywhere: Card (a flashcard of it), Note (into the notes of this lesson) and, only when the
+ * author gave one, Answer. The answer's own content is the caller's: `answer` says whether the button shows and
+ * whether it is open, `onAnswer` toggles it.
+ */
+function QuestionBox({
+  icon,
+  tone,
+  html,
+  card,
+  answer,
+  bare,
+  children,
+}: {
+  icon: React.ReactNode;
+  tone: string;
+  /** The question's rendered text: what a note quotes and a basic card starts from. */
+  html: string;
+  /** The card to start from; without it a card is made of the question's words. */
+  card: { kind: 'basic' | 'quiz'; front?: string | undefined };
+  answer?: { open: boolean; onClick: () => void } | null;
+  bare?: boolean | undefined;
+  children: React.ReactNode;
+}) {
+  const t = useT().widget;
+  const qc = useQueryClient();
+  const flashcards = !!useSettings().data?.showFlashcards;
+  const [, params] = useRoute('/item/:id');
+  const item = params?.id ?? null;
+  const [making, setMaking] = useState(false);
+  const [noted, setNoted] = useState(false);
+  const note = async () => {
+    if (!item) return;
+    const snippet = `#quote(block: true)[${plainOf(html)}]\n\n`;
+    if (!appendToOpenNote(item, snippet)) {
+      const work = await api.get<Work>(`/api/work/${encodeURIComponent(item)}`);
+      const before = work.note?.content.trimEnd() ?? '';
+      await saveNote(item, 'typst', before ? `${before}\n\n${snippet}` : snippet);
+      void qc.invalidateQueries({ queryKey: keys.work(item) });
+    }
+    setNoted(true);
+  };
+  const showCard = flashcards && !!(card.front ?? html);
+  const actions = !bare && (showCard || !!item || !!answer);
+  return (
+    <Frame bare={bare}>
+      <div className="flex items-start gap-3">
+        {!bare ? (
+          <span aria-hidden className={clsx('flex h-[1.5rem] shrink-0 items-center', tone)}>
+            {icon}
+          </span>
+        ) : null}
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          {children}
+          {actions ? (
+            <div className="-mb-1 -ml-2 flex flex-wrap gap-0.5">
+              {showCard ? (
+                <button type="button" title={t.makeCardOf} onClick={() => setMaking(true)} className={ACTION}>
+                  <Layers size={14} aria-hidden />
+                  {t.cardAction}
+                </button>
+              ) : null}
+              {item ? (
+                <button type="button" title={noted ? t.inYourNotes : t.writeInNotes} onClick={() => void note()} className={clsx(ACTION, noted && '!text-done')}>
+                  {noted ? <Check size={14} aria-hidden /> : <NotebookPen size={14} aria-hidden />}
+                  {t.noteAction}
+                </button>
+              ) : null}
+              {answer ? (
+                <button type="button" aria-pressed={answer.open} title={t.showAnswer} onClick={answer.onClick} className={clsx(ACTION, answer.open && 'bg-sunk !text-ink')}>
+                  <Eye size={14} aria-hidden />
+                  {t.answerAction}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      {showCard && making ? <MakeCardDialog open onClose={() => setMaking(false)} exerciseId={item} initial={{ kind: card.kind, front: card.front ?? plainOf(html), back: '' }} /> : null}
+    </Frame>
+  );
+}
+
 // ───────────────────────── quiz ─────────────────────────
 
 /**
@@ -276,59 +371,38 @@ export function Quiz({
   }, [reveal]);
 
   return (
-    <Frame bare={bare}>
-      <div className="flex items-start gap-3">
-        {/* In a lesson, a quiz is one of the blocks: its icon on the left, on the question's first line. */}
-        {!bare ? (
-          <span aria-hidden className="mt-1 flex h-6 shrink-0 items-center text-accent">
-            <ListChecks size={18} />
-          </span>
-        ) : null}
-        <div className="flex min-w-0 flex-1 flex-col gap-3">
-          {question ? <Prose html={question.html} className="pt-1 font-semibold" /> : null}
-          <div className="flex flex-wrap gap-1.5">
-            {choices.map((c, i) => (
-              <button
-                key={i}
-                ref={(el) => {
-                  buttons.current[i] = el;
-                }}
-                type="button"
-                disabled={!!solved}
-                onClick={() => pick(i)}
-                className={clsx(
-                  'rounded-lg border px-3 py-1.5 text-left text-[14.5px] transition-colors',
-                  solved && c.correct ? 'border-done/45 bg-done-soft font-semibold' : wrong.includes(i) ? 'border-danger/40 bg-danger-soft' : 'border-line-strong bg-sheet hover:border-accent',
-                  solved && !c.correct && 'opacity-60',
-                )}
-              >
-                <Inline html={c.label} />
-              </button>
-            ))}
-          </div>
-          {feedback ? (
-            <div aria-live="polite">
-              {feedback.why ? (
-                <Prose html={feedback.why} className={clsx('text-[14.5px]', feedback.correct ? 'text-ink' : 'text-ink-2')} />
-              ) : (
-                <p className="text-[14.5px] text-ink-2">{feedback.correct ? '✓' : t.tryAgain}</p>
-              )}
-            </div>
-          ) : null}
-        </div>
-        {(!solved && !bare) || (src && flashcards) ? (
-          <div className="-mr-2 flex shrink-0 gap-0.5">
-            {!solved && !bare ? <Reveal label={t.showAnswer} onClick={() => setLast(choices.findIndex((c) => c.correct))} /> : null}
-            {src && flashcards ? (
-              <button type="button" aria-label={t.makeQuizCard} title={t.makeQuizCard} onClick={() => setMaking(true)} className="grid size-8 shrink-0 place-items-center rounded-md text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
-                <Layers size={16} />
-              </button>
-            ) : null}
-          </div>
-        ) : null}
+    <QuestionBox icon={<ListChecks size={18} />} tone="text-accent" html={question?.html ?? ''} card={{ kind: 'quiz', front: src }} answer={!solved && !bare ? { open: false, onClick: () => setLast(choices.findIndex((c) => c.correct)) } : null} bare={bare}>
+      {question ? <Prose html={question.html} className="pt-0.5 font-semibold" /> : null}
+      <div className="flex flex-wrap gap-1.5">
+        {choices.map((c, i) => (
+          <button
+            key={i}
+            ref={(el) => {
+              buttons.current[i] = el;
+            }}
+            type="button"
+            disabled={!!solved}
+            onClick={() => pick(i)}
+            className={clsx(
+              'rounded-lg border px-3 py-1.5 text-left text-[14.5px] transition-colors',
+              solved && c.correct ? 'border-done/45 bg-done-soft font-semibold' : wrong.includes(i) ? 'border-danger/40 bg-danger-soft' : 'border-line-strong bg-sheet hover:border-accent',
+              solved && !c.correct && 'opacity-60',
+            )}
+          >
+            <Inline html={c.label} />
+          </button>
+        ))}
       </div>
-      {src && flashcards ? <MakeCardDialog open={making} onClose={() => setMaking(false)} exerciseId={params?.id ?? null} initial={{ kind: 'quiz', front: src, back: '' }} /> : null}
-    </Frame>
+      {feedback ? (
+        <div aria-live="polite">
+          {feedback.why ? (
+            <Prose html={feedback.why} className={clsx('text-[14.5px]', feedback.correct ? 'text-ink' : 'text-ink-2')} />
+          ) : (
+            <p className="text-[14.5px] text-ink-2">{feedback.correct ? '✓' : t.tryAgain}</p>
+          )}
+        </div>
+      ) : null}
+    </QuestionBox>
   );
 }
 
@@ -340,55 +414,22 @@ export function Quiz({
  */
 function OpenQuestion({ parts }: { parts: Part[] }) {
   const t = useT().widget;
-  const qc = useQueryClient();
-  const flashcards = !!useSettings().data?.showFlashcards;
-  const [, params] = useRoute('/item/:id');
-  const item = params?.id ?? null;
-  const [making, setMaking] = useState(false);
-  const [noted, setNoted] = useState(false);
+  const [shown, setShown] = useState(false);
   const question = parts.find((p) => p.name === 'question');
   const hint = parts.find((p) => p.name === 'hint');
-  const text = () => {
-    const el = document.createElement('div');
-    el.innerHTML = question?.html ?? '';
-    return escapeMarkup((el.textContent ?? '').replace(/\s+/g, ' ').trim());
-  };
-  const note = async () => {
-    if (!item) return;
-    const snippet = `#quote(block: true)[${text()}]\n\n`;
-    if (!appendToOpenNote(item, snippet)) {
-      const work = await api.get<Work>(`/api/work/${encodeURIComponent(item)}`);
-      const before = work.note?.content.trimEnd() ?? '';
-      await saveNote(item, 'typst', before ? `${before}\n\n${snippet}` : snippet);
-      void qc.invalidateQueries({ queryKey: keys.work(item) });
-    }
-    setNoted(true);
-  };
+  const answer = parts.find((p) => p.name === 'answer');
   return (
-    <Frame>
-      <div className="flex items-start gap-3">
-        <span aria-hidden className="flex h-[1.4rem] shrink-0 items-center text-review">
-          <CircleHelp size={18} />
-        </span>
-        <div className="min-w-0 flex-1">
-          {question ? <Prose html={question.html} className="text-[15.5px] font-semibold leading-snug" /> : null}
-          {hint ? <Prose html={hint.html} className="mt-1 !text-[14px] !text-ink-3" /> : null}
-        </div>
-        <div className="-mr-2 -mt-1 flex shrink-0 gap-0.5">
-          {item ? (
-            <button type="button" aria-label={noted ? t.inYourNotes : t.writeInNotes} title={noted ? t.inYourNotes : t.writeInNotes} onClick={() => void note()} className={clsx('grid size-8 place-items-center rounded-md transition-colors hover:bg-sunk hover:text-ink', noted ? 'text-done' : 'text-ink-3')}>
-              {noted ? <Check size={16} /> : <NotebookPen size={16} />}
-            </button>
-          ) : null}
-          {flashcards ? (
-            <button type="button" aria-label={t.makeCardOf} title={t.makeCardOf} onClick={() => setMaking(true)} className="grid size-8 place-items-center rounded-md text-ink-3 transition-colors hover:bg-sunk hover:text-ink">
-              <Layers size={16} />
-            </button>
-          ) : null}
-        </div>
+    <QuestionBox icon={<CircleHelp size={18} />} tone="text-review" html={question?.html ?? ''} card={{ kind: 'basic' }} answer={answer ? { open: shown, onClick: () => setShown((v) => !v) } : null}>
+      <div className="min-w-0">
+        {question ? <Prose html={question.html} className="text-[15.5px] font-semibold leading-snug" /> : null}
+        {hint ? <Prose html={hint.html} className="mt-1 !text-[14px] !font-normal !text-ink-3" /> : null}
       </div>
-      {flashcards && making ? <MakeCardDialog open onClose={() => setMaking(false)} exerciseId={item} initial={{ kind: 'basic', front: text(), back: '' }} /> : null}
-    </Frame>
+      {answer && shown ? (
+        <div className="rounded-lg bg-sunk px-3 py-2" aria-live="polite">
+          <Prose html={answer.html} className="text-[14.5px]" />
+        </div>
+      ) : null}
+    </QuestionBox>
   );
 }
 

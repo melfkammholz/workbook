@@ -47,7 +47,8 @@ export function MarginNotes({ target, page }: { target: string; page: React.RefO
         .filter((x): x is { n: Found; r: Range } => !!x.r && x.r.getBoundingClientRect().height > 0)
         .sort((x, y) => x.r.getBoundingClientRect().top - y.r.getBoundingClientRect().top);
       // The free space between the page's right edge and the scroller's, less a gap on both sides.
-      const room = s.right - a.right - 2 * GAP;
+      // Without the scrollbar's width, which a classic scrollbar takes from the right.
+      const room = s.left + scroller.clientLeft + scroller.clientWidth - a.right - 2 * GAP;
       if (room >= MIN_WIDTH) {
         const tops = new Map<string, number>();
         let below = -Infinity;

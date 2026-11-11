@@ -2,7 +2,7 @@
 function dropBodies(source: string, names: string[]): string {
   let out = source;
   for (const name of names) {
-    const open = `#${name}[`;
+    const open = name.startsWith('#') ? `${name.slice(1)}[` : `#${name}[`;
     for (let at = out.indexOf(open); at >= 0; at = out.indexOf(open, at)) {
       let depth = 0;
       let end = at + open.length - 1;
@@ -21,7 +21,7 @@ function dropBodies(source: string, names: string[]): string {
  * search can neither give an answer away nor show a student what the author kept to themselves.
  */
 export function plainText(typst: string): string {
-  return dropBodies(typst, ['hint', 'sample', 'draft-note'])
+  return dropBodies(typst, ['hint', 'sample', 'draft-note', '#answer: '])
     .replace(/^\s*\/\/.*$/gm, ' ')
     .replace(/^\s*#(import|let|set|show)\b.*$/gm, ' ')
     .replace(/#link\(\s*"[^"]*"\s*\)/g, ' ')

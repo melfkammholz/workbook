@@ -148,10 +148,12 @@
 )
 
 /// A question to think about, with no answer to pick: `#open-question[Was weißt du jetzt?][Denk an die Eingaben.]`.
-/// The optional second argument is a hint under it. Students can write it into their notes or make a card of it.
-#let open-question(question, ..hint) = _widget("open-question", {
+/// The optional second argument is a hint under it; `answer: [...]` adds an Answer button that shows it. Students
+/// can write the question into their notes or make a card of it.
+#let open-question(question, answer: none, ..hint) = _widget("open-question", {
   _part("question", question)
   for h in hint.pos() { _part("hint", h) }
+  if answer != none { _part("answer", answer) }
 })
 
 /// Expressions drawn as trees, side by side: `(expr: "f 1 (f 2 z)", caption: "foldr f z [1, 2]")`.
