@@ -467,7 +467,7 @@ function FilterPopover({ outline, filters, patch, reset, count }: { outline: Out
         </button>
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content align="end" sideOffset={8} className="z-50 max-h-[70vh] w-72 overflow-y-auto rounded-xl border border-line-strong bg-sheet p-4 shadow-[var(--shadow)]">
+        <Popover.Content align="end" sideOffset={8} className="wb-menu max-h-[70vh] w-72 overflow-y-auto p-4">
           <Group title={t.filterShow}>
             {ITEM_TYPES.map((k) => (
               <Toggle key={k} on={filters.types.includes(k)} onClick={() => patch({ types: toggle(filters.types, k) })}>

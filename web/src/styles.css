@@ -416,6 +416,9 @@ a.wb-external::after {
   @keyframes wb-tick-still { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 }
 
+/* Popovers and quick menus: a sheet with a line, radius and shadow. */
+.wb-menu { z-index: 50; border: 1px solid var(--line-strong); border-radius: 0.75rem; background: var(--sheet); color: var(--ink); box-shadow: var(--shadow); }
+
 /* ───────── lessons: one scrolling page, set like a short book chapter ───────── */
 /* The reading column is a page lying on the dimmer app background. */
 /* With warm paper, the workspace of an exercise and the folded task are cards on the background too. */
@@ -434,6 +437,12 @@ a.wb-external::after {
   :root[data-warm] .wb-gutter::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 40px; margin: -20px 0 0 -2px; border-radius: 2px; background: var(--line-strong); opacity: 0; transition: opacity 0.15s; }
   :root[data-warm] .wb-gutter:hover::after, :root[data-warm] .wb-gutter[data-separator='active']::after { opacity: 1; }
   :root[data-warm] .wb-gutter.wb-gutter-off::after { display: none; }
+  /* The picture and the feedback of an SLD tree are two cards stacked in the second pane; the gap between is the handle. */
+  :root[data-warm] .wb-pane-stack-wrap .wb-subcard { height: 100%; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--page-shadow); background: var(--sheet); }
+  :root[data-warm] .wb-pane.wb-pane-bare { margin: 0; height: 100%; border: 0; border-radius: 0; box-shadow: none; background: transparent; overflow: visible; }
+  :root[data-warm] .wb-pane.wb-pane-stack { padding: 14px 14px 14px 0; }
+  :root[data-warm] .wb-gutter.wb-gutter-col { width: auto; height: 10px; }
+  :root[data-warm] .wb-gutter.wb-gutter-col::after { width: 40px; height: 4px; margin: -2px 0 0 -20px; }
 }
 /* With warm paper, the reading column is a page lying on the background; without it, it lies flat as before. */
 :root[data-warm] .wb-page { background: var(--sheet); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--page-shadow); margin-block: 1.25rem 3rem; }

@@ -15,7 +15,7 @@ export const FONT_SIZES = [
   [17, 'larger'],
 ] as const;
 
-const MENU = 'z-50 w-80 rounded-xl border border-line-strong bg-sheet p-2 text-ink shadow-[var(--shadow)]';
+const MENU = 'wb-menu w-80 p-2';
 
 /** A setting in a menu: the whole row is the switch, with what it does under its name. */
 function MenuSwitch({ checked, onChange, title, body }: { checked: boolean; onChange: (v: boolean) => void; title: string; body?: string }) {

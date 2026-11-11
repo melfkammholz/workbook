@@ -562,11 +562,11 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
       </Panel>
       <ResizeHandle direction="row" gutter />
       <Panel defaultSize="54" minSize="25">
-        <div className="wb-pane flex h-full min-h-0 flex-col bg-sheet">
+        <div className={clsx('wb-pane flex h-full min-h-0 flex-col bg-sheet', isSld && tab === 'answer' && 'wb-pane-bare wb-pane-stack')}>
           {isSld && tab === 'answer' ? (
-            <Group orientation="vertical" className="h-full">
+            <Group orientation="vertical" className="wb-pane-stack-wrap h-full">
               <Panel defaultSize="62" minSize="15">
-                <div className="flex h-full min-h-0 flex-col">
+                <div className="wb-subcard flex h-full min-h-0 flex-col bg-sheet">
                   <div className="flex shrink-0 items-center border-b border-line bg-sheet px-2" style={{ height: TAB_ROW_PX + 3 }}>
                     <span className="relative px-3 py-2.5 text-[13px] font-medium text-ink">
                       {t.preview}
@@ -576,9 +576,9 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
                   <div className="min-h-0 flex-1">{preview}</div>
                 </div>
               </Panel>
-              <ResizeHandle direction="column" />
+              <ResizeHandle direction="column" gutter />
               <Panel panelRef={panel} defaultSize={startCollapsed ? TAB_ROW_PX : '38'} minSize="15" collapsible collapsedSize={TAB_ROW_PX} onResize={() => setCollapsed(panel.current?.isCollapsed() ?? false)}>
-                {feedback}
+                <div className="wb-subcard h-full bg-sheet">{feedback}</div>
               </Panel>
             </Group>
           ) : (
@@ -697,7 +697,7 @@ export function MoreMenu({ items }: { items: { icon: typeof Clock; label: string
         </button>
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content align="end" sideOffset={4} className="z-50 w-64 rounded-xl border border-line-strong bg-sheet p-1.5 shadow-[var(--shadow)]">
+        <Popover.Content align="end" sideOffset={4} className="wb-menu w-64 p-1.5">
           {items.map(({ icon: Icon, label, onClick }) => (
             <button
               key={label}

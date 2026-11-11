@@ -29,7 +29,7 @@ export function StatusControl({ status, onChange }: { status: Status; onChange: 
         </button>
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content align="end" sideOffset={6} className="z-50 w-56 rounded-xl border border-line-strong bg-sheet p-1.5 shadow-[var(--shadow)]">
+        <Popover.Content align="end" sideOffset={6} className="wb-menu w-56 p-1.5">
           {ORDER.map((s) => (
             <button
               key={s}

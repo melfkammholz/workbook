@@ -80,7 +80,7 @@ export function CourseMenu({ onCourses }: { onCourses: () => void }) {
         </button>
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content align="start" sideOffset={6} className="z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-line-strong bg-sheet p-3 shadow-[var(--shadow)]">
+        <Popover.Content align="start" sideOffset={6} className="wb-menu w-80 max-w-[calc(100vw-2rem)] p-3">
           <p className={heading}>{t.course}</p>
           <ul className="space-y-0.5" role="radiogroup" aria-label={t.course}>
             {(courses?.courses ?? []).map((c) => {
