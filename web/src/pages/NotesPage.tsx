@@ -32,7 +32,7 @@ export function NotesPage() {
   }
   return (
     <div className="h-full overflow-y-auto">
-      <div className="settle mx-auto max-w-3xl px-6 pb-24 pt-8 sm:px-8">
+      <div className="settle wb-page mx-auto max-w-3xl px-6 pb-12 pt-8 sm:px-8">
         <BackLink fallback="/review" label={t.back} className="mb-3">
           {t.back}
         </BackLink>

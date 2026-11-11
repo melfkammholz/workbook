@@ -41,7 +41,7 @@ export function Dashboard() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="settle mx-auto max-w-3xl px-6 pb-24 pt-10 sm:px-8">
+      <div className="settle wb-page mx-auto max-w-3xl px-6 pb-12 pt-10 sm:px-8">
         <h1 className="text-balance text-[2rem] font-semibold leading-tight tracking-[-0.025em]">
           {settings?.displayName ? t.welcomeBackName(settings.displayName.split(' ')[0]!) : fresh ? t.welcome : t.welcomeBack}
         </h1>
@@ -128,7 +128,7 @@ export function Dashboard() {
         {suggestions.length ? (
           <section className="mt-10">
             <h2 className="mb-2 text-sm font-semibold text-ink-2">{t.suggestedNext}</h2>
-            <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-sheet">
+            <ul className="divide-y divide-line">
               {suggestions.map((s) => {
                 const e = map.get(s.id) as ExerciseMeta | undefined;
                 if (!e) return null;

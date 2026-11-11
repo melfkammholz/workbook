@@ -31,7 +31,7 @@ export function ReviewPage() {
   const cards = useCourseCards(flashcardsOn).data;
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-5xl px-6 pb-24 pt-8 sm:px-8">
+      <div className="wb-page mx-auto max-w-5xl px-6 pb-12 pt-8 sm:px-8">
         <BackLink fallback="/" label={t.back} className="mb-3">
           {t.back}
         </BackLink>

@@ -608,3 +608,7 @@ a.wb-friend-met:hover, a.wb-friend-not:hover { border-color: var(--accent); }
 .prose-task section[role='doc-endnotes'] sup[role='doc-backlink'] a::after { content: '.'; }
 /* A flowchart inside a figure: the figure is the frame. */
 figure .wb-flow { margin: 0 !important; padding: 0; border: 0; }
+/* A page that fills the column (the deck: header, then a list that scrolls). */
+.wb-page-fill { height: 100%; }
+:root[data-warm] .wb-page-fill { height: calc(100% - 4.25rem); }
+@media (max-width: 639px) { :root[data-warm] .wb-page-fill { height: 100%; } }

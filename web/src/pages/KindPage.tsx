@@ -27,7 +27,7 @@ export function KindPage({ kind }: { kind: ThreadKind }) {
 
   return (
     <div className="h-full overflow-y-auto">
-      <article className="settle mx-auto max-w-[46rem] px-6 pb-24 pt-10 sm:px-8">
+      <article className="settle wb-page mx-auto max-w-[46rem] px-6 pb-12 pt-10 sm:px-8">
         <h1 className="text-balance text-[2rem] font-semibold leading-tight tracking-[-0.025em]">{t.threadKind[kind]}</h1>
         <p className="mt-2 text-ink-2">{t.threadKindSummary[kind]}</p>
         {groups.length === 0 ? (
@@ -48,7 +48,7 @@ export function KindPage({ kind }: { kind: ThreadKind }) {
                 <p className="mb-1.5 text-[13px] tabular-nums text-ink-2">{t.nDoneOfM(done, counted.length)}</p>
                 <ProgressLine done={done} total={counted.length} />
               </div>
-              <ol className="mt-4 divide-y divide-line overflow-hidden rounded-lg border border-line bg-sheet">
+              <ol className="mt-4 divide-y divide-line">
                 {items
                   .filter((item) => opened.has(g.id) || staysInSight(item, state))
                   .map((item) => (

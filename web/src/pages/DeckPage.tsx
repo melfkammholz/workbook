@@ -91,8 +91,8 @@ function DeckEditor({ deck, focusCard }: { deck: DeckDoc; focusCard: string | nu
   usePageKeys({ t: () => setView(view === 'cards' ? 'text' : 'cards') });
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="border-b border-line bg-sheet px-4 py-3 sm:px-6">
+    <div className="wb-page wb-page-fill flex min-h-0 flex-col overflow-hidden">
+      <div className="border-b border-line px-4 py-3 sm:px-6">
         <div className="flex flex-wrap items-center gap-2">
           <BackLink fallback="/flashcards" label={t.back} />
           {renaming ? (

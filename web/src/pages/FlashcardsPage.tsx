@@ -46,6 +46,9 @@ export function FlashcardsPage() {
     writePref(SORT_KEY, s);
   };
 
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+
   if (!list.data) {
     return (
       <div className="grid h-full place-items-center">
@@ -73,8 +76,6 @@ export function FlashcardsPage() {
     }
   };
 
-  const fileInput = useRef<HTMLInputElement>(null);
-  const [importError, setImportError] = useState<string | null>(null);
   const importFile = async (file: File | undefined) => {
     if (!file || busy) return;
     setImportError(null);
@@ -98,7 +99,7 @@ export function FlashcardsPage() {
     items.length ? (
       <section className="mt-8">
         {heading ? <h2 className="mb-2 text-[15px] font-semibold">{heading}</h2> : null}
-        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-sheet">
+        <ul className="divide-y divide-line">
           {items.map((d) => (
             <DeckRow key={d.id} deck={d} picked={picked.includes(d.id)} onPick={() => toggle(d.id)} onEdit={() => navigate(`/flashcards/deck/${d.id}`)} />
           ))}
@@ -108,7 +109,7 @@ export function FlashcardsPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="settle mx-auto max-w-3xl px-6 pb-24 pt-8 sm:px-8">
+      <div className="settle wb-page mx-auto max-w-3xl px-6 pb-12 pt-8 sm:px-8">
         <BackLink fallback="/" label={t.back} className="mb-3">
           {t.back}
         </BackLink>
@@ -153,7 +154,7 @@ export function FlashcardsPage() {
           </div>
         )}
 
-        <form onSubmit={(e) => void create(e)} className="mt-8 rounded-xl border border-line bg-sheet p-4">
+        <form onSubmit={(e) => void create(e)} className="mt-10 border-t border-line pt-6">
           <label className="block text-sm font-medium" htmlFor="wb-new-deck">
             {t.newDeck}
           </label>

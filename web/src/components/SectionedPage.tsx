@@ -40,7 +40,7 @@ export function SectionedPage({
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex max-w-5xl gap-10 px-6 pb-24 pt-6 sm:px-8">
+      <div className="wb-page mx-auto flex max-w-5xl gap-10 px-6 pb-12 pt-6 sm:px-8">
         {/* Starts on the line of the heading next to it, below the way back. */}
         <nav aria-label={title} className="sticky top-12 mt-12 hidden w-48 shrink-0 self-start lg:block">
           <ul className="space-y-0.5 text-sm">
@@ -55,7 +55,7 @@ export function SectionedPage({
         </nav>
         <div className="min-w-0 max-w-2xl flex-1">
           {/* Where the other pages have it, and it stays in reach however far down the page goes. */}
-          <div className="sticky top-0 z-10 -mx-2 mb-1 bg-paper px-2 py-2">
+          <div className="sticky top-0 z-10 -mx-2 mb-1 bg-sheet px-2 py-2">
             <BackLink fallback="/" label={t.back}>
               {t.back}
             </BackLink>

@@ -83,7 +83,7 @@ export function HighlightsPage({ filter = 'all' }: { filter?: HighlightFilter })
   }
   return (
     <div className="h-full overflow-y-auto">
-      <div className="settle mx-auto max-w-3xl px-6 pb-24 pt-8 sm:px-8">
+      <div className="settle wb-page mx-auto max-w-3xl px-6 pb-12 pt-8 sm:px-8">
         <BackLink fallback="/" label={t.back} className="mb-3">
           {t.back}
         </BackLink>
@@ -118,7 +118,7 @@ export function HighlightsPage({ filter = 'all' }: { filter?: HighlightFilter })
                   ) : (
                     <p className="mb-1.5 font-mono text-xs text-ink-3">{x.title}</p>
                   )}
-                  <ul className="divide-y divide-line rounded-lg border border-line bg-sheet">
+                  <ul className="divide-y divide-line">
                     {x.list.map((a) => (
                       <Row
                         key={a.id}

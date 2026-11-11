@@ -30,7 +30,7 @@ export function HelpPage({ section }: { section?: string }) {
       body: (
         <>
           <p>{t.helpTypst}</p>
-          <dl className="mt-3 divide-y divide-line rounded-lg border border-line bg-sheet">
+          <dl className="mt-3 divide-y divide-line">
             {t.helpTypstRows.map(([what, how]) => (
               <div key={what} className="grid gap-x-4 gap-y-1 px-3 py-2 sm:grid-cols-[11rem_1fr]">
                 <dt className="text-ink-2">{what}</dt>
@@ -78,7 +78,7 @@ export function HelpPage({ section }: { section?: string }) {
           {t.helpKeys.map(([where, keys]) => (
             <div key={where} className="mt-4">
               <h3 className="mb-1.5 font-semibold text-ink">{where}</h3>
-              <dl className="divide-y divide-line rounded-lg border border-line bg-sheet">
+              <dl className="divide-y divide-line">
                 {keys.map(([key, what]) => (
                   <div key={key} className="grid items-baseline gap-x-4 gap-y-1 px-3 py-1.5 sm:grid-cols-[11rem_1fr]">
                     <dt>

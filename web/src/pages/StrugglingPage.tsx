@@ -12,7 +12,7 @@ export function StrugglingPage({ deckId }: { deckId: string | null }) {
   const [done, setDone] = useState<Record<string, string>>({});
   return (
     <div className="h-full overflow-y-auto">
-      <div className="settle mx-auto max-w-3xl px-6 pb-24 pt-8 sm:px-8">
+      <div className="settle wb-page mx-auto max-w-3xl px-6 pb-12 pt-8 sm:px-8">
         <BackLink fallback={deckId ? `/flashcards/deck/${deckId}` : '/flashcards'} label={t.back} className="mb-4">
           {t.back}
         </BackLink>

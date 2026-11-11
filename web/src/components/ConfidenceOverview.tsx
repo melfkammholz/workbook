@@ -134,7 +134,7 @@ export function ConfidenceOverview({ outline, data, cards }: { outline: Outline;
   );
 
   return (
-    <section className="mt-6 rounded-lg border border-line bg-sheet p-4">
+    <section className="mt-8">
       <h2 className="text-sm font-semibold">{t.confidenceOverview}</h2>
       <p className="mt-1 text-[13px] text-ink-2">{showCards ? t.confidenceHintWithCards : t.confidenceHint}</p>
       {showCards ? (

@@ -34,7 +34,7 @@ export function AchievementsPage() {
   ).length;
   return (
     <div className="h-full overflow-y-auto">
-      <div className="settle mx-auto max-w-[52rem] px-6 pb-24 pt-8 sm:px-8">
+      <div className="settle wb-page mx-auto max-w-[52rem] px-6 pb-12 pt-8 sm:px-8">
         <BackLink fallback="/" label={t.back} className="mb-3">
           {t.back}
         </BackLink>
@@ -124,7 +124,7 @@ function Comebacks({ events }: { events: EarnedEvent[] }) {
   const t = useT();
   const date = new Intl.DateTimeFormat(useLang(), { day: "numeric", month: "short" });
   return (
-    <div className="mt-3 overflow-x-auto rounded-xl border border-line bg-sheet px-4 pb-2 pt-1.5">
+    <div className="mt-3 overflow-x-auto pb-2 pt-1.5">
       <div className="grid min-w-[640px] grid-cols-[minmax(150px,1fr)_repeat(5,80px)_72px] items-center">
         <span />
         {STEPS.map((c) => (

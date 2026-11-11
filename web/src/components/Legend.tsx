@@ -23,7 +23,7 @@ export function Legend() {
   return (
     <section>
       <h3 className="font-semibold">{t.legendTitle}</h3>
-      <dl className="mt-2 divide-y divide-line rounded-lg border border-line">
+      <dl className="mt-2 divide-y divide-line">
         {rows.map(([mark, name, meaning]) => (
           <div key={name} className="grid items-baseline gap-x-3 gap-y-0.5 px-3 py-2 sm:grid-cols-[1.5rem_9rem_1fr]">
             <span aria-hidden className="hidden sm:inline-flex sm:justify-center">
@@ -37,7 +37,7 @@ export function Legend() {
       {tags.length ? (
         <>
           <h4 className="mt-3 text-[13px] font-semibold text-ink-2">{t.legendTags}</h4>
-          <dl className="mt-1 divide-y divide-line rounded-lg border border-line">
+          <dl className="mt-1 divide-y divide-line">
             {tags.map((tag) => (
               <div key={tag.id} className="grid gap-x-3 gap-y-0.5 px-3 py-2 sm:grid-cols-[10.75rem_1fr]">
                 <dt className="font-medium">{tag.label}</dt>
