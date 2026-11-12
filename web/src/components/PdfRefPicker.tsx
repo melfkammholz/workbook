@@ -1,9 +1,10 @@
-import { rectsTop, type PdfAnnotation, type Resource } from '@wb/shared';
-import { FileText } from 'lucide-react';
+import { rectsTop, type PdfAnnotation, type PdfPageItem, type Resource } from '@wb/shared';
+import { FileText, StickyNote } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSettings } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { pdfRefText, useAllPdfAnnotations } from '@/lib/pdfAnnotations';
+import { pageHasContent, pdfPageRefText, useAllPdfPages } from '@/lib/pdfPages';
 import { registerPdfRefPicker, type InsertText } from '@/lib/pdfRefPicker';
 import { useResources } from '@/lib/resources';
 import { swatchProps } from '@/lib/annotations';
@@ -21,13 +22,14 @@ export function PdfRefPicker() {
   return insert ? <PickerDialog onPick={(text) => { insert.fn(text); setInsert(null); }} onClose={() => setInsert(null)} /> : null;
 }
 
-type Row = { key: string; resource: Resource; highlight?: PdfAnnotation };
+type Row = { key: string; resource: Resource; highlight?: PdfAnnotation; page?: PdfPageItem };
 const MAX_ROWS = 60;
 
 function PickerDialog({ onPick, onClose }: { onPick: (text: string) => void; onClose: () => void }) {
   const t = useT();
   const resources = useResources(null).data?.resources;
   const highlights = useAllPdfAnnotations().data;
+  const pageItems = useAllPdfPages().data;
   const [query, setQuery] = useState('');
   const [at, setAt] = useState(0);
   const list = useRef<HTMLUListElement>(null);
@@ -36,24 +38,29 @@ function PickerDialog({ onPick, onClose }: { onPick: (text: string) => void; onC
     const q = query.trim().toLowerCase();
     const byResource = new Map<string, PdfAnnotation[]>();
     for (const h of highlights ?? []) (byResource.get(h.resource) ?? byResource.set(h.resource, []).get(h.resource)!).push(h);
+    const pagesOf = new Map<string, PdfPageItem[]>();
+    for (const p of pageItems ?? []) if (pageHasContent(p)) (pagesOf.get(p.resource) ?? pagesOf.set(p.resource, []).get(p.resource)!).push(p);
     const out: Row[] = [];
     for (const r of resources ?? []) {
       const own = !q || `${r.title} ${r.author}`.toLowerCase().includes(q);
       const hs = (byResource.get(r.id) ?? []).filter((h) => own || `${h.quote} ${h.comment}`.toLowerCase().includes(q)).sort((a, b) => a.pageIndex - b.pageIndex || rectsTop(a.rects) - rectsTop(b.rects));
-      if (!own && !hs.length) continue;
+      const ps = (pagesOf.get(r.id) ?? []).filter((p) => own || `${p.note} ${t.pdfPageN(p.pageIndex + 1)}`.toLowerCase().includes(q));
+      if (!own && !hs.length && !ps.length) continue;
       // Searching for a passage lists the passages; the file itself is there while its title matches.
       if (own) out.push({ key: r.id, resource: r });
-      for (const h of hs) out.push({ key: h.id, resource: r, highlight: h });
+      // Pages and highlights in the order of the file.
+      const inOrder = [...hs.map((h) => ({ at: h.pageIndex + rectsTop(h.rects) / 2, row: { key: h.id, resource: r, highlight: h } as Row })), ...ps.map((p) => ({ at: p.pageIndex, row: { key: p.id, resource: r, page: p } as Row }))].sort((a, b) => a.at - b.at);
+      for (const x of inOrder) out.push(x.row);
     }
     return out.slice(0, MAX_ROWS);
-  }, [resources, highlights, query]);
+  }, [resources, highlights, pageItems, query, t]);
 
   useEffect(() => setAt(0), [query]);
   useEffect(() => {
     list.current?.children[at]?.scrollIntoView({ block: 'nearest' });
   }, [at]);
 
-  const choose = (row: Row | undefined) => row && onPick(pdfRefText(row.resource.id, row.highlight));
+  const choose = (row: Row | undefined) => row && onPick(row.page ? pdfPageRefText(row.resource.id, row.page, firstWords(row.page, t.pdfPageN(row.page.pageIndex + 1))) : pdfRefText(row.resource.id, row.highlight));
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title={t.pdfRefTitle} description={t.pdfRefHint} width="max-w-xl">
@@ -83,9 +90,19 @@ function PickerDialog({ onPick, onClose }: { onPick: (text: string) => void; onC
               tabIndex={-1}
               onMouseMove={() => setAt(i)}
               onClick={() => choose(row)}
-              className={`flex w-full min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm ${i === at ? 'bg-sunk' : ''} ${row.highlight ? 'pl-7' : ''}`}
+              className={`flex w-full min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm ${i === at ? 'bg-sunk' : ''} ${row.highlight || row.page ? 'pl-7' : ''}`}
             >
-              {row.highlight ? (
+              {row.page ? (
+                <>
+                  <StickyNote size={14} aria-hidden className="mt-0.5 shrink-0 text-ink-3" />
+                  <span className="min-w-0 flex-1">
+                    <span className="text-[12px] text-ink-3">
+                      {t.pdfPageN(row.page.pageIndex + 1)} · {t.pdfRefPage}
+                    </span>
+                    <span className="line-clamp-2 block break-words">{row.page.note.trim() || t.pdfPageN(row.page.pageIndex + 1)}</span>
+                  </span>
+                </>
+              ) : row.highlight ? (
                 <>
                   <span {...swatchProps(row.highlight.color)} aria-hidden className="wb-ann-swatch mt-[0.2em] w-1 shrink-0 self-stretch rounded-full" />
                   <span className="min-w-0 flex-1">
@@ -109,3 +126,6 @@ function PickerDialog({ onPick, onClose }: { onPick: (text: string) => void; onC
     </Dialog>
   );
 }
+
+/** What the reference to a page quotes if the file goes: the start of the note, else the page's number. */
+const firstWords = (p: PdfPageItem, fallback: string): string => p.note.trim().split('\n')[0]?.replace(/[#*_`$]/g, '').trim() || fallback;

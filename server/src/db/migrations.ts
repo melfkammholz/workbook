@@ -345,6 +345,24 @@ export const MIGRATIONS: Migration[] = [
   );
   CREATE INDEX pdf_annotations_page ON pdf_annotations (resource, page_index);
   `,
+  /*
+   * 13: notes on whole pages and slides of PDFs. Global, like highlights. `marks` is a JSON array of the student's page
+   * mark ids; `fingerprint` is what finds the page again in a new version of the file. One row per page.
+   */ `
+  CREATE TABLE pdf_pages (
+    id          TEXT PRIMARY KEY,
+    resource    TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+    version     TEXT NOT NULL,
+    page_index  INTEGER NOT NULL,
+    fingerprint TEXT NOT NULL,
+    note        TEXT NOT NULL DEFAULT '',
+    marks       TEXT NOT NULL DEFAULT '[]',
+    review      TEXT CHECK (review IN ('open','resolved')),
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL,
+    UNIQUE (resource, page_index)
+  );
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

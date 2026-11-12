@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, Resource, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
+import type { AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
 import type { Store } from '../db/store.js';
 
 export class ResourceError extends Error {
@@ -48,6 +48,28 @@ function toResource(r: Row): Resource {
     lastPage: r.last_page === null ? null : Number(r.last_page),
     courses: r.courses ? (r.courses as string).split('\x1f').sort() : [],
     file: { sha256: r.sha256 as string, filename: r.filename as string, mime: r.mime as string, size: Number(r.size), uploadedAt: Number(r.uploaded_at) },
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+  };
+}
+
+function toPage(r: Row): PdfPageItem {
+  let marks: string[] = [];
+  try {
+    const m = JSON.parse(r.marks as string) as unknown;
+    if (Array.isArray(m)) marks = m.filter((x): x is string => typeof x === 'string');
+  } catch {
+    /* none */
+  }
+  return {
+    id: r.id as string,
+    resource: r.resource as string,
+    version: r.version as string,
+    pageIndex: Number(r.page_index),
+    fingerprint: r.fingerprint as string,
+    note: r.note as string,
+    marks,
+    review: (r.review as AnnotationReview | null) ?? null,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
   };
@@ -206,6 +228,41 @@ export class Resources {
     if (!this.getHighlight(id)) return false;
     this.sql.run('DELETE FROM pdf_annotations WHERE id = ?', id);
     return true;
+  }
+
+  // ───────────────────────── notes on pages ─────────────────────────
+
+  /** Every page item of one resource, or of all of them. */
+  listPages(resource?: string): PdfPageItem[] {
+    const rows = resource ? this.sql.all('SELECT * FROM pdf_pages WHERE resource = ? ORDER BY page_index', resource) : this.sql.all('SELECT * FROM pdf_pages ORDER BY resource, page_index');
+    return rows.map(toPage);
+  }
+
+  getPage(id: string): PdfPageItem | null {
+    const r = this.sql.get('SELECT * FROM pdf_pages WHERE id = ?', id);
+    return r ? toPage(r) : null;
+  }
+
+  /**
+   * Makes the page's item or changes it: what is given replaces what was there, the rest stays. `id` is only used when
+   * the item is new.
+   */
+  savePage(resource: string, pageIndex: number, f: Partial<PdfPageFields> & Pick<PdfPageFields, 'version' | 'fingerprint'>): PdfPageItem {
+    this.get(resource);
+    const t = this.now();
+    const prev = this.sql.get('SELECT * FROM pdf_pages WHERE resource = ? AND page_index = ?', resource, pageIndex);
+    if (!prev) {
+      const id = f.id ?? crypto.randomUUID();
+      this.sql.run(
+        'INSERT INTO pdf_pages (id, resource, version, page_index, fingerprint, note, marks, review, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+        id, resource, f.version, pageIndex, f.fingerprint, f.note ?? '', JSON.stringify([...new Set(f.marks ?? [])]), f.review ?? null, t, t,
+      );
+      return this.getPage(id)!;
+    }
+    const cur = toPage(prev);
+    const marks = f.marks ? [...new Set(f.marks)] : cur.marks;
+    this.sql.run('UPDATE pdf_pages SET note = ?, marks = ?, review = ?, updated_at = ? WHERE id = ?', f.note ?? cur.note, JSON.stringify(marks), f.review === undefined ? cur.review : f.review, t, cur.id);
+    return this.getPage(cur.id)!;
   }
 
   /** Starts over: every resource and every file. Snapshots keep their own copies. */

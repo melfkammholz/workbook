@@ -37,6 +37,7 @@ export function TypstEditor({
   previewHeader,
   previewClassName = 'prose-note',
   extensions,
+  compact,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -55,6 +56,8 @@ export function TypstEditor({
   previewClassName?: string;
   /** More editor behaviour, read once when the editor is made. */
   extensions?: Extension;
+  /** For a narrow column: always the editor above the preview, without the choice of layout. */
+  compact?: boolean;
 }) {
   const t = useT();
   const [layout, setLayoutState] = useState<Layout>(() => readPref(KEY, LAYOUTS, 'stacked'));
@@ -64,7 +67,7 @@ export function TypstEditor({
   const [showErrors, setShowErrors] = useState(false);
   // Side by side does not fit a phone. The choice is kept for when there is room again.
   const roomy = useMediaQuery('(min-width: 900px)');
-  const effective: Layout = layout === 'side' && !roomy ? 'stacked' : layout;
+  const effective: Layout = compact ? 'stacked' : layout === 'side' && !roomy ? 'stacked' : layout;
 
   const setLayout = (l: Layout) => {
     setLayoutState(l);
@@ -197,7 +200,7 @@ export function TypstEditor({
         <span className="mr-auto pl-1 text-xs text-ink-3" aria-live="polite">
           {status}
         </span>
-        <div className="flex items-center" role="group" aria-label={t.preview}>
+        <div className={clsx('flex items-center', compact && 'hidden')} role="group" aria-label={t.preview}>
           {OPTIONS.filter(([l]) => l !== 'side' || roomy).map(([l, Icon, name]) => (
             <IconButton key={l} label={name} aria-pressed={effective === l} onClick={() => setLayout(l)} className={clsx('size-7', effective === l && 'bg-sunk text-ink')}>
               <Icon size={15} />

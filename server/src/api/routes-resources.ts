@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { MAX_QUOTE, MAX_RECTS, QUOTE_CONTEXT, RESOURCE_TYPES, isAnnotationColor } from '@wb/shared';
+import { MAX_PAGE_MARKS, MAX_PAGE_NOTE, MAX_QUOTE, MAX_RECTS, QUOTE_CONTEXT, RESOURCE_TYPES, isAnnotationColor } from '@wb/shared';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { mimeOf, ResourceError } from '../resources/service.js';
@@ -50,6 +50,16 @@ const highlight = {
   }),
   update: z.object({ color, label: z.string().max(100).nullable(), comment: z.string().max(4000), review }).partial(),
 };
+
+const pageItem = z.object({
+  /** Made by the client; only used when the page has no item yet. */
+  id: z.string().uuid().optional(),
+  version: z.string().regex(/^[0-9a-f]{64}$/),
+  fingerprint: z.string().min(1).max(400),
+  note: z.string().max(MAX_PAGE_NOTE).optional(),
+  marks: z.array(z.string().min(1).max(100)).max(MAX_PAGE_MARKS).optional(),
+  review: review.optional(),
+});
 
 /**
  * Materials: the student's own files, kept in the main database and in `<data>/files/`. They belong to no course,
@@ -119,6 +129,28 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
     return r().updateHighlight(req.params.id, b) ?? reply.code(404).send({ error: 'unknown annotation' });
   });
   app.delete<{ Params: { id: string } }>('/api/pdf-annotations/:id', async (req, reply) => (r().deleteHighlight(req.params.id) ? { ok: true } : reply.code(404).send({ error: 'unknown annotation' })));
+
+  // Notes on whole pages: one request loads a resource's; saving is one call that makes or changes the page's item.
+  app.get('/api/pdf-pages', async () => r().listPages());
+  app.get<{ Params: { id: string } }>('/api/resources/:id/pages', async (req, reply) => {
+    try {
+      r().get(req.params.id);
+      return r().listPages(req.params.id);
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+  app.put<{ Params: { id: string; index: string } }>('/api/resources/:id/pages/:index', async (req, reply) => {
+    const index = Number(req.params.index);
+    if (!Number.isInteger(index) || index < 0 || index > 1_000_000) return reply.code(400).send({ error: 'bad page' });
+    const b = parse(pageItem, req.body, reply);
+    if (!b) return;
+    try {
+      return r().savePage(req.params.id, index, b);
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
 
   app.delete<{ Params: { id: string } }>('/api/resources/:id', async (req, reply) => {
     try {

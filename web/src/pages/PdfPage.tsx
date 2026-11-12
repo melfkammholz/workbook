@@ -1,18 +1,21 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { rectsTop, type PdfAnnotation, type Resource } from '@wb/shared';
+import { pageFingerprint, pageQuote, rectsTop, slideGroups, slideOfPage, type PdfAnnotation, type PdfPageItem, type Resource } from '@wb/shared';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { ChevronLeft, ChevronRight, Maximize, PanelRight, PanelRightClose, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { MakeCardDialog } from '@/components/MakeCardDialog';
 import { CopyRefButton, PdfHighlightLayer, type Editing } from '@/components/PdfHighlights';
+import { PagesWithNotes, PdfPageNotes } from '@/components/PdfPageNotes';
 import { NotesView, SlidesView, type Marks, type PdfLayout, type Size } from '@/components/PdfViewer';
 import { IconButton, Segmented, Spinner, Empty } from '@/components/ui';
-import { api } from '@/lib/api';
+import { api, useSettings } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { usePageKeys } from '@/lib/keys';
 import { openPdf } from '@/lib/pdf';
 import { swatchProps } from '@/lib/annotations';
 import { usePdfAnnotations, usePdfAnnotationsOn } from '@/lib/pdfAnnotations';
+import { pdfPageRefText, savePdfPage, usePdfPages, type PagePatch } from '@/lib/pdfPages';
 import { fileUrl, formatSize, resourceKeys, useResources } from '@/lib/resources';
 
 const ZOOM_STEP = 1.25;
@@ -105,6 +108,10 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
     return { byPage, active: editing?.id ?? null, flash };
   }, [marksOn, highlights, editing?.id, flash]);
   const [typed, setTyped] = useState<string | null>(null);
+  const pages = usePdfPages(resource.id).data;
+  const settings = useSettings().data;
+  const cards = !!settings?.showFlashcards;
+  const [pageCard, setPageCard] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const count = doc?.numPages ?? 0;
 
@@ -173,9 +180,19 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   );
 
   const labelOf = (n: number) => labels?.[n - 1] || String(n);
+  // Slides: pages with the same label are the overlays of one slide. A step shows the last of them, where everything is built up.
+  const slides = useMemo(() => slideGroups(labels, count), [labels, count]);
+  const slideIndex = slideOfPage(slides, current);
+  // Opening in the slides on a page in the middle of a slide: the slide shows its last page.
+  useEffect(() => {
+    if (layout === 'slides') setCurrent((c) => (slides[slideOfPage(slides, c)]?.last ?? c) === c ? c : slides[slideOfPage(slides, c)]!.last);
+  }, [layout, slides]);
+  /** The page a slide's note lives on, and the page notes live on in the notes layout. */
+  const notePage = layout === 'slides' ? (slides[slideIndex]?.last ?? current) : current;
   const goto = useCallback(
     (n: number) => {
-      const page = Math.min(Math.max(1, n), count || 1);
+      let page = Math.min(Math.max(1, n), count || 1);
+      if (layout === 'slides') page = slides[slideOfPage(slides, page)]?.last ?? page;
       setCurrent(page);
       offset.current = 0;
       if (layout === 'notes') {
@@ -183,7 +200,16 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
         if (el && scroller.current) scroller.current.scrollTop = el.offsetTop - 12;
       }
     },
-    [count, layout],
+    [count, layout, slides],
+  );
+  /** One step: a page in the notes, a slide in the slides. */
+  const step = useCallback(
+    (dir: 1 | -1) => {
+      if (layout !== 'slides') return goto(current + dir);
+      const to = slides[slideIndex + dir];
+      if (to) goto(to.last);
+    },
+    [layout, goto, current, slides, slideIndex],
   );
   /**
    * Scrolls so that the highlight is in the middle of the view. Pages that are not drawn yet are laid out at the size of
@@ -241,13 +267,14 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   // Arriving from a reference: the highlight is opened and shown once the pages are there.
   const arrived = useRef<string | null>(null);
   useEffect(() => {
-    if (!highlight || !doc || !highlights || !guess || arrived.current === highlight) return;
-    const a = highlights.find((x) => x.id === highlight);
-    if (!a) return;
+    if (!highlight || !doc || !guess || !pages || (marksOn && !highlights) || arrived.current === highlight) return;
+    const a = highlights?.find((x) => x.id === highlight);
+    const p = a ? undefined : pages.find((x) => x.id === highlight);
+    if (!a && !p) return;
     arrived.current = highlight;
     // After the view has placed itself at the page it remembered.
-    requestAnimationFrame(() => jumpTo(a, true));
-  }, [highlight, doc, highlights, guess, jumpTo]);
+    requestAnimationFrame(() => (a ? jumpTo(a, true) : goto(p!.pageIndex + 1)));
+  }, [highlight, doc, highlights, pages, marksOn, guess, jumpTo, goto]);
   /** The printed label if there is one, else the index. */
   const resolve = (text: string): number | null => {
     const s = text.trim();
@@ -259,6 +286,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   const zoomBy = (f: number) => setZoom((z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z * f)));
   const setLayoutKept = (l: PdfLayout) => {
     setLayout(l);
+    if (l === 'slides') setCurrent((c) => slides[slideOfPage(slides, c)]?.last ?? c);
     store(`wb-pdf-layout-${resource.id}`, l);
   };
   const toggleColumn = () => {
@@ -272,10 +300,10 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   usePageKeys(
     doc
       ? {
-          ArrowRight: () => goto(current + 1),
-          ArrowLeft: () => goto(current - 1),
-          PageDown: () => (layout === 'slides' ? goto(current + 1) : screen(1)),
-          PageUp: () => (layout === 'slides' ? goto(current - 1) : screen(-1)),
+          ArrowRight: () => step(1),
+          ArrowLeft: () => step(-1),
+          PageDown: () => (layout === 'slides' ? step(1) : screen(1)),
+          PageUp: () => (layout === 'slides' ? step(-1) : screen(-1)),
           Home: () => goto(1),
           End: () => goto(count),
           '+': () => zoomBy(ZOOM_STEP),
@@ -286,6 +314,43 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
         }
       : {},
   );
+
+  /** What the page's item needs when it is made: the fingerprint of its text and the first words, for the reference. Read once per page. */
+  const infos = useRef(new Map<number, Promise<{ fingerprint: string; quote: string }>>());
+  const pageInfo = useCallback(
+    (n: number) => {
+      let p = infos.current.get(n);
+      if (!p) {
+        p = (async () => {
+          let text = '';
+          try {
+            const content = await (await doc!.getPage(n)).getTextContent();
+            text = content.items.map((i) => ('str' in i ? i.str : '')).join(' ');
+          } catch {
+            /* a page that cannot be read is told by its place */
+          }
+          return { fingerprint: pageFingerprint(text, n - 1), quote: pageQuote(text) || t.pdfPageN(n) };
+        })();
+        infos.current.set(n, p);
+      }
+      return p;
+    },
+    [doc, t],
+  );
+  // The page in view is read ahead, so that its first note or reference is there at once.
+  useEffect(() => {
+    if (doc && marksOn) void pageInfo(notePage);
+  }, [doc, marksOn, notePage, pageInfo]);
+  const itemOf = (n: number): PdfPageItem | undefined => pages?.find((p) => p.pageIndex === n - 1);
+  const savePage = async (n: number, patch: PagePatch): Promise<PdfPageItem> => {
+    const info = await pageInfo(n);
+    return savePdfPage(qc, resource.id, n - 1, { version: resource.file.sha256, fingerprint: info.fingerprint }, patch);
+  };
+  /** The page's item exists once a reference to it does: it is made empty if need be. */
+  const refTo = async (n: number): Promise<string> => {
+    const item = itemOf(n) ?? (await savePage(n, {}));
+    return pdfPageRefText(resource.id, item, (await pageInfo(n)).quote);
+  };
 
   const view =
     failed ? (
@@ -312,7 +377,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
         <div className="ml-auto flex items-center gap-1">
           <Segmented value={layout} options={[['notes', t.pdfLayoutNotes], ['slides', t.pdfLayoutSlides]]} onChange={setLayoutKept} />
           <div className="mx-1 flex items-center gap-1" aria-label={t.pdfGoTo}>
-            <IconButton label={t.pdfPrev} disabled={!doc || current <= 1} onClick={() => goto(current - 1)}>
+            <IconButton label={t.pdfPrev} disabled={!doc || (layout === 'slides' ? slideIndex <= 0 : current <= 1)} onClick={() => step(-1)}>
               <ChevronLeft size={16} />
             </IconButton>
             <input
@@ -334,8 +399,8 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
               }}
               className="h-8 w-14 wb-field px-1.5 text-center text-sm tabular-nums"
             />
-            <span className="text-sm tabular-nums text-ink-2">{doc ? t.pdfPageOf(count) : ''}</span>
-            <IconButton label={t.pdfNext} disabled={!doc || current >= count} onClick={() => goto(current + 1)}>
+            <span className="text-sm tabular-nums text-ink-2">{doc ? t.pdfPageOf(layout === 'slides' ? slides.length : count) : ''}</span>
+            <IconButton label={t.pdfNext} disabled={!doc || (layout === 'slides' ? slideIndex >= slides.length - 1 : current >= count)} onClick={() => step(1)}>
               <ChevronRight size={16} />
             </IconButton>
           </div>
@@ -360,17 +425,31 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
         </div>
         {marks && doc ? <PdfHighlightLayer resource={resource} scroller={scroller} list={highlights ?? []} editing={editing} setEditing={setEditing} /> : null}
         {column ? (
-          <aside data-pdf-column className="w-72 shrink-0 overflow-y-auto border-l border-line bg-sheet p-4 text-sm">
+          <aside data-pdf-column className="w-80 shrink-0 overflow-y-auto border-l border-line bg-sheet p-4 text-sm">
             <h2 className="font-semibold">{resource.title}</h2>
             {resource.author ? <p className="text-ink-2">{resource.author}</p> : null}
             {doc ? <p className="mt-3 font-medium">{t.pdfPageInfo(current, count, labelOf(current))}</p> : null}
             <p className="mt-3 text-[13px] text-ink-2">
               {resource.file.filename} · {formatSize(resource.file.size)}
             </p>
+            {marksOn && doc && pages ? (
+              <>
+                <PdfPageNotes
+                  key={`${layout}-${notePage}`}
+                  heading={`${layout === 'slides' ? t.pdfSlideNotesTitle : t.pdfPageNotesTitle}: ${labelOf(notePage)}`}
+                  item={itemOf(notePage)}
+                  save={(patch) => void savePage(notePage, patch)}
+                  copyRef={() => refTo(notePage)}
+                  onCard={cards ? () => void refTo(notePage).then(setPageCard) : undefined}
+                />
+                <PagesWithNotes items={pages} marks={settings?.pdfPageMarks ?? []} current={notePage} labelOf={labelOf} onGo={goto} />
+              </>
+            ) : null}
             {marks && doc ? <AllHighlights resource={resource.id} list={highlights ?? []} current={current} labelOf={labelOf} editing={editing?.id ?? null} onJump={(a) => jumpTo(a, true)} /> : null}
           </aside>
         ) : null}
       </div>
+      {pageCard ? <MakeCardDialog open onClose={() => setPageCard(null)} exerciseId={null} initial={{ back: pageCard }} /> : null}
     </div>
   );
 }

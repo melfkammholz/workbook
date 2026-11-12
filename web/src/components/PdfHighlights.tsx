@@ -10,8 +10,8 @@ import { useDebouncedCallback } from '@/lib/useDebounced';
 import { MakeCardDialog } from './MakeCardDialog';
 import { Floating, IconAction, LAST_COLOR, Removed, Swatches, lastColor, useSwatches } from './AnnotationLayer';
 
-/** Copies the reference to a highlight, for pasting into a card, a note or an answer; the icon says it worked. */
-export function CopyRefButton({ resource, a, size = 15 }: { resource: string; a: Pick<PdfAnnotation, 'id' | 'quote'>; size?: number }) {
+/** Copies a reference, for pasting into a card, a note or an answer; the icon says it worked. */
+export function CopyTextButton({ text, size = 15 }: { text: () => string | Promise<string>; size?: number }) {
   const t = useT();
   const [done, setDone] = useState(false);
   useEffect(() => {
@@ -22,13 +22,20 @@ export function CopyRefButton({ resource, a, size = 15 }: { resource: string; a:
   return (
     <IconAction
       onClick={() => {
-        void navigator.clipboard?.writeText(pdfRefText(resource, a)).then(() => setDone(true));
+        void Promise.resolve(text())
+          .then((v) => navigator.clipboard?.writeText(v))
+          .then(() => setDone(true));
       }}
       label={done ? t.pdfRefCopied : t.pdfCopyRef}
     >
       {done ? <Check size={size} className="text-done" /> : <Link2 size={size} />}
     </IconAction>
   );
+}
+
+/** The reference to a highlight. */
+export function CopyRefButton({ resource, a, size = 15 }: { resource: string; a: Pick<PdfAnnotation, 'id' | 'quote'>; size?: number }) {
+  return <CopyTextButton text={() => pdfRefText(resource, a)} size={size} />;
 }
 
 export interface Editing {

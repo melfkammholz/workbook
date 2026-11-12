@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { ANNOTATION_COLORS, DUSK_COLORS, isCustomColor, normalizeColor, type AnnotationColor, type HighlightLabel, type Settings, type SnapshotInfo, type UiLanguage } from '@wb/shared';
+import { ANNOTATION_COLORS, DUSK_COLORS, isCustomColor, normalizeColor, type AnnotationColor, type HighlightLabel, type PdfPageMark, type Settings, type SnapshotInfo, type UiLanguage } from '@wb/shared';
 import { Plus, X } from 'lucide-react';
 import { api, keys, useSaveSettings, useSettings } from '@/lib/api';
 import { swatchProps } from '@/lib/annotations';
@@ -69,6 +69,28 @@ function CustomColor({ value, label, onPick }: { value: string; label: string; o
       </span>
       <input ref={ref} type="color" defaultValue={custom ? value : '#f2b36d'} aria-label={label} className="absolute inset-0 size-full cursor-pointer opacity-0" />
     </label>
+  );
+}
+
+/** The student's own marks for PDF pages. They are made in the viewer; here they can be renamed or removed. */
+function PageMarksEditor({ marks, onChange }: { marks: PdfPageMark[]; onChange: (m: PdfPageMark[]) => void }) {
+  const t = useT();
+  if (!marks.length) return null;
+  return (
+    <div className="ml-7 max-w-lg space-y-2">
+      <p className="text-sm font-medium">{t.pdfPageMarksTitle}</p>
+      <p className="text-[13px] text-ink-2">{t.pdfPageMarksBody}</p>
+      <ul className="space-y-1.5">
+        {marks.map((m) => (
+          <li key={m.id} className="flex items-center gap-2">
+            <input defaultValue={m.name} maxLength={60} aria-label={t.pdfMarkName} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== m.name && onChange(marks.map((x) => (x.id === m.id ? { ...x, name: e.target.value.trim() } : x)))} className="h-8.5 min-w-0 flex-1 wb-field px-2" />
+            <button type="button" onClick={() => onChange(marks.filter((x) => x.id !== m.id))} aria-label={t.pdfPageMarkRemove(m.name)} title={t.pdfPageMarkRemove(m.name)} className="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-sunk hover:text-danger">
+              <X size={15} />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -404,6 +426,7 @@ export function SettingsPage({ section }: { section?: string }) {
           <Toggle checked={settings.showAnnotations} onChange={(v) => set({ showAnnotations: v })} title={t.showAnnotations} body={t.showAnnotationsBody} />
           {settings.showAnnotations ? <LabelsEditor labels={settings.highlightLabels} onChange={(l) => set({ highlightLabels: l })} /> : null}
           <Toggle checked={settings.showMaterials} onChange={(v) => set({ showMaterials: v })} title={t.showMaterials} body={t.showMaterialsBody} />
+          {settings.showMaterials && settings.showAnnotations ? <PageMarksEditor marks={settings.pdfPageMarks} onChange={(m) => set({ pdfPageMarks: m })} /> : null}
           <Toggle checked={settings.showAi} onChange={(v) => set({ showAi: v })} title={t.showAi} body={t.showAiBody} />
         </div>
       ),

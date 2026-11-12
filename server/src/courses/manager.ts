@@ -328,7 +328,7 @@ export class CourseManager {
     return null;
   }
 
-  /** What a `#pdf-ref` points at: the material and, for a highlight, its page (1-based); undefined if either is gone. */
+  /** What a `#pdf-ref` points at: the material and, for a highlight or a page, its page (1-based); undefined if either is gone. */
   pdfRef(resource: string, target: string | null): { title: string; page: number | null } | undefined {
     let title: string;
     try {
@@ -338,7 +338,9 @@ export class CourseManager {
     }
     if (!target) return { title, page: null };
     const h = this.resources.getHighlight(target);
-    return h && h.resource === resource ? { title, page: h.pageIndex + 1 } : undefined;
+    if (h) return h.resource === resource ? { title, page: h.pageIndex + 1 } : undefined;
+    const p = this.resources.getPage(target);
+    return p && p.resource === resource ? { title, page: p.pageIndex + 1 } : undefined;
   }
 
   /** What a card's `highlight: "course/<annotation id>"` points at; null once the highlight is gone. */
