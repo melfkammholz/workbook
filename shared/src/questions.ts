@@ -11,8 +11,6 @@ export interface Question {
   course: string;
   /** The highlight it was made from, if any. The question keeps its own anchor when the highlight goes. */
   highlightId: string | null;
-  /** Captures made in one sitting share a pass. */
-  passId: number | null;
   /** A question on a page of a PDF that the new version of the file could not place: it waits to be fixed or dropped. */
   unplaced: boolean;
   status: 'open' | 'done';
@@ -31,8 +29,6 @@ export interface Question {
 }
 
 export const MAX_QUESTION = 2000;
-/** Without a capture for this long, the next one starts a new pass. */
-export const PASS_GAP_MS = 30 * 60_000;
 /** Characters of a page kept with a question about it. */
 export const SNIPPET_LENGTH = 200;
 

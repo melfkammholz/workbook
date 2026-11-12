@@ -236,7 +236,7 @@ describe('Store', () => {
     expect(store.saveSettings({ theme: 'dark' }).theme).toBe('dark');
   });
 
-  it('keeps questions as a list: edited, done, reopened, deleted, passes after a pause', () => {
+  it('keeps questions as a list: edited, done, reopened, deleted', () => {
     let now = 1_000_000;
     const store = new Store(':memory:', () => now);
     const anchor = { kind: 'exercise', course: '', id: 'a' } as const;
@@ -246,8 +246,7 @@ describe('Store', () => {
     now += 31 * 60_000;
     const q3 = store.addQuestion({ text: 'Neue Sitzung', anchor });
     expect(q1.text).toBe('Warum der Basisfall?');
-    expect(q2.passId).toBe(q1.passId);
-    expect(q3.passId).not.toBe(q1.passId);
+    expect(q3.createdAt).toBeGreaterThan(q2.createdAt);
     expect(store.getState().questions.map((q) => q.text)).toEqual(['Warum der Basisfall?', 'Und der Schritt?', 'Neue Sitzung']);
     expect(store.updateQuestion(q1.id, { text: 'Anders gefragt', status: 'done' })).toMatchObject({ text: 'Anders gefragt', status: 'done', doneAt: now });
     expect(store.updateQuestion(q1.id, { status: 'open' })).toMatchObject({ status: 'open', doneAt: null });
@@ -476,7 +475,7 @@ describe('migration 17', () => {
     const file = path.join(dir, 'workbook.db');
     oldDatabase(file, 16, `INSERT INTO open_questions (course, exercise_id, content, updated_at) VALUES ('c1', 'e1', 'Warum?', 5), ('c2', 'e1', 'Wie?', 6)`);
     const store = new Store(file);
-    expect(store.forCourse('c1').getState().questions).toMatchObject([{ text: 'Warum?', status: 'open', course: 'c1', anchor: { kind: 'exercise', course: 'c1', id: 'e1' }, createdAt: 5, passId: null }]);
+    expect(store.forCourse('c1').getState().questions).toMatchObject([{ text: 'Warum?', status: 'open', course: 'c1', anchor: { kind: 'exercise', course: 'c1', id: 'e1' }, createdAt: 5 }]);
     expect(store.listQuestions().map((q) => q.text)).toEqual(['Warum?', 'Wie?']);
     expect(store.sql.get("SELECT name FROM sqlite_master WHERE name = 'open_questions'")).toBeUndefined();
     store.close();

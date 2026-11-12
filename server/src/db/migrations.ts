@@ -648,6 +648,13 @@ export const MIGRATIONS: Migration[] = [
   ALTER TABLE questions ADD COLUMN merged_into TEXT;
   CREATE INDEX questions_merged ON questions (merged_into) WHERE merged_into IS NOT NULL;
   `,
+  /*
+   * 26: no passes. A question only has the time it was made; whoever needs a "sitting" passes a start time.
+   */ `
+  DROP INDEX questions_pass;
+  ALTER TABLE questions DROP COLUMN pass_id;
+  DROP TABLE question_passes;
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

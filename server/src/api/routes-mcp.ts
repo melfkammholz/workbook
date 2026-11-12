@@ -24,7 +24,7 @@ const TOOLS = [
         status: { type: 'string', enum: ['open', 'done'] },
         course: { type: 'string', description: 'Workbook id' },
         resource: { type: 'string', description: 'Material id' },
-        pass: { type: 'integer', description: 'Pass id: questions captured in one sitting' },
+        since: { type: 'string', description: 'ISO time: only questions made at or after it' },
         limit: { type: 'integer', description: 'Default 50' },
       },
     },
@@ -110,16 +110,16 @@ const PROMPTS = [
   {
     name: 'triage-questions',
     description: "Go through the student's new open questions and propose a type and labels for each.",
-    arguments: [{ name: 'pass', description: 'Only the questions of this pass id', required: false }],
+    arguments: [{ name: 'since', description: 'Only the questions made at or after this ISO time', required: false }],
     text: (a: Json) =>
-      `Triage the student's open questions in their workbook. First call list_proposals (do not repeat what was rejected) and list_labels (reuse existing names). Then call list_questions with status "open"${str(a.pass) ? ` and pass ${str(a.pass)}` : ''}, skipping questions that already have a type and labels. Where the wording is unclear, read get_context. For each question call propose with a type, labels and a one-line reason. Do not answer questions in this pass, and do not close anything. Finish with a short list of what you proposed.`,
+      `Triage the student's open questions in their workbook. First call list_proposals (do not repeat what was rejected) and list_labels (reuse existing names). Then call list_questions with status "open"${str(a.since) ? ` and since "${str(a.since)}"` : ''}, skipping questions that already have a type and labels. Where the wording is unclear, read get_context. For each question call propose with a type, labels and a one-line reason. Do not answer questions here, and do not close anything. Finish with a short list of what you proposed.`,
   },
   {
-    name: 'answer-pass',
-    description: 'Propose short answers for the questions of one pass, from the text they were asked about.',
-    arguments: [{ name: 'pass', description: 'Pass id (see list_questions)', required: true }],
+    name: 'answer-recent',
+    description: 'Propose short answers for the questions made since a time, from the text they were asked about.',
+    arguments: [{ name: 'since', description: 'ISO time; questions made at or after it (see list_questions)', required: true }],
     text: (a: Json) =>
-      `Answer the questions of pass ${str(a.pass) ?? '(ask the student which pass)'} in the student's workbook. Read list_proposals first. For each open question from list_questions, read get_context and, if needed, search or read_page. Then propose an answer: short, in the student's language, grounded in the text they were reading, saying where in it. If the text does not answer it, say so in the reason instead of guessing. Do not reveal solutions of exercises unless the question asks for one. Summarize what you proposed.`,
+      `Answer the open questions made since ${str(a.since) ?? '(ask the student from when)'} in the student's workbook. Read list_proposals first. For each such question from list_questions (use its since filter), read get_context and, if needed, search or read_page. Then propose an answer: short, in the student's language, grounded in the text they were reading, saying where in it. If the text does not answer it, say so in the reason instead of guessing. Do not reveal solutions of exercises unless the question asks for one. Summarize what you proposed.`,
   },
   {
     name: 'draft-flashcards',
@@ -281,15 +281,17 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
       case 'list_questions': {
         const course = str(a.course);
         const resource = str(a.resource);
-        const pass = int(a.pass);
+        const sinceRaw = str(a.since);
+        const since = sinceRaw ? Date.parse(sinceRaw) : NaN;
+        if (sinceRaw && Number.isNaN(since)) throw new ToolError('since must be an ISO time');
         const status = str(a.status);
         const qs = g()
           .listQuestions({ ...(course ? { course } : {}), ...(resource ? { resource } : {}) })
-          .filter((q) => (!status || q.status === status) && (pass === undefined || q.passId === pass))
+          .filter((q) => (!status || q.status === status) && (Number.isNaN(since) || q.createdAt >= since))
           .sort((x, y) => y.createdAt - x.createdAt)
           .slice(0, Math.min(int(a.limit) ?? 50, 200));
         const names = new Map(g().listLabels('any').map((l) => [l.id, l.name]));
-        return qs.map((q) => ({ id: q.id, text: q.text, status: q.status, ...(q.mergedInto ? { mergedInto: q.mergedInto } : {}), answer: q.answer, type: q.kind, labels: q.labels.flatMap((l) => (names.has(l) ? [names.get(l)!] : [])), where: where(q), pass: q.passId, created: new Date(q.createdAt).toISOString() }));
+        return qs.map((q) => ({ id: q.id, text: q.text, status: q.status, ...(q.mergedInto ? { mergedInto: q.mergedInto } : {}), answer: q.answer, type: q.kind, labels: q.labels.flatMap((l) => (names.has(l) ? [names.get(l)!] : [])), where: where(q), created: new Date(q.createdAt).toISOString() }));
       }
       case 'search': {
         const query = str(a.query);

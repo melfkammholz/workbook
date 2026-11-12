@@ -76,6 +76,8 @@ describe('assistant bridge', () => {
     const all = JSON.parse((await tool('list_questions')).text);
     expect(all.some((q: { text: string }) => q.text === 'Was ist foldr?')).toBe(true);
     expect(JSON.parse((await tool('list_questions', { status: 'done' })).text)).toEqual([]);
+    expect(JSON.parse((await tool('list_questions', { since: new Date(Date.now() + 86_400_000).toISOString() })).text)).toEqual([]);
+    expect(JSON.parse((await tool('list_questions', { since: '2000-01-01T00:00:00Z' })).text)).toHaveLength(all.length);
   });
 
   it('searches and reads an item, with solutions only if allowed', async () => {
@@ -255,7 +257,7 @@ describe('assistant bridge', () => {
   it('offers prompts for the shipped workflows', async () => {
     expect((await rpc('initialize', {})).json().result.capabilities.prompts).toBeDefined();
     const names = (await rpc('prompts/list')).json().result.prompts.map((p: { name: string }) => p.name);
-    expect(names).toEqual(['triage-questions', 'answer-pass', 'draft-flashcards', 'review-exercise']);
+    expect(names).toEqual(['triage-questions', 'answer-recent', 'draft-flashcards', 'review-exercise']);
     const got = (await rpc('prompts/get', { name: 'review-exercise', arguments: { exercise: 'x1' } })).json().result;
     expect(got.messages[0].content.text).toContain('x1');
     expect((await rpc('prompts/get', { name: 'review-exercise' })).json().error.code).toBe(-32602);
@@ -299,7 +301,7 @@ describe('assistant bridge', () => {
     // question: marked as the assistant's, outside the student's passes; undo deletes it
     const q = (await decide(question!.id, 'accept')).json();
     const made = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.ref.id);
-    expect(made).toMatchObject({ text: 'Warum von rechts?', who: 'assistant', status: 'open', passId: null });
+    expect(made).toMatchObject({ text: 'Warum von rechts?', who: 'assistant', status: 'open' });
     await decide(question!.id, 'undo');
     expect((await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.ref.id)).toBeUndefined();
 

@@ -413,8 +413,8 @@ export interface PageQuestion {
   snippet?: string;
 }
 
-/** Shown at once, with the id the server will keep. `continuePass`: join the last pass although the pause was long. */
-export const askQuestion = (where: QuestionPlace, text: string, continuePass = false) => {
+/** Shown at once, with the id the server will keep. */
+export const askQuestion = (where: QuestionPlace, text: string) => {
   const t = Date.now();
   const id = crypto.randomUUID();
   const anchor: Question['anchor'] = where.item
@@ -424,12 +424,12 @@ export const askQuestion = (where: QuestionPlace, text: string, continuePass = f
       : where.material
         ? { kind: 'material', resource: where.material }
         : { kind: 'none' };
-  const q: Question = { id, text, anchor, course: '', highlightId: null, passId: null, unplaced: false, status: 'open', answer: null, kind: null, who: null, mergedInto: null, labels: [], createdAt: t, updatedAt: t, doneAt: null };
+  const q: Question = { id, text, anchor, course: '', highlightId: null, unplaced: false, status: 'open', answer: null, kind: null, who: null, mergedInto: null, labels: [], createdAt: t, updatedAt: t, doneAt: null };
   const item = where.item ?? null;
   if (item) patchWork(item, (w) => ({ ...w, questions: [...w.questions, q] }));
   patchQuestions((qs) => [...qs, q]);
   const page = where.page && (({ version: _v, ...rest }) => rest)(where.page);
-  return saved(item, api.post('/api/questions', { id, text, ...(item ? { item } : {}), ...(page ? { page } : {}), ...(where.material ? { material: where.material } : {}), ...(continuePass ? { continuePass } : {}) }));
+  return saved(item, api.post('/api/questions', { id, text, ...(item ? { item } : {}), ...(page ? { page } : {}), ...(where.material ? { material: where.material } : {}) }));
 };
 export const addQuestion = (item: string, text: string) => askQuestion({ item }, text);
 export const updateQuestion = (item: string | null, id: string, patch: { text?: string; status?: 'open' | 'done' }) => {

@@ -30,17 +30,15 @@ interface Filters {
   where: string;
   kind: string;
   age: string;
-  pass: string;
   labels: string[];
-  view: 'all' | 'pass';
 }
 
-const NO_FILTERS: Filters = { text: '', where: '', kind: '', age: '', pass: '', labels: [], view: 'all' };
+const NO_FILTERS: Filters = { text: '', where: '', kind: '', age: '', labels: [] };
 const DAY = 86_400_000;
 
 const readUrl = (): Filters => {
   const p = new URLSearchParams(location.search);
-  return { text: p.get('q') ?? '', where: p.get('in') ?? '', kind: p.get('type') ?? '', age: p.get('age') ?? '', pass: p.get('pass') ?? '', labels: (p.get('labels') ?? '').split(',').filter(Boolean), view: p.get('view') === 'pass' ? 'pass' : 'all' };
+  return { text: p.get('q') ?? '', where: p.get('in') ?? '', kind: p.get('type') ?? '', age: p.get('age') ?? '', labels: (p.get('labels') ?? '').split(',').filter(Boolean) };
 };
 
 const writeUrl = (f: Filters) => {
@@ -49,9 +47,7 @@ const writeUrl = (f: Filters) => {
   if (f.where) p.set('in', f.where);
   if (f.kind) p.set('type', f.kind);
   if (f.age) p.set('age', f.age);
-  if (f.pass) p.set('pass', f.pass);
   if (f.labels.length) p.set('labels', f.labels.join(','));
-  if (f.view === 'pass') p.set('view', 'pass');
   const search = p.toString() ? `?${p}` : '';
   if (search !== location.search) history.replaceState(history.state, '', `${location.pathname}${search}${location.hash}`);
 };
@@ -68,7 +64,6 @@ export function QuestionsPage() {
   const labelDefs = useSettings().data?.highlightLabels;
   const [showDone, setShowDone] = useState(false);
   const [f, setF] = useState<Filters>(readUrl);
-  const [more, setMore] = useState(() => !!readUrl().pass);
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const set = (patch: Partial<Filters>) => setF((x) => ({ ...x, ...patch }));
   useEffect(() => {
@@ -106,13 +101,6 @@ export function QuestionsPage() {
     return out;
   }, [all, resources, outline, courses, t]);
 
-  const passes = useMemo(() => {
-    const m = new Map<number, number>();
-    for (const q of all ?? []) if (q.passId !== null) m.set(q.passId, Math.max(m.get(q.passId) ?? 0, q.createdAt));
-    return [...m].sort((a, b) => b[0] - a[0]);
-  }, [all]);
-  const latestPass = passes[0]?.[0] ?? null;
-
   const whereOptions = useMemo(() => {
     const books = new Map<string, string>();
     const mats = new Map<string, string>();
@@ -134,13 +122,11 @@ export function QuestionsPage() {
     const now = Date.now();
     return entries.filter(({ q, gKey, gTitle, mtype, pTitle }) => {
       if (!showDone && q.status !== 'open') return false;
-      if (f.view === 'pass' && (latestPass === null || q.passId !== latestPass)) return false;
       if (f.where) {
         const [k, v = ''] = [f.where.slice(0, f.where.indexOf(':')), f.where.slice(f.where.indexOf(':') + 1)];
         if (f.where === 'materials' ? !gKey.startsWith('m:') : f.where === 'workbooks' ? !gKey.startsWith('c:') : k === 'mt' ? mtype !== v : k === 'g' ? gKey !== v : false) return false;
       }
       if (f.kind && q.kind !== f.kind) return false;
-      if (f.pass && String(q.passId) !== f.pass) return false;
       if (f.age) {
         const days = (now - q.createdAt) / DAY;
         if (f.age === 'old' ? days <= 30 : days > Number(f.age)) return false;
@@ -149,7 +135,7 @@ export function QuestionsPage() {
       if (needle && !`${q.text} ${q.anchor.kind === 'text' ? q.anchor.quote : ''} ${q.answer ?? ''} ${gTitle} ${pTitle}`.toLowerCase().includes(needle)) return false;
       return true;
     });
-  }, [entries, f, showDone, latestPass]);
+  }, [entries, f, showDone]);
 
   const groups = useMemo(() => {
     const gs = new Map<string, { key: string; title: string; mtype: ResourceType | null; parts: Map<string, { title: string; href: string | null; order: number; items: Question[] }> }>();
@@ -170,13 +156,12 @@ export function QuestionsPage() {
     );
   }
   const hasDone = all.some((q) => q.status === 'done');
-  const active = !!(f.text || f.where || f.kind || f.age || f.pass || f.labels.length);
+  const active = !!(f.text || f.where || f.kind || f.age || f.labels.length);
   const names = groups.map((g) => g.key);
   const allClosed = names.length > 0 && names.every((n) => closed.has(n));
   const searching = !!f.text.trim();
-  const passAge = (ms: number) => new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
   const rowOf = (q: Question, where?: string) => <QuestionRow dense where={where} key={q.id} item={q.anchor.kind === 'page' || q.anchor.kind === 'none' || q.anchor.kind === 'material' ? null : placeOf(q.anchor)} q={q} extra={null} />;
-  const filterSelect = (key: 'where' | 'kind' | 'age' | 'pass', label: string, children: React.ReactNode) => (
+  const filterSelect = (key: 'where' | 'kind' | 'age', label: string, children: React.ReactNode) => (
     <select value={f[key]} onChange={(e) => set({ [key]: e.target.value })} aria-label={label} className={selectClass(!!f[key])}>
       {children}
     </select>
@@ -196,13 +181,6 @@ export function QuestionsPage() {
               <Search size={15} className="shrink-0 text-ink-3" aria-hidden />
               <input type="search" value={f.text} onChange={(e) => set({ text: e.target.value })} placeholder={t.questionsSearch} aria-label={t.questionsSearch} className="min-w-0 flex-1 bg-transparent outline-none" />
             </label>
-            <div role="group" aria-label={t.questionsView} className="inline-flex rounded-lg bg-sunk p-0.5">
-              {(['all', 'pass'] as const).map((v) => (
-                <button key={v} type="button" aria-pressed={f.view === v} onClick={() => set({ view: v })} className={clsx('h-8 rounded-md px-3', f.view === v ? 'bg-sheet font-medium text-ink shadow-sm' : 'text-ink-2 hover:text-ink')}>
-                  {v === 'all' ? t.questionsViewAll : t.questionsViewPass}
-                </button>
-              ))}
-            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {filterSelect(
@@ -247,35 +225,9 @@ export function QuestionsPage() {
                 <option value="old">{t.questionsAgeOlder}</option>
               </>,
             )}
-            {more && passes.length
-              ? filterSelect(
-                  'pass',
-                  t.questionsPass,
-                  <>
-                    <option value="">{t.questionsAnyPass}</option>
-                    {passes.map(([id, at], i) => (
-                      <option key={id} value={String(id)}>
-                        {i === 0 ? t.questionsLatestPass : t.questionsPassOn(passAge(at))}
-                      </option>
-                    ))}
-                  </>,
-                )
-              : null}
-            {passes.length ? (
-              <button
-                type="button"
-                onClick={() => {
-                  if (more) set({ pass: '' });
-                  setMore(!more);
-                }}
-                className="px-0.5 py-1 text-[13px] text-ink-3 hover:text-ink"
-              >
-                {more ? t.questionsFewerFilters : t.questionsMoreFilters}
-              </button>
-            ) : null}
             <span className="flex-1" />
             {active ? (
-              <button type="button" onClick={() => setF({ ...NO_FILTERS, view: f.view })} className="px-0.5 py-1 text-[13px] text-accent hover:underline">
+              <button type="button" onClick={() => setF(NO_FILTERS)} className="px-0.5 py-1 text-[13px] text-accent hover:underline">
                 {t.questionsClearFilters}
               </button>
             ) : null}
@@ -284,7 +236,7 @@ export function QuestionsPage() {
                 {showDone ? t.hideDoneQuestions : t.showDoneQuestions}
               </button>
             ) : null}
-            {f.view === 'all' && groups.length > 1 ? (
+            {groups.length > 1 ? (
               <button type="button" onClick={() => setClosed(allClosed ? new Set() : new Set(names))} className="px-0.5 py-1 text-[13px] text-ink-3 hover:text-ink">
                 {allClosed ? t.questionsExpandAll : t.questionsCollapseAll}
               </button>
@@ -306,14 +258,7 @@ export function QuestionsPage() {
         </div>
 
         {filtered.length === 0 ? (
-          <Empty title={active || f.view === 'pass' ? t.questionsNoMatch : t.noQuestions}>{active || f.view === 'pass' ? t.questionsNoMatchHint : t.questionsNoneAnywhere}</Empty>
-        ) : f.view === 'pass' ? (
-          <>
-            <p className="mt-5 text-ink-2">
-              <b className="font-semibold text-ink">{t.questionsLatestSitting}</b>
-            </p>
-            <ul className="divide-y divide-line">{filtered.map(({ q, gTitle, pTitle }) => rowOf(q, pTitle ? `${gTitle}, ${pTitle}` : gTitle))}</ul>
-          </>
+          <Empty title={active ? t.questionsNoMatch : t.noQuestions}>{active ? t.questionsNoMatchHint : t.questionsNoneAnywhere}</Empty>
         ) : (
           groups.map((g) => {
             const shut = closed.has(g.key) && !searching;

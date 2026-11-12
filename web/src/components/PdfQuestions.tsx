@@ -106,7 +106,7 @@ export function PdfQuestionBar({ resource, current, pageInfo, scroller }: { reso
     setAsked(byPage);
     return () => setAsked(new Map());
   }, [questions]);
-  const save = (text: string, o: { continuePass: boolean; tags: string[] }) => {
+  const save = (text: string, o: { tags: string[] }) => {
     const use = o.tags.includes('s') || o.tags.includes('h') ? sel : null;
     const n = use ? use.page + 1 : current;
     // `!h`: the passage also becomes a highlight, a record of its own that is not tied to the question.
@@ -114,12 +114,11 @@ export function PdfQuestionBar({ resource, current, pageInfo, scroller }: { reso
       addPdfHighlight(qc, resource.id, { version: resource.file.sha256, pageIndex: use.page, rects: use.rects, ...use.quote, color: lastColor() });
     }
     if (use) clearSel();
-    if (!use && !o.tags.includes('p')) return void askQuestion({ material: resource.id }, text, o.continuePass);
+    if (!use && !o.tags.includes('p')) return void askQuestion({ material: resource.id }, text);
     void pageInfo(n).then((info) =>
       askQuestion(
         { page: { resource: resource.id, version: resource.file.sha256, pageIndex: n - 1, fingerprint: info.fingerprint, ...(use ? { ...use.quote } : {}), snippet: snippetOf(info.text, use?.quote.quote ?? null) } },
         text,
-        o.continuePass,
       ),
     );
   };

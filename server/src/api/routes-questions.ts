@@ -25,8 +25,6 @@ const bodies = {
     /** A whole material, not tied to a page. */
     material: z.string().min(1).max(200).optional(),
     text: z.string().max(MAX_QUESTION),
-    /** The pause was long, but the student chose to go on with the last pass. */
-    continuePass: z.boolean().optional(),
   }),
   update: z.object({ text: z.string().max(MAX_QUESTION), status: z.enum(['open', 'done']), answer: z.string().max(MAX_QUESTION).nullable() }).partial(),
 };
@@ -69,7 +67,7 @@ export function questionRoutes(app: FastifyInstance, d: Deps): void {
         ...(p.snippet ? { snippet: p.snippet } : {}),
       };
     }
-    return d.store.addQuestion({ id: r.data.id, text: r.data.text, anchor, ...(r.data.continuePass ? { continuePass: true } : {}) });
+    return d.store.addQuestion({ id: r.data.id, text: r.data.text, anchor });
   });
 
   app.patch<{ Params: { id: string } }>('/api/questions/:id', async (req, reply) => {

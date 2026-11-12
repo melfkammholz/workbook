@@ -1,7 +1,7 @@
 import * as Popover from '@radix-ui/react-popover';
 import { Check, Circle, CircleCheck, HelpCircle, Pencil, Trash2, X } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
-import { PASS_GAP_MS, type Question } from '@wb/shared';
+import { type Question } from '@wb/shared';
 import { askQuestion, deleteQuestion, updateQuestion, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { ProposalMarker } from './Proposals';
@@ -76,8 +76,7 @@ export function QuestionCard({ context, onClose, className, children }: { contex
 
 /**
  * One line to write a question into: Enter saves it and the cursor stays, ready for the next. `!x` tags at the end
- * ask for more than the text (`!p`: this page, `!s`: the selection); the line under it lists what is on offer. After a
- * long pause the next capture starts a new pass; a quiet line says so and offers to go on with the last one instead.
+ * ask for more than the text (`!p`: this page, `!s`: the selection); the line under it lists what is on offer..
  */
 export function CaptureField({
   onSave,
@@ -89,7 +88,7 @@ export function CaptureField({
   onCancel,
   onBlurEmpty,
 }: {
-  onSave: (text: string, o: { continuePass: boolean; tags: string[] }) => void;
+  onSave: (text: string, o: { tags: string[] }) => void;
   autoFocus?: boolean;
   fieldRef?: React.Ref<HTMLTextAreaElement>;
   /** A data attribute to find the field by (the hotkey focuses it). */
@@ -102,17 +101,12 @@ export function CaptureField({
 }) {
   const t = useT();
   const [text, setText] = useState('');
-  const [carryOn, setCarryOn] = useState(false);
   const grow = useAutoGrow(text);
-  const all = useQuestions().data;
-  const last = all?.reduce((m, q) => Math.max(m, q.createdAt), 0) ?? 0;
-  const newPass = last > 0 && Date.now() - last >= PASS_GAP_MS;
   const save = () => {
     const parsed = parseTags(text, tags.filter((x) => x.available).map((x) => x.key));
     if (!parsed.text) return;
     setText('');
-    setCarryOn(false);
-    onSave(parsed.text, { continuePass: newPass && carryOn, tags: parsed.tags });
+    onSave(parsed.text, { tags: parsed.tags });
   };
   return (
     <div>
@@ -133,21 +127,13 @@ export function CaptureField({
         onKeyDown={(e) => submitKey(e, save, onCancel)}
         className="block w-full resize-none wb-field px-2.5 py-1.5 text-sm placeholder:text-ink-3"
       />
-      {newPass ? (
-        <p className="mt-1 px-1 text-[12px] text-ink-3">
-          {carryOn ? t.questionContinuing : t.questionNewPass} ·{' '}
-          <button type="button" onClick={() => setCarryOn(!carryOn)} className="underline hover:text-ink">
-            {carryOn ? t.questionStartNewPass : t.questionContinuePass}
-          </button>
-        </p>
-      ) : null}
     </div>
   );
 }
 
 /** A question on an item: the line to write it, saved to that item. */
 export function QuestionInput({ item, autoFocus = false }: { item: string; autoFocus?: boolean }) {
-  return <CaptureField autoFocus={autoFocus} onSave={(text, o) => void askQuestion({ item }, text, o.continuePass)} />;
+  return <CaptureField autoFocus={autoFocus} onSave={(text, o) => void askQuestion({ item }, text)} />;
 }
 
 /**
@@ -222,7 +208,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
                   {l}
                 </span>
               ))}
-              <span className="min-w-[5.2rem] text-right tabular-nums">{t.questionAge(days)}</span>
+              <span className="min-w-[5.2rem] text-right tabular-nums" title={new Date(q.createdAt).toLocaleString()}>{t.questionAge(days)}</span>
               <button
                 type="button"
                 role="checkbox"

@@ -35,7 +35,6 @@ import {
   MAX_PENDING_CHANGES,
   ANNOTATION_COLORS,
   MAX_QUESTION,
-  PASS_GAP_MS,
   type ProgressEntry,
   type Reflection,
   type ReviewData,
@@ -450,27 +449,14 @@ export class Store {
     return r ? rowToQuestion(r, this.all('SELECT label_id FROM question_labels WHERE question_id = ? ORDER BY rowid', id).map((l) => l.label_id as string)) : null;
   }
 
-  /** The pass a capture now belongs to: the running one, or a new one after a pause. */
-  private currentPass(t: number, carryOn = false): number {
-    const last = this.get('SELECT id, last_at FROM question_passes ORDER BY id DESC LIMIT 1');
-    if (last && (carryOn || t - Number(last.last_at) < PASS_GAP_MS)) {
-      this.run('UPDATE question_passes SET last_at = ? WHERE id = ?', t, last.id as number);
-      return Number(last.id);
-    }
-    this.run('INSERT INTO question_passes (started_at, last_at) VALUES (?,?)', t, t);
-    return Number(this.get('SELECT last_insert_rowid() AS id')!.id);
-  }
-
-  /** `continuePass`: the capture joins the last pass although the pause was long (the student said so). */
-  addQuestion(q: { id?: string | undefined; text: string; anchor: Anchor; highlightId?: string | null; continuePass?: boolean; who?: string }): Question {
+  addQuestion(q: { id?: string | undefined; text: string; anchor: Anchor; highlightId?: string | null; who?: string }): Question {
     const t = this.now();
     const id = q.id ?? `q-${randomUUID()}`;
     const course = 'course' in q.anchor ? q.anchor.course : '';
     this.tx(() => {
       this.run(
-        `INSERT INTO questions (id, text, anchor, course, highlight_id, pass_id, status, who, created_at, updated_at) VALUES (?,?,?,?,?,?,'open',?,?,?)`,
-        // The assistant's questions belong to no sitting of the student's.
-        id, q.text.trim().slice(0, MAX_QUESTION), JSON.stringify(q.anchor), course, q.highlightId ?? null, q.who ? null : this.currentPass(t, q.continuePass), q.who ?? null, t, t,
+        `INSERT INTO questions (id, text, anchor, course, highlight_id, status, who, created_at, updated_at) VALUES (?,?,?,?,?,'open',?,?,?)`,
+        id, q.text.trim().slice(0, MAX_QUESTION), JSON.stringify(q.anchor), course, q.highlightId ?? null, q.who ?? null, t, t,
       );
     });
     return this.getQuestion(id)!;
@@ -1338,8 +1324,8 @@ export class Store {
           // Questions are global and carry their course in the anchor too.
           this.db.raw
             .prepare(
-              `INSERT INTO main.questions (id, text, anchor, course, highlight_id, pass_id, status, answer, created_at, updated_at, done_at)
-               SELECT id, text, json_set(anchor, '$.course', ?), ?, highlight_id, NULL, status, answer, created_at, updated_at, done_at FROM legacy.questions ORDER BY rowid`,
+              `INSERT INTO main.questions (id, text, anchor, course, highlight_id, status, answer, created_at, updated_at, done_at)
+               SELECT id, text, json_set(anchor, '$.course', ?), ?, highlight_id, status, answer, created_at, updated_at, done_at FROM legacy.questions ORDER BY rowid`,
             )
             .run(this.course, this.course);
           this.setSetting('legacyImported', true);
@@ -1384,7 +1370,6 @@ function rowToQuestion(r: Row, labels: string[] = []): Question {
     anchor: JSON.parse(r.anchor as string) as Anchor,
     course: r.course as string,
     highlightId: (r.highlight_id as string | null) ?? null,
-    passId: r.pass_id === null ? null : Number(r.pass_id),
     unplaced: Number(r.unplaced) === 1,
     status: r.status as 'open' | 'done',
     answer: (r.answer as string | null) ?? null,

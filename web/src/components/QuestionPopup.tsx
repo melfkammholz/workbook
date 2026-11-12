@@ -61,7 +61,7 @@ export function QuestionPopup() {
           placeholder={place.title ? t.questionAbout(place.title) : t.questionAboutNothing}
           onCancel={close}
           onBlurEmpty={close}
-          onSave={(text, o) => void askQuestion(place.item ? { item: place.item } : {}, text, o.continuePass)}
+          onSave={(text, o) => void askQuestion(place.item ? { item: place.item } : {}, text)}
         />
       </QuestionCard>
     </div>
