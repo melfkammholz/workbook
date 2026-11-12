@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { RESOURCE_TYPES, type Resource, type ResourceFields, type ResourceSeries, type ResourcesResponse } from '@wb/shared';
 import { useRef, useState } from 'react';
 import { useT } from '@/lib/i18n';
+import { isPdf, pdfMetadata } from '@/lib/pdf';
 import { MAX_FILE_BYTES, deleteResource, formatSize, naturalCompare, refreshResources, titleFromFilename, updateResource, uploadResource } from '@/lib/resources';
 import { Button, Dialog, Segmented } from './ui';
 
@@ -100,6 +101,18 @@ export function UploadDialog({ open, onClose, courses, series, course }: { open:
     const picked = [...list].sort((a, b) => naturalCompare(a.name, b.name)).map((file) => ({ file, title: titleFromFilename(file.name) }));
     setFiles(picked);
     setError(picked.some((p) => p.file.size > MAX_FILE_BYTES) ? t.resourceTooLarge : null);
+    // A PDF knows its own title and author; they fill in what the student has not typed yet.
+    for (const p of picked) {
+      if (!isPdf(p.file.name) || p.file.size > MAX_FILE_BYTES) continue;
+      void pdfMetadata(p.file).then(
+        (m) => {
+          const guessed = p.title;
+          if (m.title) setFiles((cur) => cur.map((x) => (x.file === p.file && x.title === guessed ? { ...x, title: m.title } : x)));
+          if (m.author) setFields((f) => (f.author ? f : { ...f, author: m.author }));
+        },
+        () => undefined,
+      );
+    }
   };
   const submit = async () => {
     const ok = files.filter((f) => f.file.size <= MAX_FILE_BYTES);

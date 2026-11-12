@@ -60,6 +60,18 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
     }
   });
 
+  /** The viewer remembers the page (1-based) the student was on. */
+  app.put<{ Params: { id: string } }>('/api/resources/:id/page', async (req, reply) => {
+    const b = parse(z.object({ page: z.number().int().min(1).max(1_000_000) }), req.body, reply);
+    if (!b) return;
+    try {
+      r().setLastPage(req.params.id, b.page);
+      return reply.code(204).send();
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+
   app.delete<{ Params: { id: string } }>('/api/resources/:id', async (req, reply) => {
     try {
       r().delete(req.params.id);

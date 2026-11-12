@@ -79,6 +79,16 @@ describe('materials', () => {
     await app.inject({ method: 'DELETE', url: `/api/resources/${r.id}` });
   });
 
+  it('remembers the page the viewer was on', async () => {
+    const r = (await up({ filename: 'p.pdf', title: 'P', type: 'notes' }, '%PDF-1.4')).json() as Resource;
+    expect((await app.inject({ method: 'PUT', url: `/api/resources/${r.id}/page`, payload: { page: 37 } })).statusCode).toBe(204);
+    expect((await app.inject({ method: 'PUT', url: `/api/resources/${r.id}/page`, payload: { page: 0 } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'PUT', url: '/api/resources/none/page', payload: { page: 2 } })).statusCode).toBe(404);
+    const list = (await app.inject('/api/resources')).json() as ResourcesResponse;
+    expect(list.resources.find((x) => x.id === r.id)?.lastPage).toBe(37);
+    await app.inject({ method: 'DELETE', url: `/api/resources/${r.id}` });
+  });
+
   it('refuses what is not a file or a resource', async () => {
     expect((await up({ filename: 'x.pdf', title: 'x', type: 'other' }, Buffer.alloc(0))).statusCode).toBe(400);
     expect((await up({ filename: 'x.pdf', title: 'x', type: 'bogus' }, 'a')).statusCode).toBe(400);

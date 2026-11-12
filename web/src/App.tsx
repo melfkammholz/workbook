@@ -37,6 +37,7 @@ import {
   LibraryPage,
   MaterialsPage,
   NotesPage,
+  PdfPage,
   ReviewPage,
   SettingsPage,
   StrugglingPage,
@@ -122,6 +123,9 @@ function flashcardRoutes() {
       {(p) => <StrugglingPage key={p.deck} deckId={p.deck} />}
     </Route>,
     <Route key="library" path="/library" component={LibraryPage} />,
+    <Route key="pdf" path="/resources/:id">
+      {(p) => <PdfPage id={decodeURIComponent(p.id)} />}
+    </Route>,
     <Route key="help" path="/help">
       {() => <HelpPage />}
     </Route>,
@@ -146,7 +150,7 @@ function NoCourse() {
     'g f': flashcardsOn ? () => navigate('/flashcards') : undefined,
     'g l': materialsOn ? () => navigate('/library') : undefined,
   });
-  if (location.startsWith('/flashcards') || location.startsWith('/library') || location.startsWith('/help')) {
+  if (location.startsWith('/flashcards') || location.startsWith('/library') || location.startsWith('/resources/') || location.startsWith('/help')) {
     return (
       <div className="flex h-full flex-col">
         <header className="wb-chrome-bar flex h-12 shrink-0 items-center gap-1 border-b border-line bg-sheet px-2 text-ink">
@@ -209,12 +213,16 @@ function CourseShell() {
       return false;
     }
   });
+  // A PDF has the whole width: the outline is out of the way there, and a button (or `b`) brings it back.
+  const inViewer = useLocation()[0].startsWith('/resources/');
+  const [viewerOutline, setViewerOutline] = useState(false);
   const [drawer, setDrawer] = useState(false);
   // Stable, so the outline's memoized rows are not all drawn again whenever the shell is.
   const closeDrawer = useCallback(() => setDrawer(false), []);
   /** `b`: the outline in or out of sight, as the button next to the course's name does; the drawer on a narrow screen. */
   const toggleOutline = () => {
     if (!matchMedia('(min-width: 1024px)').matches) return setDrawer((d) => !d);
+    if (inViewer) return setViewerOutline((v) => !v);
     setCollapsed((c) => {
       try {
         localStorage.setItem('wb-outline-collapsed', c ? '0' : '1');
@@ -313,7 +321,8 @@ function CourseShell() {
   }
   const o = outline.data;
   const updates = courses?.courses.some((c) => c.update === 'available');
-  const showOutline = wide ? !collapsed : false;
+  const showOutline = wide ? (inViewer ? viewerOutline : !collapsed) : false;
+  const outlineHidden = !showOutline;
 
   const outlinePanel = (onNavigate?: () => void) => (
     <OutlinePanel outline={o} state={state} currentId={currentId} filters={filters} patch={patch} reset={reset} {...(onNavigate ? { onNavigate } : {})} />
@@ -323,18 +332,8 @@ function CourseShell() {
     <div className="flex h-full flex-col">
       <header className="wb-chrome-bar flex h-12 shrink-0 items-center gap-1 border-b border-line bg-sheet px-2 text-ink">
         {wide ? (
-          <IconButton
-            label={collapsed ? t.showOutline : t.hideOutline}
-            onClick={() => {
-              setCollapsed(!collapsed);
-              try {
-                localStorage.setItem('wb-outline-collapsed', collapsed ? '0' : '1');
-              } catch {
-                /* ignore */
-              }
-            }}
-          >
-            {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          <IconButton label={outlineHidden ? t.showOutline : t.hideOutline} onClick={toggleOutline}>
+            {outlineHidden ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
           </IconButton>
         ) : (
           <IconButton label={t.openOutline} onClick={() => setDrawer(true)}>

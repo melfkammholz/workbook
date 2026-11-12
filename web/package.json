@@ -41,6 +41,7 @@
     "wouter": "^3.13.0"
   },
   "dependencies": {
-    "@replit/codemirror-vim": "^6.4.0"
+    "@replit/codemirror-vim": "^6.4.0",
+    "pdfjs-dist": "6.4.299"
   }
 }

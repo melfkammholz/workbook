@@ -1,12 +1,13 @@
 import type { Resource, ResourceSeries, ResourceType } from '@wb/shared';
 import { Download, FileText, Pencil, Plus, Trash2 } from 'lucide-react';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'wouter';
 import { DeleteDialog, EditDialog, UploadDialog } from '@/components/ResourceDialogs';
 import { Button, Empty, IconButton, Spinner } from '@/components/ui';
 import { useOutline } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
+import { isPdf, preloadPdf } from '@/lib/pdf';
 import { fileUrl, formatSize, useResources } from '@/lib/resources';
 
 const TYPES: ResourceType[] = ['notes', 'slides', 'other'];
@@ -38,6 +39,11 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
   const [deleting, setDeleting] = useState<Resource | null>(null);
   const data = list.data;
   const seriesById = useMemo(() => new Map((data?.series ?? []).map((s) => [s.id, s])), [data]);
+  const anyPdf = !!data?.resources.some((r) => isPdf(r.file.filename));
+  // Opening a PDF then finds pdf.js and its worker already loaded.
+  useEffect(() => {
+    if (anyPdf) preloadPdf();
+  }, [anyPdf]);
   const titleOfCourse = (id: string) => data?.courses.find((c) => c.id === id)?.title ?? id;
 
   if (!data) {
@@ -58,10 +64,17 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
     <li key={r.id} className="group flex items-center gap-3 py-2.5">
       <FileText size={18} className="shrink-0 text-ink-3" />
       <div className="min-w-0 flex-1">
-        <a href={fileUrl(r)} target="_blank" rel="noreferrer" className="block truncate text-[15px] font-medium hover:underline">
-          {label ? <span className="mr-2 text-ink-3">{label}</span> : null}
-          {r.title}
-        </a>
+        {isPdf(r.file.filename) ? (
+          <Link href={`/resources/${encodeURIComponent(r.id)}`} className="block truncate text-[15px] font-medium hover:underline">
+            {label ? <span className="mr-2 text-ink-3">{label}</span> : null}
+            {r.title}
+          </Link>
+        ) : (
+          <a href={fileUrl(r)} target="_blank" rel="noreferrer" className="block truncate text-[15px] font-medium hover:underline">
+            {label ? <span className="mr-2 text-ink-3">{label}</span> : null}
+            {r.title}
+          </a>
+        )}
         <div className="truncate text-[13px] text-ink-2">
           {[r.author, dateText(r.date), formatSize(r.file.size), r.lastPage ? t.resourceOpenedAt(r.lastPage) : '', !course && r.courses.length ? `${t.resourceInCourses} ${r.courses.map(titleOfCourse).join(', ')}` : ''].filter(Boolean).join(' · ')}
         </div>
