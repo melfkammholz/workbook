@@ -531,7 +531,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
         {tab === 'notes' ? (
           <NotesPanel id={meta.id} initial={work.note?.content ?? ''} />
         ) : tab === 'ai' && aiOn ? (
-          <AiPanel id={meta.id} answer={answerForAi} tests={run?.compiled ? run.results.map(({ name, status, message }) => ({ name: name === SLD_TREE_TEST ? t.treeCorrect : name, status, message })) : null} />
+          <AiPanel id={meta.id} title={meta.title} answer={answerForAi} tests={run?.compiled ? run.results.map(({ name, status, message }) => ({ name: name === SLD_TREE_TEST ? t.treeCorrect : name, status, message })) : null} />
         ) : runnable ? (
           side ? (
             editor

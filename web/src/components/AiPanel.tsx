@@ -15,7 +15,7 @@ export const CHATS: [string, string][] = [
  * of their own, which needs no setup and works with any plan. The workbook itself
  * sends nothing anywhere.
  */
-export function AiPanel({ id, answer, tests }: { id: string; answer: string; tests: PromptRequest['tests'] }) {
+export function AiPanel({ id, title, answer, tests }: { id: string; title: string; answer: string; tests: PromptRequest['tests'] }) {
   const t = useT();
   const lang = useLang();
   const settings = useSettings().data;
@@ -24,6 +24,7 @@ export function AiPanel({ id, answer, tests }: { id: string; answer: string; tes
   const [error, setError] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<string | null>(null);
   const [copied, setCopied] = useState<'yes' | 'failed' | null>(null);
+  const [lineCopied, setLineCopied] = useState(false);
 
   if (!settings) return null;
   const standard = DEFAULT_PROMPT_TEMPLATE[lang];
@@ -93,6 +94,25 @@ export function AiPanel({ id, answer, tests }: { id: string; answer: string; tes
           </details>
         ) : null}
         <p className="mt-3 text-xs text-ink-3">{t.aiCopyNote}</p>
+
+        {settings.assistantBridge ? (
+          <div className="mt-5 border-t border-line pt-4 text-sm">
+            <p className="text-[13px] text-ink-2">{t.aiBridgeLine}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <code className="min-w-0 flex-1 wb-field wb-field-sunk px-3 py-2 font-mono text-[12px] leading-relaxed">{t.aiBridgeText(title, id)}</code>
+              <Button
+                onClick={() => {
+                  void navigator.clipboard?.writeText(t.aiBridgeText(title, id)).then(() => {
+                    setLineCopied(true);
+                    setTimeout(() => setLineCopied(false), 2000);
+                  });
+                }}
+              >
+                {lineCopied ? <Check size={15} /> : <Copy size={15} />} {t.aiBridgeCopy}
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         <details className="mt-6 border-t border-line pt-4 text-sm">
           <summary className="cursor-pointer font-medium text-ink-2">{t.aiEditTemplate}</summary>

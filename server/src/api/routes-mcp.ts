@@ -1,7 +1,10 @@
 import crypto from 'node:crypto';
+import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { QUESTION_KINDS, locateQuote, type Question, type QuestionKind, type TextQuote } from '@wb/shared';
+import { hasTests, sharedOwner } from '../content/loader.js';
 import { plainText } from '../content/search.js';
+import { runChecks } from '../runners/checks.js';
 import { searchEverything } from '../courses/search.js';
 import type { Deps } from './deps.js';
 
@@ -44,6 +47,21 @@ const TOOLS = [
     description: 'A question with its surroundings: the page of a material (with the pages around it) or the item it was asked about, with a marker where it was asked. Hints and author notes are included only if the student allows it; hint, do not reveal unless asked.',
     inputSchema: { type: 'object', properties: { question: { type: 'string' } }, required: ['question'] },
   },
+  {
+    name: 'get_exercise_work',
+    description: "One exercise as the student left it: the task text, their saved code (every file), and how their last test run went (a count; run_tests gives details). Read-only. Never propose changes to exercise code; explain, and hint rather than reveal.",
+    inputSchema: { type: 'object', properties: { exercise: { type: 'string' }, course: { type: 'string', description: 'Workbook id, if the exercise id is not unique' } }, required: ['exercise'] },
+  },
+  {
+    name: 'run_tests',
+    description: "Runs the exercise's tests on the code the student has saved (never on code you write) and returns each test's result. Nothing is saved or counted as the student's attempt.",
+    inputSchema: { type: 'object', properties: { exercise: { type: 'string' }, course: { type: 'string' } }, required: ['exercise'] },
+  },
+  {
+    name: 'get_progress',
+    description: "A compact overview of the student's work: items done or marked for review, their own self-ratings (1 to 5), time and test runs, and flashcard reviews of the last 30 days. Only if the student allows it. It is context, never a judgement: do not rank, grade or praise by numbers.",
+    inputSchema: { type: 'object', properties: { course: { type: 'string', description: 'Workbook id; default all' } } },
+  },
   { name: 'list_digests', description: 'Your own saved digests (your memory, per material or workbook).', inputSchema: { type: 'object', properties: { resource: { type: 'string' }, course: { type: 'string' } } } },
   { name: 'list_labels', description: "The student's own labels (topics). Reuse these names in propose before inventing new ones.", inputSchema: { type: 'object', properties: {} } },
   {
@@ -64,6 +82,40 @@ const TOOLS = [
       properties: { id: { type: 'string', description: 'Replaces this digest' }, title: { type: 'string' }, content: { type: 'string' }, resource: { type: 'string' }, course: { type: 'string' } },
       required: ['title', 'content'],
     },
+  },
+];
+
+const PROMPTS = [
+  {
+    name: 'triage-questions',
+    description: "Go through the student's new open questions and propose a type and labels for each.",
+    arguments: [{ name: 'pass', description: 'Only the questions of this pass id', required: false }],
+    text: (a: Json) =>
+      `Triage the student's open questions in their workbook. First call list_proposals (do not repeat what was rejected) and list_labels (reuse existing names). Then call list_questions with status "open"${str(a.pass) ? ` and pass ${str(a.pass)}` : ''}, skipping questions that already have a type and labels. Where the wording is unclear, read get_context. For each question call propose with a type, labels and a one-line reason. Do not answer questions in this pass, and do not close anything. Finish with a short list of what you proposed.`,
+  },
+  {
+    name: 'answer-pass',
+    description: 'Propose short answers for the questions of one pass, from the text they were asked about.',
+    arguments: [{ name: 'pass', description: 'Pass id (see list_questions)', required: true }],
+    text: (a: Json) =>
+      `Answer the questions of pass ${str(a.pass) ?? '(ask the student which pass)'} in the student's workbook. Read list_proposals first. For each open question from list_questions, read get_context and, if needed, search or read_page. Then propose an answer: short, in the student's language, grounded in the text they were reading, saying where in it. If the text does not answer it, say so in the reason instead of guessing. Do not reveal solutions of exercises unless the question asks for one. Summarize what you proposed.`,
+  },
+  {
+    name: 'draft-flashcards',
+    description: 'Draft flashcards from a material or from the questions the student asked, saved as a digest for them to read.',
+    arguments: [{ name: 'resource', description: 'Material id; default: the open questions', required: false }],
+    text: (a: Json) =>
+      `Draft flashcards for the student${str(a.resource) ? ` from the material ${str(a.resource)} (read it with read_page, page by page)` : ' from their open questions (list_questions, get_context)'}. One idea per card, a clear front, a short back, and say which page or question it comes from. Cards you cannot ground in the text are left out. You cannot create cards yourself: save the draft with write_digest, titled "Flashcard draft", so the student can read it in settings and copy what they want.`,
+  },
+  {
+    name: 'review-exercise',
+    description: "Review one exercise from the student's own saved work, with hints instead of the solution.",
+    arguments: [
+      { name: 'exercise', description: 'Exercise id', required: true },
+      { name: 'course', description: 'Workbook id, if the exercise id is not unique', required: false },
+    ],
+    text: (a: Json) =>
+      `Review the exercise "${str(a.exercise) ?? '(ask the student which one)'}" from the student's workbook${str(a.course) ? ` (workbook ${str(a.course)})` : ''}. Call get_exercise_work, then run_tests on their saved code. Say what works, find where the code and the tests disagree, and explain why. Give hints and questions that lead the student to the fix, not corrected code or the reference solution, unless they ask for it. You cannot change their code and must not propose changes to it.`,
   },
 ];
 
@@ -109,6 +161,26 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
     return null;
   };
 
+  /** The exercise with the store that holds the work of its workbook. */
+  const exerciseOf = (id: string | undefined, course?: string) => {
+    if (!id) throw new ToolError('exercise is required');
+    const found = findItem(id, course);
+    const ex = found?.s.content.exercise(id);
+    if (!found || !ex?.code) throw new ToolError(`"${id}" is not a programming exercise`);
+    return { ...found, ex, code: ex.code, store: g().forCourse(found.s.key) };
+  };
+
+  const savedFiles = (e: ReturnType<typeof exerciseOf>): Record<string, string> => {
+    const shared = e.code.shared;
+    const saved = { ...e.store.getAnswers(e.ex.meta.id), ...(shared ? e.store.getAnswers(sharedOwner(shared)) : {}) };
+    return Object.fromEntries(Object.keys(e.code.files).map((f) => [f, saved[f] ?? e.code.files[f]!]));
+  };
+
+  const lastRun = (e: ReturnType<typeof exerciseOf>) => {
+    const r = e.store.sql.get('SELECT at, passed, total FROM check_history WHERE course = ? AND exercise_id = ? ORDER BY id DESC LIMIT 1', e.store.course, e.ex.meta.id);
+    return r ? { at: new Date(Number(r.at)).toISOString(), passed: Number(r.passed), total: Number(r.total) } : null;
+  };
+
   const MARK = '⟦the student asked their question here⟧';
   /** Puts the marker after the quoted place, or says that the place could not be found in this text. */
   const mark = (text: string, quote: TextQuote | undefined): { text: string; found: boolean } => {
@@ -147,7 +219,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
     return t;
   };
 
-  const call = (name: string, a: Json): unknown => {
+  const call = async (name: string, a: Json): Promise<unknown> => {
     switch (name) {
       case 'list_questions': {
         const course = str(a.course);
@@ -182,6 +254,66 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         }
         if (item) return cut(itemText(item, str(a.course)));
         throw new ToolError('give resource and page, or item');
+      }
+      case 'get_exercise_work': {
+        const e = exerciseOf(str(a.exercise), str(a.course));
+        const saved = e.store.getAnswers(e.ex.meta.id);
+        const files = savedFiles(e);
+        return {
+          exercise: e.ex.meta.id,
+          title: e.ex.meta.title,
+          language: e.code.language,
+          task: cut(itemText(e.ex.meta.id, str(a.course))),
+          code: files,
+          note: Object.keys(saved).length ? undefined : 'The student has saved no code yet; this is the starter.',
+          lastTestRun: lastRun(e) ?? 'not run yet',
+          hasTests: hasTests(e.code),
+        };
+      }
+      case 'run_tests': {
+        const e = exerciseOf(str(a.exercise), str(a.course));
+        if (!hasTests(e.code)) throw new ToolError('this exercise has no tests');
+        if (!Object.keys(e.store.getAnswers(e.ex.meta.id)).length) throw new ToolError('the student has saved no code for this exercise yet');
+        const run = await runChecks({
+          runghcBin: d.config.runghcBin,
+          swiplBin: d.config.swiplBin,
+          sldcheckBin: d.config.sldcheckBin,
+          haskellLib: d.haskellLib,
+          prologLib: d.prologLib,
+          workDir: path.join(d.config.dataDir, 'runs'),
+          code: e.code,
+          files: savedFiles(e),
+        });
+        return {
+          compiled: run.compiled,
+          diagnostics: run.diagnostics,
+          results: run.results.map((r) => ({ name: r.name, status: r.status, message: r.message })),
+          stdout: cut(run.stdout),
+          runnerError: run.runnerError,
+        };
+      }
+      case 'get_progress': {
+        if (!g().getSettings().bridgeIncludeProgress) throw new ToolError("the student does not share their progress through the bridge (setting)");
+        const course = str(a.course);
+        const workbooks = d.courses
+          .searchScope()
+          .filter((s) => !course || s.id === course || s.key === course)
+          .map((s) => {
+            const st = g().forCourse(s.key).getState();
+            const title = (id: string) => s.content.get(id)?.meta.title ?? id;
+            const entries = Object.entries(st.progress);
+            return {
+              workbook: s.id,
+              title: s.title,
+              done: entries.filter(([, p]) => p.status === 'done').map(([id]) => title(id)),
+              reviewLater: entries.filter(([, p]) => p.status === 'review').map(([id]) => title(id)),
+              selfRating: Object.fromEntries(Object.entries(st.reflections).map(([id, r]) => [title(id), r.confidence])),
+              work: Object.fromEntries(Object.entries(st.stats).filter(([, x]) => x.activeSeconds || x.checkRuns).map(([id, x]) => [title(id), { minutes: Math.round(x.activeSeconds / 60), testRuns: x.checkRuns, runsAllPassed: x.checkPasses }])),
+            };
+          });
+        const since = Date.now() - 30 * 86_400_000;
+        const cards = g().sql.all('SELECT deck_id, COUNT(*) AS n, ROUND(AVG(rating), 1) AS avg FROM card_reviews WHERE reviewed_at >= ? GROUP BY deck_id', since);
+        return { note: 'Context only, not a judgement. Self-ratings are the student\'s own, 1 (lost) to 5 (could teach it).', workbooks, cardReviewsLast30Days: cards.map((r) => ({ deck: r.deck_id, reviews: Number(r.n), averageRating: Number(r.avg) })) };
       }
       case 'get_context': {
         const id = str(a.question);
@@ -253,7 +385,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
     }
   };
 
-  const handle = (m: Json): Json | null => {
+  const handle = async (m: Json): Promise<Json | null> => {
     const id = m.id as string | number | null | undefined;
     const ok = (result: unknown) => ({ jsonrpc: '2.0', id, result });
     const error = (code: number, message: string) => ({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
@@ -264,18 +396,28 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         const asked = str(params.protocolVersion);
         return ok({
           protocolVersion: asked && PROTOCOLS.includes(asked) ? asked : PROTOCOLS[0],
-          capabilities: { tools: {} },
+          capabilities: { tools: {}, prompts: {} },
           serverInfo: { name: 'workbook', version: '1' },
-          instructions: "The student's workbook: their open questions, their own text and the text of their materials. You cannot change anything yourself: propose changes (type, labels, answers) and the student decides in their inbox. Read list_proposals first so you do not repeat a rejected one. You may also keep your own digests.",
+          instructions: "The student's workbook: their open questions, their own text and the text of their materials. You cannot change anything yourself: propose changes (type, labels, answers) and the student decides in their inbox. Read list_proposals first so you do not repeat a rejected one. For exercises you can read the student's saved work and run their tests, but you never propose changes to their code. You may also keep your own digests.",
         });
       }
       case 'ping':
         return ok({});
       case 'tools/list':
         return ok({ tools: TOOLS });
+      case 'prompts/list':
+        return ok({ prompts: PROMPTS.map(({ name, description, arguments: args }) => ({ name, description, arguments: args })) });
+      case 'prompts/get': {
+        const p = PROMPTS.find((x) => x.name === params.name);
+        if (!p) return error(-32602, `unknown prompt "${String(params.name)}"`);
+        const args = (params.arguments ?? {}) as Json;
+        const missing = p.arguments.find((x) => x.required && !str(args[x.name]));
+        if (missing) return error(-32602, `${missing.name} is required`);
+        return ok({ description: p.description, messages: [{ role: 'user', content: { type: 'text', text: p.text(args) } }] });
+      }
       case 'tools/call':
         try {
-          const text = call(String(params.name), (params.arguments ?? {}) as Json);
+          const text = await call(String(params.name), (params.arguments ?? {}) as Json);
           return ok({ content: [{ type: 'text', text: typeof text === 'string' ? text : JSON.stringify(text, null, 1) }] });
         } catch (e) {
           if (e instanceof ToolError) return ok({ isError: true, content: [{ type: 'text', text: e.message }] });
@@ -294,11 +436,11 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
     if (!m || !crypto.timingSafeEqual(digest(m[1]!), digest(s.bridgeToken))) return reply.code(401).header('www-authenticate', 'Bearer').send({ error: 'unauthorized' });
     const body = req.body as unknown;
     if (Array.isArray(body)) {
-      const out = body.flatMap((x) => (x && typeof x === 'object' ? [handle(x as Json)] : [])).filter((x): x is Json => x !== null);
+      const out = (await Promise.all(body.flatMap((x) => (x && typeof x === 'object' ? [handle(x as Json)] : [])))).filter((x): x is Json => x !== null);
       return out.length ? out : reply.code(202).send();
     }
     if (!body || typeof body !== 'object') return reply.code(400).send({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } });
-    const out = handle(body as Json);
+    const out = await handle(body as Json);
     return out ?? reply.code(202).send();
   });
 }

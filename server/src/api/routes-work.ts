@@ -45,6 +45,7 @@ const bodies = {
       showAi: z.boolean(),
       assistantBridge: z.boolean(),
       bridgeIncludeSolutions: z.boolean(),
+      bridgeIncludeProgress: z.boolean(),
       safeColors: z.boolean(),
       warmPaper: z.boolean(),
       editorFontSize: z.number().min(10).max(24),

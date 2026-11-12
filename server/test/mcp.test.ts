@@ -6,6 +6,7 @@ import { buildApp } from '../src/api/app.js';
 import { makeDeps } from '../src/api/deps.js';
 import { plainText } from '../src/content/search.js';
 import { changesBus } from '../src/db/changes-bus.js';
+import { hasTests } from '../src/content/loader.js';
 import { loadConfig } from '../src/config.js';
 import { CourseManager } from '../src/courses/manager.js';
 import { SessionPool } from '../src/runners/pool.js';
@@ -64,7 +65,7 @@ describe('assistant bridge', () => {
     expect(init.capabilities.tools).toBeDefined();
     expect((await rpc('notifications/initialized', undefined, {}, null)).statusCode).toBe(202);
     const names = (await rpc('tools/list')).json().result.tools.map((x: { name: string }) => x.name);
-    expect([...names].sort()).toEqual(['get_context', 'list_digests', 'list_labels', 'list_proposals', 'list_questions', 'propose', 'read_page', 'search', 'write_digest']);
+    expect([...names].sort()).toEqual(['get_context', 'get_exercise_work', 'get_progress', 'list_digests', 'list_labels', 'list_proposals', 'list_questions', 'propose', 'read_page', 'run_tests', 'search', 'write_digest']);
     expect((await rpc('nope')).json().error.code).toBe(-32601);
   });
 
@@ -211,6 +212,53 @@ describe('assistant bridge', () => {
     changesBus.off('changes', on);
     expect(made.id).toBeTruthy();
     expect(told).toBe(1);
+  });
+
+  it('shows the work on an exercise and runs only the saved code', async () => {
+    const ex = courses.active!.content.current.all().find((i) => i.meta.type === 'exercise' && 'code' in i && i.code && hasTests(i.code) && i.code.language === 'haskell');
+    expect(ex).toBeDefined();
+    const id = ex!.meta.id;
+    const code = (ex as unknown as { code: { files: Record<string, string> } }).code;
+    const file = Object.keys(code.files)[0]!;
+    const before = JSON.parse((await tool('get_exercise_work', { exercise: id })).text);
+    expect(before.note).toContain('no code yet');
+    expect(before.lastTestRun).toBe('not run yet');
+    expect((await tool('run_tests', { exercise: id })).error).toBe(true); // nothing saved
+    await app.inject({ method: 'PUT', url: `/api/work/${id}/answer`, payload: { slot: file, content: `${code.files[file]}\n-- mine` } });
+    const work = JSON.parse((await tool('get_exercise_work', { exercise: id })).text);
+    expect(work.code[file]).toContain('-- mine');
+    expect(work.note).toBeUndefined();
+    expect((await tool('get_exercise_work', { exercise: 'nonexistent' })).error).toBe(true);
+    const run = await tool('run_tests', { exercise: id });
+    expect(run.error).toBe(false);
+    expect(JSON.parse(run.text)).toHaveProperty('results');
+    // Running it is not an attempt of the student.
+    expect(deps.store.getStats(id).checkRuns).toBe(0);
+    expect(JSON.parse((await tool('get_exercise_work', { exercise: id })).text).lastTestRun).toBe('not run yet');
+  });
+
+  it('shows progress only when the student allows it', async () => {
+    const id = courses.active!.content.current.all().find((i) => i.meta.type === 'exercise')!.meta.id;
+    deps.store.setStatus(id, 'done');
+    deps.store.addReflection(id, 4, ['alone'], '');
+    const on = JSON.parse((await tool('get_progress')).text);
+    expect(on.workbooks[0].done.length).toBe(1);
+    expect(Object.values(on.workbooks[0].selfRating)).toEqual([4]);
+    await app.inject({ method: 'PUT', url: '/api/settings', payload: { bridgeIncludeProgress: false } });
+    const off = await tool('get_progress');
+    expect(off.error).toBe(true);
+    expect(off.text).not.toContain('done');
+    await app.inject({ method: 'PUT', url: '/api/settings', payload: { bridgeIncludeProgress: true } });
+  });
+
+  it('offers prompts for the shipped workflows', async () => {
+    expect((await rpc('initialize', {})).json().result.capabilities.prompts).toBeDefined();
+    const names = (await rpc('prompts/list')).json().result.prompts.map((p: { name: string }) => p.name);
+    expect(names).toEqual(['triage-questions', 'answer-pass', 'draft-flashcards', 'review-exercise']);
+    const got = (await rpc('prompts/get', { name: 'review-exercise', arguments: { exercise: 'x1' } })).json().result;
+    expect(got.messages[0].content.text).toContain('x1');
+    expect((await rpc('prompts/get', { name: 'review-exercise' })).json().error.code).toBe(-32602);
+    expect((await rpc('prompts/get', { name: 'nope' })).json().error.code).toBe(-32602);
   });
 
   it('is off again when the student turns it off', async () => {

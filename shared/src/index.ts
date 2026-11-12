@@ -355,6 +355,8 @@ export interface Settings {
   assistantBridge: boolean;
   /** Whether the bridge may read solutions and author notes. */
   bridgeIncludeSolutions: boolean;
+  /** Whether the bridge may read done items, self-ratings and card reviews (`get_progress`). */
+  bridgeIncludeProgress: boolean;
   /** The bearer token of the bridge; empty until it is turned on. Never sent anywhere by the app. */
   bridgeToken: string;
   /** Language of the app itself. Exercises are not translated. `auto` follows the course. */
@@ -404,6 +406,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showAi: false,
   assistantBridge: false,
   bridgeIncludeSolutions: true,
+  bridgeIncludeProgress: true,
   bridgeToken: '',
   editorFontSize: 13.5,
   editorKeys: 'default',

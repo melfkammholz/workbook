@@ -61,6 +61,7 @@ function AssistantBridge({ settings, set }: { settings: Settings; set: (p: Parti
       {settings.assistantBridge ? (
         <div className="ml-7 space-y-3">
           <Toggle checked={settings.bridgeIncludeSolutions} onChange={(v) => set({ bridgeIncludeSolutions: v })} title={t.bridgeSolutions} body={t.bridgeSolutionsBody} />
+          <Toggle checked={settings.bridgeIncludeProgress} onChange={(v) => set({ bridgeIncludeProgress: v })} title={t.bridgeProgress} body={t.bridgeProgressBody} />
           <div>
             <p className="mb-1 text-[13px] text-ink-2">{t.bridgeCommand}</p>
             <pre className="overflow-x-auto wb-field px-3 py-2 text-xs">{settings.bridgeToken ? command : ''}</pre>
