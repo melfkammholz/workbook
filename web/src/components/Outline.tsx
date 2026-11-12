@@ -2,8 +2,8 @@ import * as Popover from '@radix-ui/react-popover';
 import { BookOpen, ChevronDown, Clock, Compass, FileText, Flame, ListChecks, ListFilter, Search, X } from 'lucide-react';
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useRoute } from 'wouter';
-import type { ChapterMeta, ExerciseKind, ItemMeta, Outline as OutlineT, PartMeta, Status, StudentState, ThreadInfo } from '@wb/shared';
-import { statusOf, useSettings } from '@/lib/api';
+import type { ChapterMeta, ExerciseKind, ThreadKind, ItemMeta, Outline as OutlineT, PartMeta, Status, StudentState, ThreadInfo } from '@wb/shared';
+import { indexItems, itemHref, statusOf, useSettings } from '@/lib/api';
 import { KIND_ICONS, kindProgress, kindsOf } from '@/lib/kinds';
 import { useLessonToc } from '@/lib/lessonToc';
 import { focusExercises, foldItems } from '@/lib/focus';
@@ -28,7 +28,12 @@ interface Props {
   onNavigate?: () => void;
 }
 
-export function OutlinePanel({ outline, state, currentId, filters, patch, reset, onNavigate }: Props) {
+export function OutlinePanel({ outline, state, currentId: openId, filters, patch, reset, onNavigate }: Props) {
+  // An exercise opened from a session is current there only; otherwise it would be marked, opened and scrolled to
+  // in its chapter as well, and the outline would jump between the two.
+  const [inGroup, groupParams] = useRoute('/item/:id/in/:group');
+  const group = inGroup ? decodeURIComponent(groupParams!.group) : null;
+  const currentId = group ? null : openId;
   const t = useT();
   const n = activeCount(filters);
   const filtering = n > 0 || filters.q.trim() !== '';
@@ -78,7 +83,7 @@ export function OutlinePanel({ outline, state, currentId, filters, patch, reset,
       ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-6">
-        {filtering ? null : <KindLinks outline={outline} state={state} onNavigate={onNavigate} />}
+        {filtering ? null : <KindLinks outline={outline} state={state} currentId={openId} group={group} onNavigate={onNavigate} />}
         {outline.parts.map((part, i) => {
           const chapters = byPart.get(part.id)!;
           return <PartBlock key={part.id} number={i + 1} outline={outline} part={part} chapters={chapters} state={state} currentId={holds(chapters.flatMap((v) => v.chapter.items))} filtering={filtering} onNavigate={onNavigate} />;
@@ -100,7 +105,7 @@ export function OutlinePanel({ outline, state, currentId, filters, patch, reset,
  * The course's work besides its chapters: sessions, homework, old exams. A building block of its own, so it
  * comes first, and looks like one: a band like the parts, its kinds like chapters.
  */
-function KindLinks({ outline, state, onNavigate }: { outline: OutlineT; state: StudentState | undefined; onNavigate?: (() => void) | undefined }) {
+function KindLinks({ outline, state, currentId, group, onNavigate }: { outline: OutlineT; state: StudentState | undefined; currentId: string | null; group: string | null; onNavigate?: (() => void) | undefined }) {
   const t = useT();
   const [location] = useLocation();
   const kinds = kindsOf(outline);
@@ -126,34 +131,59 @@ function KindLinks({ outline, state, onNavigate }: { outline: OutlineT; state: S
           {all.reduce((n, p) => n + p.done, 0)}/{all.reduce((n, p) => n + p.total, 0)}
         </span>
       </button>
+      {open ? kinds.map((k, i) => <KindBlock key={k} outline={outline} kind={k} progress={all[i]!} state={state} currentId={currentId} group={group} onNavigate={onNavigate} />) : null}
+    </section>
+  );
+}
+
+/** One kind, drawn like a chapter: a header that opens its page, and below it each group with the exercises it lists. */
+function KindBlock({ outline, kind, progress, state, currentId, group: openGroup, onNavigate }: { outline: OutlineT; kind: ThreadKind; progress: { done: number; total: number }; state: StudentState | undefined; currentId: string | null; group: string | null; onNavigate?: (() => void) | undefined }) {
+  const t = useT();
+  const [location] = useLocation();
+  const here = location === `/kind/${kind}`;
+  const key = `kind-${kind}`;
+  const [open, setOpen] = useState(() => readOpen(key));
+  const Icon = KIND_ICONS[kind];
+  const { map } = useMemo(() => indexItems(outline), [outline]);
+  const groups = outline.threads.filter((x) => x.kind === kind).map((g) => ({ g, items: g.steps.flat().flatMap((id) => (map.get(id) ? [map.get(id)!] : [])) }));
+  const holdsCurrent = currentId !== null && groups.some((x) => x.g.id === openGroup && x.items.some((i) => i.id === currentId));
+  useEffect(() => {
+    if (holdsCurrent) setOpen(true);
+  }, [holdsCurrent]);
+  useEffect(() => writeOpen(key, open), [key, open]);
+  return (
+    <section className="pb-1.5">
+      <div className="group flex w-full items-center gap-1 bg-sheet pl-[9px] pr-3 hover:bg-[color-mix(in_srgb,var(--paper)_45%,var(--sheet))]">
+        <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={open ? t.collapseChapter(t.threadKind[kind]) : t.expandChapter(t.threadKind[kind])} className="shrink-0 rounded p-1 text-ink-3 hover:text-ink">
+          <ChevronDown size={14} className={clsx('transition-transform', !open && '-rotate-90')} />
+        </button>
+        <NavLink
+          href={`/kind/${kind}`}
+          onClick={() => {
+            setOpen(true);
+            onNavigate?.();
+          }}
+          aria-current={here ? 'page' : undefined}
+          className={clsx('flex min-w-0 flex-1 items-center gap-2 py-[9px]', here && 'text-accent')}
+        >
+          <Icon size={14} className="w-4 shrink-0 text-ink-3" />
+          <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold">{t.threadKind[kind]}</span>
+          <span className="shrink-0 text-xs font-medium tabular-nums text-ink-3">
+            {progress.done}/{progress.total}
+          </span>
+        </NavLink>
+      </div>
       {open ? (
-        <ul>
-          {kinds.map((k, i) => {
-            const on = location === `/kind/${k}`;
-            const Icon = KIND_ICONS[k];
-            return (
-              <li key={k}>
-                <Link
-                  href={`/kind/${k}`}
-                  onClick={onNavigate}
-                  aria-current={on ? 'page' : undefined}
-                  className={clsx(
-                    'relative flex items-center gap-2 border-line py-2 pl-[11px] pr-3 text-[13.5px] font-semibold tracking-tight',
-                    i > 0 && 'border-t',
-                    on ? 'bg-accent-soft text-ink' : 'bg-[color-mix(in_srgb,var(--paper)_45%,var(--sheet))] text-ink hover:bg-paper',
-                  )}
-                >
-                  {on ? <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-accent" /> : null}
-                  <Icon size={14} className="shrink-0 text-ink-3" />
-                  <span className="min-w-0 flex-1 truncate">{t.threadKind[k]}</span>
-                  <span className="shrink-0 text-xs font-normal tabular-nums text-ink-3">
-                    {all[i]!.done}/{all[i]!.total}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        <ol className="pb-1">
+          {groups.map(({ g, items }) => (
+            <Fragment key={g.id}>
+              <SectionLabel title={g.title} adventure={undefined} />
+              {items.map((item, i) => (
+                <Row key={item.id} item={item} status={statusOf(state, item.id)} answered={Object.keys(state?.checklists[item.id] ?? {}).length > 0} current={item.id === currentId && g.id === openGroup} first={i === 0} last={i === items.length - 1} wide={false} outside={false} group={g.id} onNavigate={onNavigate} />
+              ))}
+            </Fragment>
+          ))}
+        </ol>
       ) : null}
     </section>
   );
@@ -371,7 +401,7 @@ function AdventureLabel({ title, adventure, onNavigate }: { title: string; adven
   );
 }
 
-const Row = memo(function Row({ item, status, answered, current, first, last, wide, outside, onNavigate }: { item: ItemMeta; status: Status; answered: boolean; current: boolean; first: boolean; last: boolean; wide: boolean; outside: boolean; onNavigate?: (() => void) | undefined }) {
+const Row = memo(function Row({ item, status, answered, current, first, last, wide, outside, group, onNavigate }: { item: ItemMeta; status: Status; answered: boolean; current: boolean; first: boolean; last: boolean; wide: boolean; outside: boolean; group?: string | undefined; onNavigate?: (() => void) | undefined }) {
   const t = useT();
   const ex = item.type === 'exercise' ? item : null;
   const done = status === 'done';
@@ -386,7 +416,7 @@ const Row = memo(function Row({ item, status, answered, current, first, last, wi
       {/* A short rule inside the chapter, not across the pane, so it does not read as the start of the next chapter. */}
       {wide ? <span aria-hidden className="absolute left-[14px] right-3.5 top-0 h-px bg-line" /> : null}
       <NavLink
-        href={`/item/${item.id}`}
+        href={itemHref(item.id, group)}
         onClick={onNavigate}
         aria-current={current ? 'page' : undefined}
         className={clsx(

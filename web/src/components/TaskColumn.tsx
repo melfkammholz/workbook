@@ -20,7 +20,7 @@ import { KIND_ICONS } from '@/lib/kinds';
  * The one column every text is read in: exercises, pages, lessons, chapter intros, adventure pages. Text and
  * widgets share its width, so everything lines up on one axis; `#wide` breaks out of it on both sides.
  */
-export const READING_COLUMN = 'wb-page max-w-[56rem] px-6 sm:px-8 w-full mx-auto';
+export const READING_COLUMN = 'wb-page max-w-[52rem] px-6 sm:px-8 w-full mx-auto';
 
 interface Props {
   detail: ItemDetail;
