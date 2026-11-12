@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/api/app.js';
 import { makeDeps } from '../src/api/deps.js';
+import { plainText } from '../src/content/search.js';
 import { loadConfig } from '../src/config.js';
 import { CourseManager } from '../src/courses/manager.js';
 import { SessionPool } from '../src/runners/pool.js';
@@ -12,12 +13,14 @@ import { EXAMPLE_CONTENT, HASKELL_LIB, PROLOG_LIB } from './helpers.js';
 let app: Awaited<ReturnType<typeof buildApp>>;
 let courses: CourseManager;
 let token = '';
+let deps: ReturnType<typeof makeDeps>;
 
 beforeAll(async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-mcp-'));
   const config = { ...loadConfig({ CONTENT_DIR: EXAMPLE_CONTENT, DATA_DIR: dataDir } as NodeJS.ProcessEnv), port: 0 };
   courses = new CourseManager({ config, typstAssets: path.resolve(import.meta.dirname, '../assets/typst') });
-  app = await buildApp(makeDeps({ config, courses, pool: new SessionPool(1, 60_000), haskellLib: HASKELL_LIB, prologLib: PROLOG_LIB }));
+  deps = makeDeps({ config, courses, pool: new SessionPool(1, 60_000), haskellLib: HASKELL_LIB, prologLib: PROLOG_LIB });
+  app = await buildApp(deps);
 });
 afterAll(async () => {
   await app.close();
@@ -83,6 +86,28 @@ describe('assistant bridge', () => {
     expect((await tool('read_page', { item: 'nonexistent' })).error).toBe(true);
     expect((await tool('search', { query: 'foldr' })).error).toBe(false);
     expect((await tool('read_page', {})).error).toBe(true);
+  });
+
+  it('marks where a question was asked, and follows the solutions setting', async () => {
+    const item = courses.active!.content.current.all().find((i) => i.meta.type === 'exercise' && 'code' in i && i.code?.solution)!;
+    const quote = plainText(item.typst).split(' ').slice(2, 5).join(' ');
+    const whole = deps.store.addQuestion({ text: 'ganz', anchor: { kind: 'exercise', course: deps.store.course, id: item.meta.id } });
+    const at = deps.store.addQuestion({ text: 'hier', anchor: { kind: 'text', course: deps.store.course, target: item.meta.id, part: 'x', quote, prefix: '', suffix: '' } });
+    for (const full of [true, false]) {
+      await app.inject({ method: 'PUT', url: '/api/settings', payload: { bridgeIncludeSolutions: full } });
+      const a = JSON.parse((await tool('get_context', { question: at.id })).text).item as string;
+      expect(a).toContain('⟦the student asked their question here⟧');
+      expect(a).toContain(full ? 'Included: hints, author notes and solutions' : 'are left out');
+      expect(a.includes('Solution, ')).toBe(full);
+      expect(JSON.parse((await tool('get_context', { question: whole.id })).text).item).toContain('whole item');
+    }
+  });
+
+  it('says plainly when the text of a page is not read yet', async () => {
+    const q = deps.store.addQuestion({ text: 'S', anchor: { kind: 'page', resource: 'r-none', version: 'v', pageIndex: 2, fingerprint: 'f' } });
+    const out = JSON.parse((await tool('get_context', { question: q.id })).text);
+    expect(out.pages).toEqual({});
+    expect(out.note).toContain('not been read yet');
   });
 
   it('keeps digests, which the student can delete', async () => {

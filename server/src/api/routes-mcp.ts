@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { QUESTION_KINDS, type Question, type QuestionKind } from '@wb/shared';
+import { QUESTION_KINDS, locateQuote, type Question, type QuestionKind, type TextQuote } from '@wb/shared';
 import { plainText } from '../content/search.js';
 import { searchEverything } from '../courses/search.js';
 import type { Deps } from './deps.js';
@@ -33,7 +33,7 @@ const TOOLS = [
   },
   {
     name: 'read_page',
-    description: 'The text of one page (1-based) of a material, or of one workbook item (exercise, lesson, page). Solutions and author notes only if the student allows it.',
+    description: 'The text of one page (1-based) of a material, or of one workbook item (exercise, lesson, page). Solutions, hints and author notes only if the student allows it; hint, do not reveal unless asked.',
     inputSchema: {
       type: 'object',
       properties: { resource: { type: 'string' }, page: { type: 'integer' }, item: { type: 'string' }, course: { type: 'string', description: 'Workbook id, if the item id is not unique' } },
@@ -41,7 +41,7 @@ const TOOLS = [
   },
   {
     name: 'get_context',
-    description: 'A question with its surroundings: the page of a material (with the pages around it) or the item it was asked about.',
+    description: 'A question with its surroundings: the page of a material (with the pages around it) or the item it was asked about, with a marker where it was asked. Hints and author notes are included only if the student allows it; hint, do not reveal unless asked.',
     inputSchema: { type: 'object', properties: { question: { type: 'string' } }, required: ['question'] },
   },
   { name: 'list_digests', description: 'Your own saved digests (your memory, per material or workbook).', inputSchema: { type: 'object', properties: { resource: { type: 'string' }, course: { type: 'string' } } } },
@@ -109,13 +109,29 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
     return null;
   };
 
-  const itemText = (id: string, course?: string): string => {
+  const MARK = '⟦the student asked their question here⟧';
+  /** Puts the marker after the quoted place, or says that the place could not be found in this text. */
+  const mark = (text: string, quote: TextQuote | undefined): { text: string; found: boolean } => {
+    if (!quote) return { text, found: false };
+    const at = locateQuote(text, quote);
+    return at ? { text: `${text.slice(0, at.end)} ${MARK} ${text.slice(at.end)}`, found: true } : { text, found: false };
+  };
+
+  const itemText = (id: string, course?: string, quote?: TextQuote): string => {
     const found = findItem(id, course);
     if (!found) throw new ToolError(`unknown item "${id}"`);
     const { item } = found;
-    if (!g().getSettings().bridgeIncludeSolutions) return `# ${item.meta.title}\n\n${plainText(item.typst)}`;
-    let out = `# ${item.meta.title}\n\nSource (Typst, with hints and author notes):\n\n${item.typst}`;
-    const code = 'code' in item ? item.code : null;
+    const full = g().getSettings().bridgeIncludeSolutions;
+    const plain = plainText(item.typst);
+    let marked = mark(full ? item.typst : plain, quote);
+    // A quote comes from the rendered text, so in the Typst source it often cannot be found: then the marked plain text goes first.
+    const seen = full && quote && !marked.found ? mark(plain, quote) : null;
+    if (seen?.found) marked = { found: true, text: marked.text };
+    const note = quote ? (marked.found ? `The marker ${MARK} shows where the question was asked.` : `The question was asked at "${quote.quote}", which could not be located in this text.`) : 'The question was asked about the whole item.';
+    let out = full
+      ? `# ${item.meta.title}\n\n${note}\nIncluded: hints, author notes and solutions (the student allows it). Do not reveal them unless the student asks.\n\n${seen?.found ? `Text as the student saw it:\n\n${seen.text}\n\n` : ''}Source (Typst):\n\n${marked.text}`
+      : `# ${item.meta.title}\n\n${note}\nHints, author notes and solutions are left out (the student's setting).\n\n${marked.text}`;
+    const code = full && 'code' in item ? item.code : null;
     if (code) for (const [file, text] of Object.entries(code.fullSolution)) out += `\n\nSolution, ${file}:\n\n${text}`;
     return out;
   };
@@ -177,13 +193,15 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
           const pages: Json = {};
           for (const p of [an.pageIndex - 1, an.pageIndex, an.pageIndex + 1]) {
             const t = p >= 0 ? g().resourcePageText(an.resource, p) : null;
-            if (t) pages[`page ${p + 1}`] = cut(t);
+            if (t) pages[`page ${p + 1}`] = cut(p === an.pageIndex && an.quote ? mark(t, an as TextQuote).text : t);
           }
           out.pages = pages;
+          if (!pages[`page ${an.pageIndex + 1}`]) out.note = `The text of page ${an.pageIndex + 1} of "${an.resource}" is not available: it has not been read yet (PDF text is read in the background), is empty, or the file was replaced since the question. Try again in a minute.`;
+          else if (an.quote) out.note = `The marker ${MARK} shows where the question was asked.`;
         } else if (an.kind === 'exercise' || an.kind === 'item' || an.kind === 'text') {
           const itemId = an.kind === 'text' ? an.target : an.id;
           try {
-            out.item = cut(itemText(itemId, an.course));
+            out.item = cut(itemText(itemId, an.course, an.kind === 'text' ? an : undefined));
           } catch {
             /* the item may be gone */
           }
