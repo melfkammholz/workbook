@@ -162,7 +162,6 @@ function Entry({ ex, cell, data }: { ex: Exercise; cell: Cell; data: ReviewData 
         <StatusMark status={cell.progress?.status ?? 'todo'} size={16} className="mt-0.5 shrink-0" />
         <span className="min-w-0 flex-1">
           <span className="block font-medium"><Title text={ex.title} /></span>
-          {cell.questions[0]?.text ? <span className="mt-0.5 line-clamp-2 block text-[13.5px] text-ink-2">{cell.questions[0].text}</span> : null}
           <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {due ? <Chip tone="danger">{t.dueNow}</Chip> : null}
             {cell.flags.map((f) => (
