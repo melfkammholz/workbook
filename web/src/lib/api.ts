@@ -8,6 +8,7 @@ import type {
   AnswerVersion,
   CheckRun,
   CoursesResponse,
+  LocalWorkbook,
   ItemDetail,
   NoteDoc,
   NoteFormat,
@@ -246,10 +247,11 @@ export const useAchievements = () => {
 };
 export const acknowledgeAchievements = () => api.post('/api/achievements/seen');
 
-export type CourseAction = { type: 'add'; url: string } | { type: 'activate' | 'update' | 'remove' | 'delete'; id: string };
+export type CourseAction = { type: 'add'; url: string } | { type: 'add-local'; name: string } | { type: 'activate' | 'update' | 'remove' | 'delete'; id: string };
 
 const courseRequest = (a: CourseAction) => {
   if (a.type === 'add') return api.post<CoursesResponse>('/api/courses', { url: a.url });
+  if (a.type === 'add-local') return api.post<CoursesResponse>('/api/courses', { local: a.name });
   const url = `/api/courses/${encodeURIComponent(a.id)}`;
   if (a.type === 'remove') return api.delete<CoursesResponse>(url);
   if (a.type === 'delete') return api.post<CoursesResponse>(`${url}/delete`, { confirm: 'delete' });
@@ -304,6 +306,8 @@ function forgetBrowserMemory(outline: Outline | undefined) {
 }
 
 /** Quietly looks for news; without a network nothing changes. */
+export const useLocalWorkbooks = () => useQuery({ queryKey: ['local-workbooks'], queryFn: () => api.get<{ workbooks: LocalWorkbook[] }>('/api/courses/local'), staleTime: 0 });
+
 export const checkCourseUpdates = () => api.post<CoursesResponse>('/api/courses/check');
 
 export const useSaveSettings = () => {

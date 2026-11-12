@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { EyeOff, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { CourseErrorCode, CourseInfo } from '@wb/shared';
-import { checkCourseUpdates, keys, useCourseAction, useCourses } from '@/lib/api';
+import { checkCourseUpdates, keys, useCourseAction, useCourses, useLocalWorkbooks } from '@/lib/api';
 import { useT, type Strings } from '@/lib/i18n';
 import { ConfirmDialog } from './Dialogs';
 import { Button, Dialog, IconButton, Spinner } from './ui';
@@ -48,7 +48,31 @@ export function AddCourseForm({ onAdded, autoFocus }: { onAdded?: () => void; au
   const t = useT();
   const action = useCourseAction();
   const [url, setUrl] = useState('');
+  const local = (useLocalWorkbooks().data?.workbooks ?? []).filter((w) => !w.added);
+  const adding = action.isPending && action.variables.type === 'add-local' ? action.variables.name : null;
   return (
+    <>
+      {local.length > 0 ? (
+        <div className="mb-5">
+          <p className="mb-1 text-sm font-medium">{t.courseFromFolder}</p>
+          <ul className="divide-y divide-line rounded-lg border border-line">
+            {local.map((w) => (
+              <li key={w.name} className="flex items-center gap-3 px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{w.title}</p>
+                  <p className="truncate text-xs text-ink-3">
+                    {w.name} · {w.git ? t.courseFolderGit : t.courseFolderPlain}
+                  </p>
+                </div>
+                <Button size="sm" disabled={action.isPending} onClick={() => action.mutate({ type: 'add-local', name: w.name }, { onSuccess: () => onAdded?.() })}>
+                  {adding === w.name ? t.courseAdding : t.courseAddOne}
+                </Button>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-[13px] text-ink-3">{t.courseFolderHint}</p>
+        </div>
+      ) : null}
     <form
       onSubmit={(e) => {
         e.preventDefault();
@@ -61,6 +85,7 @@ export function AddCourseForm({ onAdded, autoFocus }: { onAdded?: () => void; au
         {t.courseAdd}
       </Button>
     </form>
+    </>
   );
 }
 
@@ -85,8 +110,8 @@ export function CourseDialog({ open, onClose }: { open: boolean; onClose: () => 
       setChecking(false);
     }
   };
-  const hasRepos = data?.courses.some((c) => c.source === 'git');
-  const busyId = action.isPending && action.variables.type !== 'add' ? action.variables.id : null;
+  const hasRepos = data?.courses.some((c) => c.source !== 'mounted');
+  const busyId = action.isPending && action.variables.type !== 'add' && action.variables.type !== 'add-local' ? action.variables.id : null;
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()} title={t.courses} width="max-w-xl">
@@ -98,7 +123,7 @@ export function CourseDialog({ open, onClose }: { open: boolean; onClose: () => 
                 {c.title}
                 {c.id === data.activeId ? <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">{t.courseOpenNow}</span> : null}
               </p>
-              <p className="truncate text-xs text-ink-3">{c.url ?? t.courseMounted}</p>
+              <p className="truncate text-xs text-ink-3">{c.url ?? (c.folder ? t.courseFromFolderNamed(c.folder) : t.courseMounted)}</p>
               {c.update === 'available' ? <p className="mt-0.5 text-xs font-medium text-review">{t.updateAvailable}</p> : null}
             </div>
             <div className="flex items-center gap-1.5">
@@ -112,7 +137,7 @@ export function CourseDialog({ open, onClose }: { open: boolean; onClose: () => 
                   {t.courseOpen}
                 </Button>
               ) : null}
-              {c.source === 'git' ? (
+              {c.source !== 'mounted' ? (
                 <IconButton label={t.courseRemoveNamed(c.title)} disabled={busyId !== null} onClick={() => setRemoving(c)}>
                   <EyeOff size={15} />
                 </IconButton>
@@ -136,7 +161,7 @@ export function CourseDialog({ open, onClose }: { open: boolean; onClose: () => 
           </Button>
           {checked ? (
             <span className="text-[13px] text-ink-2" role="status">
-              {data?.courses.some((c) => c.update === 'available') ? t.courseCheckFound : data?.courses.some((c) => c.source === 'git' && c.update === 'unknown') ? t.courseCheckFailed : t.courseCheckNone}
+              {data?.courses.some((c) => c.update === 'available') ? t.courseCheckFound : data?.courses.some((c) => c.source !== 'mounted' && c.update === 'unknown') ? t.courseCheckFailed : t.courseCheckNone}
             </span>
           ) : null}
         </div>

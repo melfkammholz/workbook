@@ -17,6 +17,8 @@ services:
     volumes:
       # Your answers, notes and progress. Keep this volume to keep your work.
       - workbook-data:/data
+      # Workbooks on your computer (folders or git repos, private ones too) show up in the add dialog:
+      # - ~/workbooks:/workbooks:ro
     mem_limit: 2g
     pids_limit: 1024
     restart: unless-stopped

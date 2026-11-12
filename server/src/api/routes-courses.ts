@@ -20,10 +20,13 @@ export function courseRoutes(app: FastifyInstance, d: Deps): void {
   app.get('/api/courses', async () => d.courses.list());
 
   app.post('/api/courses', async (req, reply) => {
-    const parsed = z.object({ url: z.string().min(1).max(2000) }).safeParse(req.body);
+    const parsed = z.union([z.object({ url: z.string().min(1).max(2000) }), z.object({ local: z.string().min(1).max(300) })]).safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'bad-url' });
-    return answer(reply, () => d.courses.add(parsed.data.url));
+    return answer(reply, () => d.courses.add('url' in parsed.data ? parsed.data.url : { local: parsed.data.local }));
   });
+
+  /** What the workbooks folder offers. */
+  app.get('/api/courses/local', async () => ({ workbooks: d.courses.listLocal() }));
 
   app.post('/api/courses/check', async () => {
     await d.courses.checkUpdates();

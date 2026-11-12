@@ -17,13 +17,15 @@ function git(args: string[], cwd: string | undefined, timeout: number): Promise<
   return new Promise((resolve, reject) => {
     execFile(
       'git',
-      args,
+      // `safe.directory=*`: a workbook repo on the host is owned by the host user, not by the container's.
+      ['-c', 'safe.directory=*', ...args],
       {
         ...(cwd ? { cwd } : {}),
         timeout,
         maxBuffer: 4 * 1024 * 1024,
-        // Only public repositories for now: a login request must fail at once, not wait for an answer nobody can give.
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ALLOW_PROTOCOL: 'http:https' },
+        // No logins: a request for one must fail at once, not wait for an answer nobody can give. `file` is for repos in
+        // the workbooks folder; addresses typed by a student are checked to be http(s) before they get here.
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ALLOW_PROTOCOL: 'http:https:file' },
       },
       (err, stdout, stderr) => {
         if (!err) return resolve(stdout);

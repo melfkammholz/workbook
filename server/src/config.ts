@@ -5,6 +5,8 @@ export interface Config {
   host: string;
   /** A course folder given at startup, mainly for writing content. Optional: students add repositories in the app. */
   contentDir: string;
+  /** Workbooks on this computer (plain folders or git repos), offered in the add dialog. Optional. */
+  workbooksDir: string;
   /** Persistent student data: SQLite file, caches. */
   dataDir: string;
   /** Directory with the built web app, or null in development. */
@@ -29,6 +31,7 @@ export function loadConfig(env = process.env): Config {
     port: Number(env.PORT ?? 8080),
     host: env.HOST ?? '0.0.0.0',
     contentDir: abs(env.CONTENT_DIR ?? './content'),
+    workbooksDir: abs(env.WORKBOOKS_DIR ?? './workbooks'),
     dataDir: abs(env.DATA_DIR ?? './data'),
     webDir: env.WEB_DIR ? abs(env.WEB_DIR) : null,
     typstBin: env.TYPST_BIN ?? 'typst',

@@ -215,7 +215,7 @@ describe('a mounted folder', () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-mount-'));
     const config = loadConfig({ CONTENT_DIR: EXAMPLE_CONTENT, DATA_DIR: dataDir } as NodeJS.ProcessEnv);
     const courses = new CourseManager({ config, typstAssets: path.resolve(import.meta.dirname, '../assets/typst') });
-    expect(courses.list()).toEqual({ activeId: 'content', courses: [{ id: 'content', title: 'Deklarative Programmierung', source: 'mounted', url: null, update: 'unknown' }] });
+    expect(courses.list()).toEqual({ activeId: 'content', courses: [{ id: 'content', title: 'Deklarative Programmierung', source: 'mounted', url: null, folder: null, update: 'unknown' }] });
     expect(courses.active!.store.course).toBe('content');
     expect(() => courses.remove('content')).toThrow('mounted');
     await expect(courses.update('content')).rejects.toThrow('mounted');

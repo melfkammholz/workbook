@@ -583,11 +583,23 @@ export type CourseUpdate = 'available' | 'current' | 'unknown';
 export interface CourseInfo {
   id: string;
   title: string;
-  /** `mounted` is a folder given at startup (CONTENT_DIR), `git` a repository the student added. */
-  source: 'mounted' | 'git';
-  /** Null for a mounted folder. */
+  /** `mounted` is a folder given at startup (CONTENT_DIR), `git` a repository the student added by address, `local` one from the workbooks folder. */
+  source: 'mounted' | 'git' | 'local';
+  /** Null for a mounted folder and for a local workbook. */
   url: string | null;
+  /** The name in the workbooks folder, for a local workbook. */
+  folder: string | null;
   update: CourseUpdate;
+}
+
+/** A workbook in the workbooks folder, offered in the add dialog. */
+export interface LocalWorkbook {
+  name: string;
+  title: string;
+  /** A git repository (only what is committed counts) or a plain folder (whatever is on disk). */
+  git: boolean;
+  /** Already in the list. */
+  added: boolean;
 }
 
 export interface CoursesResponse {

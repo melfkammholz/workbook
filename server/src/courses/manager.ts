@@ -1,7 +1,9 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { targetHref, type CardHighlight, type CardPayload, type Created, type CreatePayload, type HighlightPayload, type CourseErrorCode, type CourseInfo, type CoursesResponse, type CourseUpdate } from '@wb/shared';
+import { pathToFileURL } from 'node:url';
+import YAML from 'yaml';
+import { targetHref, type LocalWorkbook, type CardHighlight, type CardPayload, type Created, type CreatePayload, type HighlightPayload, type CourseErrorCode, type CourseInfo, type CoursesResponse, type CourseUpdate } from '@wb/shared';
 import type { Config } from '../config.js';
 import { loadContent, type Content } from '../content/loader.js';
 import { ContentService } from '../content/service.js';
@@ -22,7 +24,12 @@ export class CourseError extends Error {
 /** A course the student added. What a mounted folder needs is known from the config. */
 interface CourseRecord {
   id: string;
+  /** The address; for a workbook from the workbooks folder `local:<name>`, which only serves to name it. */
   url: string;
+  /** The folder's name in the workbooks folder. Records without it were added by address. */
+  local?: string;
+  /** A plain folder (not a git repo) is compared by this: a hash of its files' paths, sizes and times. */
+  fingerprint?: string;
   title: string;
   /**
    * The `course` its work is stored under: the course's own id (`workbook.yml` `id`, or its title as a slug), with a
@@ -77,6 +84,38 @@ export function normalizeUrl(input: string): string {
   if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new CourseError('bad-url');
   if (url.username || url.password) throw new CourseError('has-credentials');
   return url.href.replace(/\/+$/, '');
+}
+
+/** What a plain folder looked like when copied: paths, sizes and times of its files, without `.git`. */
+export function fingerprintOf(dir: string): string {
+  const hash = crypto.createHash('sha1');
+  const walk = (rel: string): void => {
+    for (const e of fs.readdirSync(path.join(dir, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      const p = path.join(rel, e.name);
+      if (e.name === '.git') continue;
+      if (e.isDirectory()) walk(p);
+      else {
+        const st = fs.lstatSync(path.join(dir, p));
+        hash.update(`${p}\0${st.size}\0${Math.floor(st.mtimeMs)}\n`);
+      }
+    }
+  };
+  walk('');
+  return hash.digest('hex');
+}
+
+/** Copies a plain folder, leaving out `.git` and every link: a link could lead out of the folder. */
+function copyFolder(from: string, to: string): void {
+  fs.cpSync(from, to, { recursive: true, filter: (src) => path.basename(src) !== '.git' && !fs.lstatSync(src).isSymbolicLink() });
+}
+
+function cheapTitle(dir: string): string | null {
+  try {
+    const title = (YAML.parse(fs.readFileSync(path.join(dir, 'workbook.yml'), 'utf8')) as { title?: unknown } | null)?.title;
+    return typeof title === 'string' && title.trim() ? title.trim() : null;
+  } catch {
+    return null;
+  }
 }
 
 interface Options {
@@ -223,10 +262,10 @@ export class CourseManager {
   }
 
   list(): CoursesResponse {
-    const courses: CourseInfo[] = this.shown().map((r) => ({ id: r.id, title: r.title, source: 'git', url: r.url, update: this.updates.get(r.id) ?? 'unknown' }));
+    const courses: CourseInfo[] = this.shown().map((r) => ({ id: r.id, title: r.title, source: r.local ? 'local' : 'git', url: r.local ? null : r.url, folder: r.local ?? null, update: this.updates.get(r.id) ?? 'unknown' }));
     if (this.hasMount) {
       const { title } = this.openCourse(MOUNTED).content.current.outline;
-      courses.unshift({ id: MOUNTED, title, source: 'mounted', url: null, update: 'unknown' });
+      courses.unshift({ id: MOUNTED, title, source: 'mounted', url: null, folder: null, update: 'unknown' });
     }
     return { courses, activeId: this.activeId };
   }
@@ -242,8 +281,9 @@ export class CourseManager {
    * removed brings it back with its work. A course is its address: the same course from another address is another
    * course (its work is kept under a key of its own).
    */
-  async add(input: string): Promise<CoursesResponse> {
-    const url = normalizeUrl(input);
+  async add(input: string | { local: string }): Promise<CoursesResponse> {
+    const local = typeof input === 'string' ? null : this.localDir(input.local);
+    const url = typeof input === 'string' ? normalizeUrl(input) : `local:${input.local}`;
     const id = `c-${crypto.createHash('sha1').update(url).digest('hex').slice(0, 12)}`;
     const known = this.records().find((r) => r.id === id);
     if (known && !known.hidden) return this.activate(id);
@@ -252,21 +292,32 @@ export class CourseManager {
       return this.activate(id);
     }
 
-    await this.download(url, id);
+    const fingerprint = await this.download(local ?? url, id, !!local);
     const { outline } = loadContent(this.repo(id));
-    if (known) this.saveRecords(this.records().map((r) => (r.id === id ? { ...r, title: outline.title, hidden: false } : r)));
-    else this.saveRecords([...this.records(), { id, url, title: outline.title, key: this.freeKey(outline.id) }]);
+    const extra = typeof input === 'string' ? {} : { local: input.local, ...(fingerprint ? { fingerprint } : {}) };
+    if (known) this.saveRecords(this.records().map((r) => (r.id === id ? { ...r, ...extra, title: outline.title, hidden: false } : r)));
+    else this.saveRecords([...this.records(), { id, url, ...extra, title: outline.title, key: this.freeKey(outline.id) }]);
     this.updates.set(id, 'current');
     this.setActive(id);
     return this.list();
   }
 
-  /** A fresh copy at `repo(id)`, replacing whatever was there only once the download is a course. */
-  private async download(url: string, id: string): Promise<void> {
+  /**
+   * A fresh copy at `repo(id)`, replacing whatever was there only once the download is a course. `from` is an
+   * address, or a folder in the workbooks folder: a git repo there is cloned, a plain folder is copied and its
+   * fingerprint returned.
+   */
+  private async download(from: string, id: string, folder = false): Promise<string | undefined> {
     const home = this.home(id);
     const tmp = `${home}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+    let fingerprint: string | undefined;
     try {
-      await git.clone(url, tmp);
+      if (!folder) await git.clone(from, tmp);
+      else if (fs.existsSync(path.join(from, '.git'))) await git.clone(pathToFileURL(from).href, tmp);
+      else {
+        fingerprint = fingerprintOf(from);
+        copyFolder(from, tmp);
+      }
     } catch (e) {
       fs.rmSync(tmp, { recursive: true, force: true });
       throw new CourseError(e instanceof git.GitError && e.missing ? 'git-missing' : 'clone-failed');
@@ -278,16 +329,59 @@ export class CourseManager {
     fs.mkdirSync(home, { recursive: true });
     fs.rmSync(this.repo(id), { recursive: true, force: true });
     fs.renameSync(tmp, this.repo(id));
+    return fingerprint;
+  }
+
+  /** The folders of the workbooks folder that look like workbooks, for the add dialog. */
+  listLocal(): LocalWorkbook[] {
+    const root = this.o.config.workbooksDir;
+    let names: string[];
+    try {
+      names = fs.readdirSync(root).filter((n) => !n.startsWith('.')).sort((a, b) => a.localeCompare(b));
+    } catch {
+      return [];
+    }
+    const added = new Set(this.shown().map((r) => r.local).filter(Boolean));
+    const out: LocalWorkbook[] = [];
+    for (const name of names) {
+      let dir: string;
+      try {
+        dir = this.localDir(name);
+      } catch {
+        continue;
+      }
+      // Cheap: reading every workbook's content just to fill a list would be slow.
+      if (!fs.existsSync(path.join(dir, 'chapters'))) continue;
+      out.push({ name, title: cheapTitle(dir) ?? name, git: fs.existsSync(path.join(dir, '.git')), added: added.has(name) });
+    }
+    return out;
+  }
+
+  /** The folder behind a name in the workbooks folder; a name is one plain child that stays inside it after links are resolved. */
+  private localDir(name: string): string {
+    if (!name || name !== path.basename(name) || name.startsWith('.') || name.includes('\0')) throw new CourseError('not-a-course');
+    try {
+      const root = fs.realpathSync(this.o.config.workbooksDir);
+      const dir = fs.realpathSync(path.join(root, name));
+      if (path.dirname(dir) !== root || !fs.statSync(dir).isDirectory()) throw new Error('outside');
+      return dir;
+    } catch {
+      throw new CourseError('not-a-course');
+    }
   }
 
   /** Looks for news in every repository. Without a network the answer is simply "unknown". */
   async checkUpdates(): Promise<void> {
     await Promise.all(
-      this.shown().map(async ({ id }) => {
+      this.shown().map(async (r) => {
+        const { id } = r;
         let update: CourseUpdate = 'unknown';
         try {
-          const remote = await git.remoteHead(this.repo(id));
-          if (remote) update = remote === (await git.localHead(this.repo(id))) ? 'current' : 'available';
+          if (r.local && r.fingerprint !== undefined) update = fingerprintOf(this.localDir(r.local)) === r.fingerprint ? 'current' : 'available';
+          else {
+            const remote = await git.remoteHead(this.repo(id));
+            if (remote) update = remote === (await git.localHead(this.repo(id))) ? 'current' : 'available';
+          }
         } catch {
           /* stays unknown */
         }
@@ -299,16 +393,19 @@ export class CourseManager {
   /** Answers and notes are stored by exercise id, so they stay even when an update removes their exercise. */
   async update(id: string): Promise<CoursesResponse> {
     if (id === MOUNTED) throw new CourseError('mounted');
-    if (!this.shown().some((r) => r.id === id)) throw new CourseError('unknown-course');
+    const record = this.shown().find((r) => r.id === id);
+    if (!record) throw new CourseError('unknown-course');
+    let fingerprint: string | undefined;
     try {
-      await git.pull(this.repo(id));
-    } catch {
-      throw new CourseError('update-failed');
+      if (record.local && record.fingerprint !== undefined) fingerprint = await this.download(this.localDir(record.local), id, true);
+      else await git.pull(this.repo(id));
+    } catch (e) {
+      throw e instanceof CourseError && e.code === 'not-a-course' ? e : new CourseError('update-failed');
     }
     this.updates.set(id, 'current');
     this.open.get(id)?.content.reload();
     const title = loadContent(this.repo(id)).outline.title;
-    this.saveRecords(this.records().map((r) => (r.id === id ? { ...r, title } : r)));
+    this.saveRecords(this.records().map((r) => (r.id === id ? { ...r, title, ...(fingerprint ? { fingerprint } : {}) } : r)));
     return this.list();
   }
 

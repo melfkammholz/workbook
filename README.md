@@ -86,8 +86,20 @@ Open <http://localhost:8080> and paste the address of your workbook into the wel
 * **Your work** lives only in the Docker volume `workbook-data`, on your computer. There is no other copy, and nobody
   else can see it. `docker compose down -v` deletes it, and so does resetting a workbook in the workbooks dialog.
 
-A workbook runs its tests on your computer, inside the container. So only add workbooks from people you trust. Only public
-repositories can be added for now.
+A workbook runs its tests on your computer, inside the container. So only add workbooks from people you trust. Workbooks
+added by address must be public repositories.
+
+### Local and private workbooks
+
+Put workbooks (plain folders or git repositories) in one folder on your computer, for example `~/workbooks`, and remove
+the `#` in front of the `/workbooks` line in `compose.yaml`. Run `docker compose up -d` again. The add dialog then lists
+that folder. Adding one gives the app its own copy; when you change the original the workbook shows an update, which you
+apply when you want.
+
+* A private repository: clone it into that folder with your own credentials. The app never sees or stores a password or
+  key. To get newer changes, run `git pull` on your computer, then press *update* in the app.
+* For a git repository only what is committed counts. For a plain folder, whatever is on disk counts.
+* Renaming the folder makes a new workbook. The same workbook added from GitHub and from the folder are two workbooks.
 
 ### Feedback from an AI chat
 
@@ -251,7 +263,6 @@ Environment variables: `PORT`, `HOST`, `CONTENT_DIR`, `DATA_DIR`, `WEB_DIR`, `TY
 
 Not built yet:
 
-* notes in Markdown with KaTeX (notes are written in Typst for now),
-* private workbook repositories.
+* notes in Markdown with KaTeX (notes are written in Typst for now).
 
 Messages from the compilers and test libraries are shown as they are, mostly in English.

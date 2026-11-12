@@ -98,7 +98,7 @@ COPY --from=ghc /opt/cabal /opt/cabal
 COPY --from=ghc /opt/ghc-env /opt/ghc-env
 
 RUN useradd --create-home --uid 1000 student \
- && mkdir -p /data /content /app \
+ && mkdir -p /data /content /workbooks /app \
  && chown student:student /data
 
 WORKDIR /app
@@ -109,6 +109,7 @@ ENV PATH=/opt/.ghcup/bin:$PATH \
     HOST=0.0.0.0 \
     PORT=8080 \
     CONTENT_DIR=/content \
+    WORKBOOKS_DIR=/workbooks \
     DATA_DIR=/data \
     WEB_DIR=/app/web/dist \
     TYPST_PACKAGE_CACHE_PATH=/data/typst-packages
