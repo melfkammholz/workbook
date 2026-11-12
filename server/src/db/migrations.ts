@@ -323,6 +323,28 @@ export const MIGRATIONS: Migration[] = [
   CREATE INDEX resource_versions_resource ON resource_versions (resource, uploaded_at);
   CREATE INDEX resource_versions_sha ON resource_versions (sha256);
   `,
+  /*
+   * 12: highlights in PDFs. Global, like materials: they belong to the resource (and the version of the file they were
+   * made on), not to a course. `rects` are JSON, in fractions of the page.
+   */ `
+  CREATE TABLE pdf_annotations (
+    id         TEXT PRIMARY KEY,
+    resource   TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+    version    TEXT NOT NULL,
+    page_index INTEGER NOT NULL,
+    rects      TEXT NOT NULL,
+    quote      TEXT NOT NULL,
+    prefix     TEXT NOT NULL DEFAULT '',
+    suffix     TEXT NOT NULL DEFAULT '',
+    color      TEXT NOT NULL,
+    label      TEXT,
+    comment    TEXT NOT NULL DEFAULT '',
+    review     TEXT CHECK (review IN ('open','resolved')),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX pdf_annotations_page ON pdf_annotations (resource, page_index);
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

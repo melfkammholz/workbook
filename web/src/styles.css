@@ -623,3 +623,14 @@ figure .wb-flow { margin: 0 !important; padding: 0; border: 0; }
 .wb-page-fill { height: 100%; }
 :root[data-warm] .wb-page-fill { height: calc(100% - 4.25rem); }
 @media (max-width: 639px) { :root[data-warm] .wb-page-fill { height: 100%; } }
+
+/* Highlights on a PDF page: the page is white in both themes, so these are pale in both. */
+:root { --pdf-yellow: #fbe89a; --pdf-green: #c6ecc0; --pdf-blue: #c5dcfb; --pdf-pink: #f8cde3; }
+:root[data-colors='safe'] :root { --pdf-yellow: #fbe89a; --pdf-green: #d4d7df; --pdf-blue: #bcd6fb; --pdf-pink: #f9cf9f; }
+.wb-pdf-mark { background: var(--pdf-yellow); mix-blend-mode: multiply; border-radius: 2px; }
+.wb-pdf-mark[data-color='green'] { background: var(--pdf-green); }
+.wb-pdf-mark[data-color='blue'] { background: var(--pdf-blue); }
+.wb-pdf-mark[data-color='pink'] { background: var(--pdf-pink); }
+.wb-pdf-mark-comment { box-shadow: inset 0 -1.5px 0 0 #6b7286; }
+.wb-pdf-mark-review { box-shadow: inset 0 -2px 0 0 #b4540a; }
+.wb-pdf-mark-active { outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: 0; }

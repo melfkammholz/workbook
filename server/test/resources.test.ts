@@ -97,3 +97,30 @@ describe('materials', () => {
     expect((await app.inject('/api/resources/none/file')).statusCode).toBe(404);
   });
 });
+
+describe('highlights in PDFs', () => {
+  it('are saved with the resource, changed, listed and removed with it', async () => {
+    const body = Buffer.from('%PDF-1.4 highlighted');
+    const res = (await up({ filename: 'h.pdf', title: 'H', type: 'notes' }, body)).json() as Resource;
+    const id = crypto.randomUUID();
+    const make = { id, version: res.file.sha256, pageIndex: 2, rects: [{ x: 0.1, y: 0.2, w: 0.3, h: 0.02 }], quote: 'ein Typ', prefix: 'vor', suffix: 'nach', color: '#aabbcc' };
+    const added = await app.inject({ method: 'POST', url: `/api/resources/${res.id}/annotations`, payload: make });
+    expect(added.statusCode).toBe(200);
+    expect(added.json()).toMatchObject({ id, pageIndex: 2, review: null, comment: '', rects: make.rects });
+    expect((await app.inject({ method: 'POST', url: `/api/resources/${res.id}/annotations`, payload: make })).statusCode).toBe(409);
+    expect((await app.inject({ method: 'POST', url: `/api/resources/${res.id}/annotations`, payload: { ...make, id: undefined, rects: [{ x: 2, y: 0, w: 1, h: 1 }] } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'POST', url: '/api/resources/nope/annotations', payload: { ...make, id: undefined } })).statusCode).toBe(404);
+
+    const patched = await app.inject({ method: 'PATCH', url: `/api/pdf-annotations/${id}`, payload: { comment: 'klar', review: 'open' } });
+    expect(patched.json()).toMatchObject({ comment: 'klar', review: 'open', color: '#aabbcc' });
+    expect((await app.inject({ method: 'GET', url: `/api/resources/${res.id}/annotations` })).json()).toHaveLength(1);
+    expect(((await app.inject({ method: 'GET', url: '/api/pdf-annotations' })).json() as unknown[]).length).toBeGreaterThanOrEqual(1);
+
+    await app.inject({ method: 'DELETE', url: `/api/pdf-annotations/${id}` });
+    expect((await app.inject({ method: 'GET', url: `/api/resources/${res.id}/annotations` })).json()).toHaveLength(0);
+
+    await app.inject({ method: 'POST', url: `/api/resources/${res.id}/annotations`, payload: make });
+    await app.inject({ method: 'DELETE', url: `/api/resources/${res.id}` });
+    expect(((await app.inject({ method: 'GET', url: '/api/pdf-annotations' })).json() as { resource: string }[]).some((a) => a.resource === res.id)).toBe(false);
+  });
+});

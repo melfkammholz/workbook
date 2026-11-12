@@ -32,8 +32,8 @@ type Pop =
   | { kind: 'notice'; text: string; range: Range }
   | { kind: 'removed'; ann: Annotation; rect: DOMRect };
 
-const LAST_COLOR = 'wb-ann-color';
-const lastColor = (): AnnotationColor => {
+export const LAST_COLOR = 'wb-ann-color';
+export const lastColor = (): AnnotationColor => {
   try {
     const c = localStorage.getItem(LAST_COLOR);
     return c && isAnnotationColor(c) ? c : 'yellow';
@@ -243,7 +243,7 @@ function Layer() {
 }
 
 /** Next to the passage: below it, or above if there is no room below. Follows it while the page scrolls. */
-function Floating({ anchor, popRef, wide, children }: { anchor: () => { rects: DOMRect[] } | null; popRef: React.RefObject<HTMLDivElement | null>; wide: boolean; children: ReactNode }) {
+export function Floating({ anchor, popRef, wide, children }: { anchor: () => { rects: DOMRect[] } | null; popRef: React.RefObject<HTMLDivElement | null>; wide: boolean; children: ReactNode }) {
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const place = () => {
     const a = anchor();
@@ -284,7 +284,7 @@ function Floating({ anchor, popRef, wide, children }: { anchor: () => { rects: D
   );
 }
 
-interface Swatch {
+export interface Swatch {
   key: string;
   color: AnnotationColor;
   /** The student's label, if the swatch is one. */
@@ -293,7 +293,7 @@ interface Swatch {
 }
 
 /** What a selection can be highlighted as: the student's labels, or the plain colors while there are none. */
-function useSwatches(): Swatch[] {
+export function useSwatches(): Swatch[] {
   const t = useT();
   const settings = useSettings().data;
   const names = settings?.safeColors ? t.annColorSafe : t.annColor;
@@ -303,7 +303,7 @@ function useSwatches(): Swatch[] {
     : ANNOTATION_COLORS.map((c) => ({ key: c, color: c, label: null, name: names[c] }));
 }
 
-function Swatches({ value, onPick }: { value?: { color: AnnotationColor; label: string | null }; onPick: (s: Swatch) => void }) {
+export function Swatches({ value, onPick }: { value?: { color: AnnotationColor; label: string | null }; onPick: (s: Swatch) => void }) {
   const t = useT();
   const items = useSwatches();
   const labelled = items.some((s) => s.label);
@@ -355,7 +355,7 @@ function NewHighlight({ onPick }: { onPick: (c: AnnotationColor, then?: 'comment
 }
 
 /** A button with an icon only; its name shows on hover and is read out. */
-function IconAction({ children, onClick, label, pressed }: { children: ReactNode; onClick: () => void; label: string; pressed?: boolean }) {
+export function IconAction({ children, onClick, label, pressed }: { children: ReactNode; onClick: () => void; label: string; pressed?: boolean }) {
   return (
     <button
       type="button"
@@ -370,7 +370,7 @@ function IconAction({ children, onClick, label, pressed }: { children: ReactNode
   );
 }
 
-function PopButton({ children, onClick, title, pressed }: { children: ReactNode; onClick: () => void; title?: string; pressed?: boolean }) {
+export function PopButton({ children, onClick, title, pressed }: { children: ReactNode; onClick: () => void; title?: string; pressed?: boolean }) {
   return (
     <button
       type="button"
@@ -470,7 +470,7 @@ function EditHighlight({ id, focus, onRemove, onCard, onGone }: { id: string; fo
   );
 }
 
-function Removed({ onUndo, onGone }: { onUndo: () => void; onGone: () => void }) {
+export function Removed({ onUndo, onGone }: { onUndo: () => void; onGone: () => void }) {
   const t = useT();
   useEffect(() => {
     const timer = setTimeout(onGone, 6000);

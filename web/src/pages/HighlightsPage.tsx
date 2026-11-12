@@ -1,8 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { itemOfTarget, type AnnotationEntry, type Outline } from '@wb/shared';
+import { itemOfTarget, type AnnotationEntry, type Outline, type PdfAnnotation, type Resource } from '@wb/shared';
 import { Check, Layers, MessageSquare, RotateCcw, Trash2, Undo2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { MakeCardDialog } from '@/components/MakeCardDialog';
 import { Quote, useGoToAnnotation } from '@/components/Marks';
 import { Title } from '@/components/Title';
@@ -12,6 +12,9 @@ import { useOutline, useSettings } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { useDebouncedCallback } from '@/lib/useDebounced';
+import { deletePdfHighlight, rememberPdfPosition, updatePdfHighlight, useAllPdfAnnotations, usePdfAnnotationsOn } from '@/lib/pdfAnnotations';
+import { useResources } from '@/lib/resources';
+import { swatchProps } from '@/lib/annotations';
 
 type HighlightFilter = 'all' | 'open' | 'missing';
 const HIGHLIGHT_FILTERS: readonly HighlightFilter[] = ['all', 'open', 'missing'];
@@ -48,6 +51,99 @@ function grouped(outline: Outline, list: AnnotationEntry[], t: ReturnType<typeof
   return groups;
 }
 
+/** Highlights in the PDFs listed under the open course, by PDF. */
+function usePdfHighlights(course: string | null) {
+  const on = usePdfAnnotationsOn();
+  const resources = useResources(course, on && !!course).data?.resources;
+  const all = useAllPdfAnnotations().data;
+  const groups = useMemo(() => {
+    if (!on || !resources || !all) return [];
+    return resources.map((r) => ({ resource: r, list: all.filter((a) => a.resource === r.id) })).filter((g) => g.list.length);
+  }, [on, resources, all]);
+  return {
+    groups,
+    visible: (f: HighlightFilter): PdfAnnotation[] => groups.flatMap((g) => g.list).filter((a) => (f === 'open' ? a.review === 'open' : f === 'missing' ? false : true)),
+  };
+}
+
+type PdfGroup = { resource: Resource; list: PdfAnnotation[] };
+
+function PdfSection({ groups, filter }: { groups: PdfGroup[]; filter: HighlightFilter }) {
+  const t = useT();
+  const shown = groups.map((g) => ({ ...g, list: g.list.filter((a) => (filter === 'open' ? a.review === 'open' : filter === 'missing' ? false : true)) })).filter((g) => g.list.length);
+  if (!shown.length) return null;
+  return (
+    <section className="mt-8">
+      <h2 className="mb-3 text-[15px] font-semibold">{t.pdfHighlightsHeading}</h2>
+      <div className="space-y-6">
+        {shown.map((g) => (
+          <article key={g.resource.id}>
+            <Link href={`/resources/${encodeURIComponent(g.resource.id)}`} className="mb-1.5 block text-sm font-medium text-accent hover:underline">
+              {g.resource.title}
+            </Link>
+            <ul className="divide-y divide-line">
+              {g.list.map((a) => (
+                <PdfRow key={a.id} a={a} />
+              ))}
+            </ul>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PdfRow({ a }: { a: PdfAnnotation }) {
+  const t = useT();
+  const qc = useQueryClient();
+  const [, navigate] = useLocation();
+  const patch = (p: Parameters<typeof updatePdfHighlight>[3]) => void updatePdfHighlight(qc, a.resource, a.id, p);
+  return (
+    <li className="px-4 py-3">
+      <span className="flex min-w-0 gap-2 text-[15px]">
+        <span {...swatchProps(a.color)} aria-hidden className="wb-ann-swatch mt-[0.2em] w-1 shrink-0 self-stretch rounded-full" />
+        <span className="min-w-0 break-words">{a.quote.trim()}</span>
+      </span>
+      {a.comment.trim() ? <p className="mt-1.5 whitespace-pre-wrap pl-3 text-[14px] text-ink-2">{a.comment.trim()}</p> : null}
+      <div className="mt-2 flex flex-wrap items-center gap-1 pl-2">
+        <span className="mr-1 text-[13px] text-ink-3">{t.pdfPageN(a.pageIndex + 1)}</span>
+        {a.review === 'open' ? (
+          <span className="mr-1 inline-flex items-center gap-1 text-[13px] font-medium text-review">
+            <RotateCcw size={13} /> {t.annMarked}
+          </span>
+        ) : a.review === 'resolved' ? (
+          <span className="mr-1 inline-flex items-center gap-1 text-[13px] font-medium text-done">
+            <Check size={13} /> {t.annIsClearedUp}
+          </span>
+        ) : null}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            rememberPdfPosition(a);
+            navigate(`/resources/${encodeURIComponent(a.resource)}`);
+          }}
+        >
+          {t.pdfHighlightsGoTo}
+        </Button>
+        {a.review === 'open' ? (
+          <Button size="sm" variant="ghost" onClick={() => patch({ review: 'resolved' })}>
+            <Check size={14} /> {t.annClearUp}
+          </Button>
+        ) : (
+          <Button size="sm" variant="ghost" onClick={() => patch({ review: 'open' })}>
+            {a.review === 'resolved' ? t.annReopen : t.annComeBack}
+          </Button>
+        )}
+        <span className="flex-1" />
+        <button type="button" aria-label={t.annRemove} title={t.annRemove} onClick={() => void deletePdfHighlight(qc, a.resource, a.id)} className="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-sunk hover:text-danger">
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </li>
+  );
+}
+
 /** Every highlight in the course: the second pass, where what was unclear gets cleared up. */
 /** `filter` from the address; anything unknown shows all. */
 export function HighlightsPage({ filter: asked }: { filter?: string }) {
@@ -61,7 +157,8 @@ export function HighlightsPage({ filter: asked }: { filter?: string }) {
   const [removed, setRemoved] = useState<AnnotationEntry | null>(null);
   const qc = useQueryClient();
   const all = list.data ?? [];
-  const counts = { all: all.length, open: all.filter((a) => a.review === 'open').length, missing: all.filter((a) => !a.found).length };
+  const pdf = usePdfHighlights(outline?.id ?? null);
+  const counts = { all: all.length + pdf.visible('all').length, open: all.filter((a) => a.review === 'open').length + pdf.visible('open').length, missing: all.filter((a) => !a.found).length };
   const visible = all.filter((a) => (shown === 'open' ? a.review === 'open' : shown === 'missing' ? !a.found : true));
   const groups = useMemo(() => (outline ? grouped(outline, visible, t) : []), [outline, visible, t]);
 
@@ -90,7 +187,7 @@ export function HighlightsPage({ filter: asked }: { filter?: string }) {
           {t.back}
         </BackLink>
         <h1 className="text-[1.75rem] font-semibold tracking-[-0.02em]">{t.highlights}</h1>
-        {all.length === 0 ? (
+        {all.length === 0 && pdf.groups.length === 0 ? (
           <Empty title={t.highlightsNone}>{t.highlightsNoneBody}</Empty>
         ) : (
           <>
@@ -102,7 +199,7 @@ export function HighlightsPage({ filter: asked }: { filter?: string }) {
                 onChange={setShown}
               />
             </div>
-            {visible.length === 0 ? <p className="mt-8 text-ink-2">{t.highlightsNoneHere}</p> : null}
+            {visible.length === 0 && pdf.visible(shown).length === 0 ? <p className="mt-8 text-ink-2">{t.highlightsNoneHere}</p> : null}
           </>
         )}
         {groups.map((g) => (
@@ -138,6 +235,7 @@ export function HighlightsPage({ filter: asked }: { filter?: string }) {
             </div>
           </section>
         ))}
+        <PdfSection groups={pdf.groups} filter={shown} />
       </div>
       {removed ? (
         // The last one removed can come back, until the next one is removed or the page is left.

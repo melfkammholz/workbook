@@ -1,9 +1,17 @@
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import type { PdfAnnotation } from '@wb/shared';
 import { loadPdfjs } from '@/lib/pdf';
+import { markStyle } from '@/lib/pdfAnnotations';
 
 export type PdfLayout = 'notes' | 'slides';
+/** The highlights of a PDF by page (0-based), and the open one. */
+export interface Marks {
+  byPage: Map<number, PdfAnnotation[]>;
+  active: string | null;
+}
+
 export interface Size {
   w: number;
   h: number;
@@ -56,10 +64,11 @@ interface PageProps {
   near: boolean;
   hidden?: boolean;
   cache: PageCache;
+  marks?: Marks;
 }
 
 /** One page: a box of the right size at once, the canvas and the text on top of it while the page is near. */
-const PageView = memo(function PageView({ doc, n, fit, guess, near, hidden, cache }: PageProps) {
+const PageView = memo(function PageView({ doc, n, fit, guess, near, hidden, cache, marks }: PageProps) {
   const [page, setPage] = useState<PDFPageProxy | null>(null);
   const [base, setBase] = useState<Size | null>(null);
   const canvasHost = useRef<HTMLDivElement>(null);
@@ -144,6 +153,20 @@ const PageView = memo(function PageView({ doc, n, fit, guess, near, hidden, cach
       style={{ width: cssW, height: cssH, '--total-scale-factor': scale } as CSSProperties}
     >
       <div ref={canvasHost} className="absolute inset-0" />
+      {/* Between the page and its text, so that the text stays selectable; clicks are hit-tested by the viewer. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        {marks?.byPage.get(n - 1)?.map((a) =>
+          a.rects.map((r, i) => (
+            <span
+              key={i}
+              data-mark={a.id}
+              {...markStyle(a.color)}
+              className={`wb-pdf-mark absolute${a.review === 'open' ? ' wb-pdf-mark-review' : a.comment.trim() ? ' wb-pdf-mark-comment' : ''}${a.id === marks.active ? ' wb-pdf-mark-active' : ''}`}
+              style={{ ...markStyle(a.color).style, left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` }}
+            />
+          )),
+        )}
+      </div>
       <div ref={textHost} className="absolute inset-0" />
     </div>
   );
@@ -183,10 +206,11 @@ interface ViewProps {
   zoom: number;
   current: number;
   onCurrent: (n: number) => void;
+  marks?: Marks;
 }
 
 /** Notes: every page one below the other, drawn as they come near. */
-export function NotesView({ doc, count, guess, zoom, current, onCurrent, scroller }: ViewProps & { scroller: RefObject<HTMLDivElement | null> }) {
+export function NotesView({ doc, count, guess, zoom, current, onCurrent, scroller, marks, offset }: ViewProps & { scroller: RefObject<HTMLDivElement | null>; offset: { current: number } }) {
   const list = useRef<HTMLDivElement>(null);
   const cache = useRef(new PageCache()).current;
   const size = useSize(scroller);
@@ -204,17 +228,20 @@ export function NotesView({ doc, count, guess, zoom, current, onCurrent, scrolle
     const last = lastAtOrAbove(pages, top + sc.clientHeight);
     const focus = lastAtOrAbove(pages, top + sc.clientHeight / 3);
     onCurrent(focus + 1);
+    const fp = pages[focus] as HTMLElement;
+    offset.current = fp.offsetHeight > 0 ? Math.min(1, Math.max(0, (top + sc.clientHeight / 3 - fp.offsetTop) / fp.offsetHeight)) : 0;
     const a = Math.max(1, first + 1 - 1);
     const z = Math.min(count, last + 1 + 1);
     setRange((r) => (r[0] === a && r[1] === z ? r : [a, z]));
-  }, [scroller, onCurrent, count]);
+  }, [scroller, onCurrent, count, offset]);
 
   // The first time there is a size: go to the page the student was at.
   useLayoutEffect(() => {
     if (!ready || started.current) return;
     started.current = true;
     const el = list.current?.children[current - 1] as HTMLElement | undefined;
-    if (el && scroller.current) scroller.current.scrollTop = el.offsetTop - GAP;
+    // Back to the spot: the page, and how far down it the student was.
+    if (el && scroller.current) scroller.current.scrollTop = offset.current > 0 ? el.offsetTop + offset.current * el.offsetHeight - scroller.current.clientHeight / 3 : el.offsetTop - GAP;
     measure();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
@@ -245,14 +272,14 @@ export function NotesView({ doc, count, guess, zoom, current, onCurrent, scrolle
   return (
     <div ref={list} className="relative mx-auto flex w-max min-w-full flex-col items-center" style={{ gap: GAP, padding: `${GAP}px ${PAD}px` }}>
       {ready
-        ? Array.from({ length: count }, (_, i) => <PageView key={i} doc={doc} n={i + 1} fit={fit} guess={guess} near={i + 1 >= range[0] && i + 1 <= range[1]} cache={cache} />)
+        ? Array.from({ length: count }, (_, i) => <PageView key={i} doc={doc} n={i + 1} fit={fit} guess={guess} near={i + 1 >= range[0] && i + 1 <= range[1]} cache={cache} marks={marks} />)
         : null}
     </div>
   );
 }
 
 /** Slides: one page, as large as the space allows; the next one is drawn already. */
-export function SlidesView({ doc, count, guess, zoom, current, area }: Omit<ViewProps, 'onCurrent'> & { area: RefObject<HTMLDivElement | null> }) {
+export function SlidesView({ doc, count, guess, zoom, current, area, marks }: Omit<ViewProps, 'onCurrent'> & { area: RefObject<HTMLDivElement | null> }) {
   const cache = useRef(new PageCache()).current;
   const size = useSize(area);
   const fit: Fit = { kind: 'box', width: Math.max(100, size.w - PAD * 2), height: Math.max(100, size.h - PAD * 2), zoom };
@@ -263,7 +290,7 @@ export function SlidesView({ doc, count, guess, zoom, current, area }: Omit<View
   return (
     <div className="flex min-h-full min-w-full">
       <div className="m-auto" style={{ padding: PAD }}>
-        {size.w > 0 ? shown.map((n) => <PageView key={n} doc={doc} n={n} fit={fit} guess={guess} near={n === current || n === current + 1} hidden={n !== current} cache={cache} />) : null}
+        {size.w > 0 ? shown.map((n) => <PageView key={n} doc={doc} n={n} fit={fit} guess={guess} near={n === current || n === current + 1} hidden={n !== current} cache={cache} marks={marks} />) : null}
       </div>
     </div>
   );

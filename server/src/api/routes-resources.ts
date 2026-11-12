@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { RESOURCE_TYPES } from '@wb/shared';
+import { MAX_QUOTE, MAX_RECTS, QUOTE_CONTEXT, RESOURCE_TYPES, isAnnotationColor } from '@wb/shared';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { mimeOf, ResourceError } from '../resources/service.js';
@@ -29,6 +29,27 @@ const upload = z.object({
   courses: z.string().max(5000).default('').transform((s) => s.split(',').map((c) => c.trim()).filter(Boolean)),
   series: z.string().max(100).optional().transform((s) => s || null),
 });
+
+const color = z.string().transform((c) => c.toLowerCase()).refine(isAnnotationColor, 'a palette color or #rrggbb');
+const review = z.enum(['open', 'resolved']).nullable();
+const frac = z.number().min(0).max(1);
+const highlight = {
+  add: z.object({
+    /** Made by the client, so that a new highlight can be shown (and changed) before the server has answered. */
+    id: z.string().uuid().optional(),
+    version: z.string().regex(/^[0-9a-f]{64}$/),
+    pageIndex: z.number().int().min(0).max(1_000_000),
+    rects: z.array(z.object({ x: frac, y: frac, w: frac, h: frac })).min(1).max(MAX_RECTS),
+    quote: z.string().min(1).max(MAX_QUOTE),
+    prefix: z.string().max(QUOTE_CONTEXT * 2),
+    suffix: z.string().max(QUOTE_CONTEXT * 2),
+    color,
+    label: z.string().max(100).nullable().default(null),
+    comment: z.string().max(4000).default(''),
+    review: review.default(null),
+  }),
+  update: z.object({ color, label: z.string().max(100).nullable(), comment: z.string().max(4000), review }).partial(),
+};
 
 /**
  * Materials: the student's own files, kept in the main database and in `<data>/files/`. They belong to no course,
@@ -71,6 +92,33 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
       return fail(e, reply);
     }
   });
+
+  // Highlights in PDFs: one request loads all of a resource's; the list of every one feeds the highlights page.
+  app.get('/api/pdf-annotations', async () => r().listHighlights());
+  app.get<{ Params: { id: string } }>('/api/resources/:id/annotations', async (req, reply) => {
+    try {
+      r().get(req.params.id);
+      return r().listHighlights(req.params.id);
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+  app.post<{ Params: { id: string } }>('/api/resources/:id/annotations', async (req, reply) => {
+    const b = parse(highlight.add, req.body, reply);
+    if (!b) return;
+    if (b.id && r().getHighlight(b.id)) return reply.code(409).send({ error: 'annotation exists' });
+    try {
+      return r().addHighlight(req.params.id, b);
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+  app.patch<{ Params: { id: string } }>('/api/pdf-annotations/:id', async (req, reply) => {
+    const b = parse(highlight.update, req.body, reply);
+    if (!b) return;
+    return r().updateHighlight(req.params.id, b) ?? reply.code(404).send({ error: 'unknown annotation' });
+  });
+  app.delete<{ Params: { id: string } }>('/api/pdf-annotations/:id', async (req, reply) => (r().deleteHighlight(req.params.id) ? { ok: true } : reply.code(404).send({ error: 'unknown annotation' })));
 
   app.delete<{ Params: { id: string } }>('/api/resources/:id', async (req, reply) => {
     try {

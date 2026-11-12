@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Resource, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
+import type { AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, Resource, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
 import type { Store } from '../db/store.js';
 
 export class ResourceError extends Error {
@@ -48,6 +48,25 @@ function toResource(r: Row): Resource {
     lastPage: r.last_page === null ? null : Number(r.last_page),
     courses: r.courses ? (r.courses as string).split('\x1f').sort() : [],
     file: { sha256: r.sha256 as string, filename: r.filename as string, mime: r.mime as string, size: Number(r.size), uploadedAt: Number(r.uploaded_at) },
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+  };
+}
+
+function toHighlight(r: Row): PdfAnnotation {
+  return {
+    id: r.id as string,
+    resource: r.resource as string,
+    version: r.version as string,
+    pageIndex: Number(r.page_index),
+    rects: JSON.parse(r.rects as string) as PageRect[],
+    quote: r.quote as string,
+    prefix: r.prefix as string,
+    suffix: r.suffix as string,
+    color: r.color as AnnotationColor,
+    label: (r.label as string | null) ?? null,
+    comment: r.comment as string,
+    review: (r.review as AnnotationReview | null) ?? null,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
   };
@@ -147,6 +166,46 @@ export class Resources {
   setLastPage(id: string, page: number): void {
     this.get(id);
     this.sql.run('UPDATE resources SET last_page = ? WHERE id = ?', page, id);
+  }
+
+  // ───────────────────────── highlights in PDFs ─────────────────────────
+
+  /** Every highlight of one resource, or of all of them, in the order they are on the page. */
+  listHighlights(resource?: string): PdfAnnotation[] {
+    const rows = resource
+      ? this.sql.all('SELECT * FROM pdf_annotations WHERE resource = ? ORDER BY page_index, created_at, id', resource)
+      : this.sql.all('SELECT * FROM pdf_annotations ORDER BY resource, page_index, created_at, id');
+    return rows.map(toHighlight);
+  }
+
+  getHighlight(id: string): PdfAnnotation | null {
+    const r = this.sql.get('SELECT * FROM pdf_annotations WHERE id = ?', id);
+    return r ? toHighlight(r) : null;
+  }
+
+  addHighlight(resource: string, a: NewPdfAnnotation): PdfAnnotation {
+    this.get(resource);
+    const id = a.id ?? crypto.randomUUID();
+    const t = this.now();
+    this.sql.run(
+      'INSERT INTO pdf_annotations (id, resource, version, page_index, rects, quote, prefix, suffix, color, label, comment, review, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      id, resource, a.version, a.pageIndex, JSON.stringify(a.rects), a.quote, a.prefix, a.suffix, a.color, a.label ?? null, (a.comment ?? '').slice(0, 4000), a.review ?? null, t, t,
+    );
+    return this.getHighlight(id)!;
+  }
+
+  updateHighlight(id: string, patch: { color?: AnnotationColor; label?: string | null; comment?: string; review?: AnnotationReview | null }): PdfAnnotation | null {
+    const prev = this.getHighlight(id);
+    if (!prev) return null;
+    const next = { ...prev, ...patch };
+    this.sql.run('UPDATE pdf_annotations SET color = ?, label = ?, comment = ?, review = ?, updated_at = ? WHERE id = ?', next.color, next.label, next.comment.slice(0, 4000), next.review, this.now(), id);
+    return this.getHighlight(id);
+  }
+
+  deleteHighlight(id: string): boolean {
+    if (!this.getHighlight(id)) return false;
+    this.sql.run('DELETE FROM pdf_annotations WHERE id = ?', id);
+    return true;
   }
 
   /** Starts over: every resource and every file. Snapshots keep their own copies. */

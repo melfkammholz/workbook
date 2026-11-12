@@ -911,3 +911,4 @@ Antworte auf Deutsch, in reinem Text ohne Markdown.
 export * from './annotations';
 export * from './cards';
 export * from './sld';
+export * from './pdfAnnotations';
