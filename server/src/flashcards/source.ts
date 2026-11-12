@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { scanCards, type CardCall, type CardKind, type DeckWarning, type Span, type TextEdit } from '@wb/shared';
+import { encodeAnchor, scanCards, type Anchor, type CardCall, type CardKind, type DeckWarning, type Span, type TextEdit } from '@wb/shared';
 
 /** The scanner lives in `@wb/shared`, so the browser finds the same cards. */
 export { scanCards, type CardCall, type Span };
@@ -180,11 +180,12 @@ const indent = (text: string) =>
  *       back
  *     ]
  */
-export function cardText(kind: CardKind, front: string, back: string, from: string | null, id: string | null = null, tags: string[] = [], highlight: string | null = null): string {
+export function cardText(kind: CardKind, front: string, back: string, from: string | null, id: string | null = null, tags: string[] = [], highlight: string | null = null, anchor: string | null = null): string {
   const args: string[] = [];
   if (id) args.push(`id: ${JSON.stringify(id)}`);
   if (from) args.push(`from: ${JSON.stringify(from)}`);
   if (highlight) args.push(`highlight: ${JSON.stringify(highlight)}`);
+  if (anchor) args.push(`anchor: ${JSON.stringify(anchor)}`);
   if (kind === 'both') args.push('both: true');
   // A one-element array needs its trailing comma in Typst.
   if (tags.length) args.push(`tags: (${tags.map((t) => JSON.stringify(t)).join(', ')}${tags.length === 1 ? ',' : ''})`);
@@ -210,6 +211,7 @@ export interface CardFields {
   kind: CardKind;
   from: string | null;
   highlight: string | null;
+  anchor: Anchor | null;
   tags: string[];
   front: string;
   back: string;
@@ -219,23 +221,23 @@ export interface CardFields {
 /** A quiz's arguments without the ones the deck keeps (`id`, `from`, `tags`): the question and its choices. */
 export function quizBody(args: string): string {
   // Up to the line break, so the indentation of what follows stays as it is.
-  return args.replace(/^[ \t]*(?:(?:id|from|highlight|tags|_lang)\s*:\s*(?:"(?:[^"\\]|\\.)*"|\([^)]*\))\s*,[ \t]*)*/, '');
+  return args.replace(/^[ \t]*(?:(?:id|from|highlight|anchor|tags|_lang)\s*:\s*(?:"(?:[^"\\]|\\.)*"|\([^)]*\))\s*,[ \t]*)*/, '');
 }
 
 export function fieldsOf(source: string, c: CardCall): CardFields {
   if (c.kind === 'quiz') {
     const front = c.args ? dedent(quizBody(source.slice(c.args.from + 1, c.args.to))) : '';
-    return { id: c.id, kind: c.kind, from: c.from, highlight: c.highlight, tags: c.tags, front, back: '', line: c.line };
+    return { id: c.id, kind: c.kind, from: c.from, highlight: c.highlight, anchor: c.anchor, tags: c.tags, front, back: '', line: c.line };
   }
   const body = (i: number) => (c.bodies[i] ? dedent(source.slice(c.bodies[i]!.from, c.bodies[i]!.to)) : '');
-  return { id: c.id, kind: c.kind, from: c.from, highlight: c.highlight, tags: c.tags, front: body(0), back: c.kind === 'cloze' ? '' : body(1), line: c.line };
+  return { id: c.id, kind: c.kind, from: c.from, highlight: c.highlight, anchor: c.anchor, tags: c.tags, front: body(0), back: c.kind === 'cloze' ? '' : body(1), line: c.line };
 }
 
 /** Rewrites one card, keeping its id and where it came from. Anything else in its arguments is written anew. */
-export function replaceCard(source: string, id: string, kind: CardKind, front: string, back: string, tags: string[], refs: { from?: string | null; highlight?: string | null } = {}): string | null {
+export function replaceCard(source: string, id: string, kind: CardKind, front: string, back: string, tags: string[], refs: { from?: string | null; highlight?: string | null; anchor?: Anchor | null } = {}): string | null {
   const c = scanCards(source).find((x) => x.id === id);
   if (!c) return null;
-  return source.slice(0, c.start) + cardText(kind, front, back, refs.from !== undefined ? refs.from : c.from, c.id, tags, refs.highlight !== undefined ? refs.highlight : c.highlight) + source.slice(c.end);
+  return source.slice(0, c.start) + cardText(kind, front, back, refs.from !== undefined ? refs.from : c.from, c.id, tags, refs.highlight !== undefined ? refs.highlight : c.highlight, refs.anchor !== undefined ? (refs.anchor ? encodeAnchor(refs.anchor) : null) : c.anchorArg) + source.slice(c.end);
 }
 
 /** Removes a card and the blank line it leaves. */

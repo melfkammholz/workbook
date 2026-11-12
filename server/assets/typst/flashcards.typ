@@ -26,7 +26,7 @@
 #let _side(name, body, framed) = html.elem("div", attrs: (data-side: name), if framed { html.frame(block(width: 10cm, _app-look(body))) } else { body })
 
 /// A card with a front and a back. `both: true` also asks it the other way round.
-#let flashcard(id: none, from: none, highlight: none, both: false, tags: (), _lang: none, _framed: false, ..sides) = {
+#let flashcard(id: none, from: none, highlight: none, anchor: none, both: false, tags: (), _lang: none, _framed: false, ..sides) = {
   let s = sides.pos()
   _card(if both { "both" } else { "basic" }, id, from, highlight, _lang, {
     _side("front", s.at(0, default: []), _framed)
@@ -38,11 +38,11 @@
 
 /// A text with gaps: `#cloze[`map` applies a function to {{every element}}.]`.
 /// Each gap is asked on its own.
-#let cloze(id: none, from: none, highlight: none, tags: (), _lang: none, body) = _card("cloze", id, from, highlight, _lang, html.elem("div", attrs: (data-side: "text"), body))
+#let cloze(id: none, from: none, highlight: none, anchor: none, tags: (), _lang: none, body) = _card("cloze", id, from, highlight, _lang, html.elem("div", attrs: (data-side: "text"), body))
 
 /// A question with answers to choose from, written as in a lesson:
 /// `#quiz([Frage], choice[falsch][warum], choice(correct: true)[richtig][warum])`.
-#let quiz(id: none, from: none, highlight: none, tags: (), _lang: none, _src: none, question, ..choices) = _card("quiz", id, from, highlight, _lang, {
+#let quiz(id: none, from: none, highlight: none, anchor: none, tags: (), _lang: none, _src: none, question, ..choices) = _card("quiz", id, from, highlight, _lang, {
   _side("front", {
     html.elem("div", attrs: (data-part: "question"), question)
     choices.pos().join()

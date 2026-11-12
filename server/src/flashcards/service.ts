@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
 import {
   DEFAULT_DECK_SETTINGS,
+  encodeAnchor,
+  type Anchor,
   type CardConfidence,
   type CardKind,
   type CardOrigin,
@@ -231,11 +233,11 @@ export class Flashcards {
   }
 
   /** "Make a card", or a card added in the deck's card view: one more card in the text, as if typed there. */
-  addCard(id: string, kind: CardKind, front: string, back: string, from: string | null, after: string | null = null, tags: string[] = [], highlight: string | null = null): DeckSaved & { cardId: string } {
+  addCard(id: string, kind: CardKind, front: string, back: string, from: string | null, after: string | null = null, tags: string[] = [], highlight: string | null = null, anchor: Anchor | null = null): DeckSaved & { cardId: string } {
     const d = this.deck(id);
     check(kind, front, back);
     const before = new Set(scanCards(d.source).map((c) => c.id));
-    const text = cardText(kind, front, back, from, null, tags, highlight);
+    const text = cardText(kind, front, back, from, null, tags, highlight, anchor ? encodeAnchor(anchor) : null);
     const next = (after && insertAfter(d.source, after, text)) || appendCard(d.source, text);
     const saved = this.saveSource(id, next);
     this.sql.run('UPDATE decks SET used_at = ? WHERE id = ?', this.now(), id);
@@ -244,7 +246,7 @@ export class Flashcards {
   }
 
   /** Rewrites one card's text. Its id stays, and with it what was learned. */
-  editCard(id: string, cardId: string, kind: CardKind, front: string, back: string, tags: string[], refs: { from?: string | null; highlight?: string | null } = {}): DeckSaved {
+  editCard(id: string, cardId: string, kind: CardKind, front: string, back: string, tags: string[], refs: { from?: string | null; highlight?: string | null; anchor?: Anchor | null } = {}): DeckSaved {
     check(kind, front, back);
     const next = replaceCard(this.deck(id).source, cardId, kind, front, back, tags, refs);
     if (next === null) throw new FlashcardError('unknown-card');
@@ -503,7 +505,8 @@ export class Flashcards {
     const rendered = r.cards.get(unit.cardId);
     const ref = scanCards(deck.source).find((c) => c.id === unit.cardId)?.from ?? null;
     const found = ref ? this.resolver.find(ref) : null;
-    const mark = scanCards(deck.source).find((c) => c.id === unit.cardId)?.highlight ?? null;
+    const scanned = scanCards(deck.source).find((c) => c.id === unit.cardId);
+    const mark = scanned?.highlight ?? null;
 
     const now = this.now();
     const preview = this.scheduler(deck.settings).repeat(row?.card ?? createEmptyCard(now), now);
@@ -512,7 +515,7 @@ export class Flashcards {
     const reversed = unit.side === 'back';
     const front = (reversed ? rendered?.back : rendered?.front) ?? '';
     const back = (reversed ? rendered?.front : rendered?.back) ?? '';
-    return { key: unit.key, deckId: deck.id, deckTitle: deck.title, cardId: unit.cardId, kind, gap: unit.gap, reversed, front, back, css: r.css, origin: found ? origin(found) : null, highlight: mark ? this.resolver.findHighlight(mark) : null, isNew: isNew(row), intervals };
+    return { key: unit.key, deckId: deck.id, deckTitle: deck.title, cardId: unit.cardId, kind, gap: unit.gap, reversed, front, back, css: r.css, origin: found ? origin(found) : null, highlight: mark ? this.resolver.findHighlight(mark) : null, anchor: scanned?.anchor ?? null, isNew: isNew(row), intervals };
   }
 
   /** Finds a review unit in whichever deck the card is in now. */

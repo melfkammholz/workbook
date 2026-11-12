@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { DeckDoc, DeckPreview, DeckSaved, FlashcardsResponse, ReviewNext } from '@wb/shared';
+import { decodeAnchor, encodeAnchor, type Anchor, type DeckDoc, type DeckPreview, type DeckSaved, type FlashcardsResponse, type ReviewNext } from '@wb/shared';
 import { buildApp } from '../src/api/app.js';
 import { makeDeps } from '../src/api/deps.js';
 import { loadConfig } from '../src/config.js';
@@ -126,6 +126,26 @@ describe('making a card', () => {
     expect(replaceCard(text, 'k3f9', 'basic', 'A2', 'B2', [])).toContain('highlight: "c/a1b2"');
     expect(appendCard('= Deck\n\n', '#flashcard[a][b]')).toBe('= Deck\n\n#flashcard[a][b]\n');
     expect(appendCard('', '#flashcard[a][b]')).toBe('#flashcard[a][b]\n');
+  });
+
+  it('keeps an anchor through writing, scanning, editing and dropping', () => {
+    const anchor: Anchor = { kind: 'page', resource: 'r-1', version: 'abc', pageIndex: 11, fingerprint: 'f"p', snippet: 'Größe «x»' };
+    expect(decodeAnchor(encodeAnchor(anchor))).toEqual(anchor);
+    expect(decodeAnchor(encodeAnchor({ kind: 'none' }))).toBeNull();
+    expect(decodeAnchor('not base64 {')).toBeNull();
+    const text = cardText('basic', 'A', 'B', 'c/ex', 'k3f9', [], null, encodeAnchor(anchor));
+    expect(scanCards(text)[0]).toMatchObject({ id: 'k3f9', from: 'c/ex', anchor });
+    expect(fieldsOf(text, scanCards(text)[0]!).anchor).toEqual(anchor);
+    // Editing keeps it; an explicit null drops it; another one replaces it.
+    expect(scanCards(replaceCard(text, 'k3f9', 'basic', 'A2', 'B2', [])!)[0]!.anchor).toEqual(anchor);
+    expect(scanCards(replaceCard(text, 'k3f9', 'basic', 'A2', 'B2', [], { anchor: null })!)[0]!.anchor).toBeNull();
+    const other: Anchor = { kind: 'material', resource: 'r-2' };
+    expect(scanCards(replaceCard(text, 'k3f9', 'basic', 'A2', 'B2', [], { anchor: other })!)[0]!.anchor).toEqual(other);
+    // A quiz keeps it too, and its question does not swallow the argument.
+    const quiz = cardText('quiz', 'Q?\n  choice[a][b]', '', null, 'q1', [], null, encodeAnchor(anchor));
+    const [qc] = scanCards(quiz);
+    expect(qc!.anchor).toEqual(anchor);
+    expect(fieldsOf(quiz, qc!).front).not.toContain('anchor');
   });
 
   it('refuses text that would break the deck', () => {

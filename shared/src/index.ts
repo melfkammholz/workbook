@@ -1,5 +1,6 @@
 // Types shared by server and web. Keep this file free of runtime dependencies.
 
+import type { Anchor } from './anchors';
 import type { HighlightLabel } from './annotations';
 import type { PdfPageMark } from './pdfPages';
 import type { Question } from './questions';
@@ -744,6 +745,8 @@ export interface DeckCard {
   from: string | null;
   /** The highlight it was made from, as written: `course/<annotation id>`. */
   highlight?: string | null;
+  /** The place it points at: a page, a passage, an exercise, a material. */
+  anchor?: Anchor | null;
   /** What `from` and `highlight` point at now; null when it is gone. Only where a card is shown for editing. */
   origin?: CardOrigin | null;
   highlightInfo?: CardHighlight | null;
@@ -892,6 +895,7 @@ export interface ReviewCard {
   css: string;
   origin: CardOrigin | null;
   highlight: CardHighlight | null;
+  anchor: Anchor | null;
   isNew: boolean;
   /** Milliseconds until it comes up again, for each rating. */
   intervals: Record<CardRating, number>;

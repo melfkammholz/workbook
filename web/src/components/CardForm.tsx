@@ -1,7 +1,8 @@
-import type { CardHighlight, CardKind, CardOrigin, RenderedCard } from '@wb/shared';
+import type { Anchor, CardHighlight, CardKind, CardOrigin, RenderedCard } from '@wb/shared';
 import { Columns2, PanelBottom, X } from 'lucide-react';
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { ApiError } from '@/lib/api';
+import { useAnchorLink } from '@/lib/cardAnchor';
 import { cardText, previewDeck, type CardFields } from '@/lib/flashcards';
 import { QuizCardFields } from './QuizCardFields';
 import { useT } from '@/lib/i18n';
@@ -75,6 +76,7 @@ export function CardForm({
   /** What the card points back to; each can be dropped. */
   const [from, setFrom] = useState<string | null>(initial?.from ?? null);
   const [highlight, setHighlight] = useState<string | null>(initial?.highlight ?? null);
+  const [anchor, setAnchor] = useState<Anchor | null>(initial?.anchor ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ card: RenderedCard; css: string } | null>(null);
@@ -116,7 +118,7 @@ export function CardForm({
     setBusy(true);
     setError(null);
     try {
-      await onSubmit({ kind, front, back: single ? '' : back, tags, from, highlight });
+      await onSubmit({ kind, front, back: single ? '' : back, tags, from, highlight, anchor });
       if (fresh || !initial?.front) {
         setFront('');
         setBack('');
@@ -210,7 +212,7 @@ export function CardForm({
       )}
       {!single ? field(t.cardBack, back, setBack, 5, false) : null}
       <TagPicker tags={tags} onChange={setTags} />
-      {from || highlight ? (
+      {from || highlight || anchor ? (
         <References
           origin={from ? (initial?.origin ?? null) : null}
           from={from}
@@ -218,6 +220,8 @@ export function CardForm({
           highlight={highlight}
           onDropFrom={() => setFrom(null)}
           onDropHighlight={() => setHighlight(null)}
+          anchor={anchor}
+          onDropAnchor={() => setAnchor(null)}
         />
       ) : null}
     </>
@@ -267,8 +271,9 @@ export function CardForm({
 }
 
 /** Where a card came from: its exercise and its highlight. Either can be dropped from the card. */
-function References({ origin, from, mark, highlight, onDropFrom, onDropHighlight }: { origin: CardOrigin | null; from: string | null; mark: CardHighlight | null; highlight: string | null; onDropFrom: () => void; onDropHighlight: () => void }) {
+function References({ origin, from, mark, highlight, onDropFrom, onDropHighlight, anchor, onDropAnchor }: { origin: CardOrigin | null; from: string | null; mark: CardHighlight | null; highlight: string | null; onDropFrom: () => void; onDropHighlight: () => void; anchor: Anchor | null; onDropAnchor: () => void }) {
   const t = useT();
+  const anchorLink = useAnchorLink(anchor);
   const chip = (key: string, label: ReactNode, drop: () => void, dropLabel: string) => (
     <li key={key} className="inline-flex max-w-full items-center gap-1 rounded-full bg-sunk px-2.5 py-0.5 text-[13px] text-ink-2">
       <span className="min-w-0 truncate">{label}</span>
@@ -287,6 +292,7 @@ function References({ origin, from, mark, highlight, onDropFrom, onDropHighlight
         {highlight
           ? chip('highlight', mark ? `${t.cardHighlight} “${mark.quote.trim().slice(0, 60)}”` : `${t.cardHighlight}: ${t.cardReferenceGone}`, onDropHighlight, t.cardDropReference)
           : null}
+        {anchor ? chip('anchor', `${t.cardAnchor}: ${anchorLink?.label ?? ''}`, onDropAnchor, t.cardDropReference) : null}
       </ul>
       <p className="mt-1 text-[12px] text-ink-3">{t.cardReferencesHint}</p>
     </div>

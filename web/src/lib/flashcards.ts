@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { CardKind, CardRating, CourseCards, DeckDoc, DeckPreview, DeckSaved, DeckSettings, FlashcardsResponse, ReviewNext, StrugglingCard } from '@wb/shared';
+import type { Anchor, CardKind, CardRating, CourseCards, DeckDoc, DeckPreview, DeckSaved, DeckSettings, FlashcardsResponse, ReviewNext, StrugglingCard } from '@wb/shared';
 import { api } from './api';
 
 /** A student's day starts at 4 in the morning, so a late evening still counts as that day. */
@@ -26,7 +26,7 @@ export const createDeck = (title: string, forCourse = false) => api.post<DeckDoc
 export const updateDeck = (id: string, patch: { title?: string; settings?: Partial<DeckSettings> }) => api.patch<DeckDoc>(deckUrl(id), patch);
 export const deleteDeck = (id: string) => api.delete(deckUrl(id));
 export const saveDeckSource = (id: string, source: string) => api.put<DeckSaved>(`${deckUrl(id)}/source`, { source });
-export const addCard = (id: string, card: { kind: CardKind; front: string; back: string; tags?: string[]; exercise: string | null; highlight?: string | null; after?: string | null; from?: string | null }) => api.post<DeckSaved & { cardId: string }>(`${deckUrl(id)}/cards`, card);
+export const addCard = (id: string, card: { kind: CardKind; front: string; back: string; tags?: string[]; exercise: string | null; highlight?: string | null; anchor?: Anchor | null; after?: string | null; from?: string | null }) => api.post<DeckSaved & { cardId: string }>(`${deckUrl(id)}/cards`, card);
 export const previewDeck = (source: string) => api.post<DeckPreview>('/api/flashcards/preview', { source });
 export const deckPrompt = (id: string, lang: 'de' | 'en') => api.post<{ text: string }>(`${deckUrl(id)}/prompt`, { lang });
 
@@ -58,6 +58,8 @@ export interface CardFields {
   /** Where the card came from, as written in the deck. Sent back when editing: null drops it. */
   from?: string | null;
   highlight?: string | null;
+  /** A page or passage it points at. Null drops it. */
+  anchor?: Anchor | null;
 }
 
 export const editCard = (deck: string, card: string, f: CardFields) => api.put<DeckSaved>(`${deckUrl(deck)}/cards/${encodeURIComponent(card)}`, f);

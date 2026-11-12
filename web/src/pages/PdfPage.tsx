@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { chapterOf, embeddedKeys, mergeToc, pageFingerprint, pageQuote, rectsTop, slideGroups, slideOfPage, type EmbeddedTocEntry, type PdfAnnotation, type PdfPageItem, type Resource, type TocEntry } from '@wb/shared';
+import { chapterOf, embeddedKeys, mergeToc, pageFingerprint, pageQuote, rectsTop, slideGroups, slideOfPage, type Anchor, type EmbeddedTocEntry, type PdfAnnotation, type PdfPageItem, type Resource, type TocEntry } from '@wb/shared';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { ChevronLeft, ChevronRight, Maximize, PanelLeft, PanelLeftClose, PanelRight, PanelRightClose, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -182,7 +182,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   const questions = usePdfQuestions(resource);
   const settings = useSettings().data;
   const cards = !!settings?.showFlashcards;
-  const [pageCard, setPageCard] = useState<string | null>(null);
+  const [pageCard, setPageCard] = useState<{ text: string; anchor: Anchor } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const count = doc?.numPages ?? 0;
   // A file replaced since the highlights and notes were made: they are placed on it as it opens.
@@ -581,7 +581,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
                     item={itemOf(notePage)}
                     save={(patch) => void savePage(notePage, patch)}
                     copyRef={() => refTo(notePage)}
-                    onCard={cards ? () => void refTo(notePage).then(setPageCard) : undefined}
+                    onCard={cards ? () => void refTo(notePage).then(async (text) => setPageCard({ text, anchor: { kind: 'page', resource: resource.id, version: resource.file.sha256, pageIndex: notePage - 1, fingerprint: (await pageInfo(notePage)).fingerprint } })) : undefined}
                   />
                 </>
               ) : null}
@@ -589,7 +589,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
           </>
         ) : null}
       </div>
-      {pageCard ? <MakeCardDialog open onClose={() => setPageCard(null)} exerciseId={null} initial={{ back: pageCard }} /> : null}
+      {pageCard ? <MakeCardDialog open onClose={() => setPageCard(null)} exerciseId={null} initial={{ back: pageCard.text, anchor: pageCard.anchor }} /> : null}
     </div>
   );
 }

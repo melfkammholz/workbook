@@ -254,7 +254,7 @@ export function HighlightsPage({ filter: asked }: { filter?: string }) {
           open
           onClose={() => setCard(null)}
           exerciseId={itemOfTarget(card.target)}
-          initial={{ kind: 'basic', front: card.comment.trim() ? escapeMarkup(card.comment.trim()) : '', back: escapeMarkup(card.quote.trim()) }}
+          initial={{ anchor: outline?.id ? { kind: 'text', course: outline.id, target: card.target, part: card.part, quote: card.quote, prefix: card.prefix, suffix: card.suffix } : null, kind: 'basic', front: card.comment.trim() ? escapeMarkup(card.comment.trim()) : '', back: escapeMarkup(card.quote.trim()) }}
         />
       ) : null}
     </div>

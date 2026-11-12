@@ -1,3 +1,4 @@
+import { decodeAnchor, type Anchor } from './anchors';
 import type { CardKind } from './index';
 
 /**
@@ -30,6 +31,10 @@ export interface CardCall {
   from: string | null;
   /** The highlight it was made from: `course/<annotation id>`. */
   highlight: string | null;
+  /** The place it points at (a page, a passage, an exercise): `anchor: "<base64url JSON>"`; null when absent or unreadable. */
+  anchor: Anchor | null;
+  /** The argument as written, kept so an unreadable one is not lost. */
+  anchorArg: string | null;
   /** Its own tags, besides those of its exercise. */
   tags: string[];
   /** Content blocks, without their brackets. */
@@ -128,6 +133,7 @@ class Scanner {
       const idMatch = /(?:^|[\s,])id\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(argText);
       const fromMatch = /(?:^|[\s,])from\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(argText);
       const highlightMatch = /(?:^|[\s,])highlight\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(argText);
+      const anchorMatch = /(?:^|[\s,])anchor\s*:\s*"([A-Za-z0-9_-]*)"/.exec(argText);
       const both = /(?:^|[\s,])both\s*:\s*true\b/.test(argText);
       // `tags: ("a", "b")`, or a single `tags: "a"`.
       const tagMatch = /(?:^|[\s,])tags\s*:\s*(\([^)]*\)|"(?:[^"\\]|\\.)*")/.exec(argText);
@@ -147,6 +153,8 @@ class Scanner {
         idSpan,
         from: fromMatch ? fromMatch[1]! : null,
         highlight: highlightMatch ? highlightMatch[1]! : null,
+        anchor: anchorMatch ? decodeAnchor(anchorMatch[1]!) : null,
+        anchorArg: anchorMatch ? anchorMatch[1]! : null,
         tags,
         bodies,
         end: i,

@@ -13,6 +13,7 @@ import { MoreMenu } from '@/components/ExerciseView';
 import { TypstEditor } from '@/components/TypstEditor';
 import { Button, Dialog, Empty, IconButton, NumberField, Segmented, Spinner, clsx } from '@/components/ui';
 import { useSettings } from '@/lib/api';
+import { CardAnchorLink } from '@/lib/cardAnchor';
 import { showAnnotationOnArrival } from '@/lib/annotations';
 import { Title } from '@/components/Title';
 import { addCard, cardKeys, deckPrompt, deleteCard, downloadDeck, deleteDeck, editCard, moveCardBy, moveCardTo, previewDeck, saveDeckSource, updateDeck, useDeck, useFlashcards } from '@/lib/flashcards';
@@ -376,6 +377,7 @@ function CardRow({
             </span>
           )
         ) : null}
+        {card.anchor ? <CardAnchorLink anchor={card.anchor} className="max-w-full truncate" /> : null}
         {card.highlightInfo ? (
           card.highlightInfo.href ? (
             <a href={card.highlightInfo.href} onClick={() => showAnnotationOnArrival(card.highlightInfo!.id)} className="max-w-full truncate text-accent hover:underline">

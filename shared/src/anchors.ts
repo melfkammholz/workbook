@@ -106,3 +106,26 @@ export interface EntityRef {
   version: number;
 }
 
+
+/** Kinds a flashcard can point at: a place to read, never `none`. */
+const CARD_ANCHOR_KINDS = new Set(['page', 'text', 'exercise', 'item', 'material']);
+
+/** An anchor as one opaque string for a card's `anchor:` argument: JSON in base64url, so the Typst stays valid. */
+export function encodeAnchor(a: Anchor): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(a));
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** The anchor behind an `anchor:` argument, or null when it is not one a card may have. */
+export function decodeAnchor(s: string): Anchor | null {
+  try {
+    const bin = atob(s.replace(/-/g, '+').replace(/_/g, '/'));
+    const json = new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+    const a = JSON.parse(json) as Anchor;
+    return a && typeof a === 'object' && CARD_ANCHOR_KINDS.has(a.kind) ? a : null;
+  } catch {
+    return null;
+  }
+}
