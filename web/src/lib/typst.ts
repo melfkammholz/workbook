@@ -1,5 +1,6 @@
 import { snippetCompletion, type Completion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import type { StreamParser, StringStream } from '@codemirror/language';
+import { typstContext } from './typstContext';
 
 /**
  * Typst for the editors: highlighting and completions. Enough of Typst to read
@@ -172,19 +173,6 @@ export const typstParser: StreamParser<TypstState> = {
 };
 
 // ───────────────────────── completions ─────────────────────────
-
-export interface TypstContext {
-  /** Stable id of the open course, for `from:`. */
-  course: string | null;
-  exercises: { id: string; title: string }[];
-  tags: { id: string; label: string }[];
-}
-
-/** Kept current by the app as the open course changes, so every editor offers its exercises and tags. */
-export const typstContext: TypstContext = { course: null, exercises: [], tags: [] };
-
-/** A tag as students know it: its label in the open course, else the id written on the card. */
-export const tagLabel = (id: string) => typstContext.tags.find((k) => k.id === id)?.label ?? id;
 
 export interface CompletionLabels {
   flashcard: string;

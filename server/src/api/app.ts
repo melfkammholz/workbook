@@ -13,6 +13,8 @@ import { replSocket } from './repl-socket.js';
 import { widgetRoutes } from './routes-widgets.js';
 import { workRoutes } from './routes-work.js';
 
+const SLOW_MS = 50;
+
 export async function buildApp(d: Deps): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: 'warn' }, bodyLimit: 4 * 1024 * 1024, forceCloseConnections: true });
 
@@ -39,6 +41,14 @@ export async function buildApp(d: Deps): Promise<FastifyInstance> {
     }
   });
 
+  // In development, every slow answer says so: API reads should take under 10 ms, renders and runners excepted.
+  if (process.env.NODE_ENV !== 'production') {
+    app.addHook('onResponse', async (req, reply) => {
+      const ms = reply.elapsedTime;
+      if (ms > SLOW_MS) console.warn(`slow ${req.method} ${req.routeOptions.url ?? req.url.split('?')[0]} ${Math.round(ms)} ms`);
+    });
+  }
+
   // Before the first course is added, only what it takes to add one works, and flashcards, which belong to no course.
   const WITHOUT_COURSE = ['/api/courses', '/api/settings', '/api/info', '/api/flashcards', '/api/reset-all'];
   app.addHook('onRequest', async (req, reply) => {
@@ -60,6 +70,8 @@ export async function buildApp(d: Deps): Promise<FastifyInstance> {
     await app.register(fastifyStatic, {
       root: web,
       cacheControl: false,
+      // The build writes .br and .gz next to scripts, styles and index.html.
+      preCompressed: true,
       // Hashed assets never change; index.html must be re-checked so updates show up.
       setHeaders(res, filePath) {
         res.header('cache-control', filePath.includes(`${path.sep}assets${path.sep}`) ? 'public, max-age=31536000, immutable' : 'no-cache');

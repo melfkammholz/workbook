@@ -8,7 +8,7 @@ import { useT } from '@/lib/i18n';
 import { modKey } from '@/lib/keys';
 import { readPref, writePref } from '@/lib/shell';
 import { useMediaQuery } from '@/lib/useActiveTime';
-import { tagLabel, typstContext } from '@/lib/typst';
+import { tagLabel, typstContext } from '@/lib/typstContext';
 import { CardFace } from './CardFace';
 import { CodeEditor } from './CodeEditor';
 import { Button, IconButton, Segmented, clsx } from './ui';

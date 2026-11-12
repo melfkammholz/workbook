@@ -1,12 +1,16 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { AnnotationPlace } from '@wb/shared';
 import { createPortal } from 'react-dom';
 import { clearLayer, paintLayer, revealPending, useAnnotations } from '@/lib/annotations';
 import { useOutline, useSettings } from '@/lib/api';
-import { highlightToHtml } from '@/lib/highlight';
+import { codeLanguages, highlightPending, highlightToHtml, useHighlighter } from '@/lib/highlight';
 import { useT } from '@/lib/i18n';
+import { lazyComponent } from '@/lib/lazy';
 import { clsx } from './ui';
-import { Widget, takeWidgets, type WidgetHost } from './widgets';
+import { takeWidgets, type WidgetHost } from './widgets/host';
+
+/** Most texts have no widgets, so their components are loaded with the first one that does. */
+const Widget = lazyComponent(() => import('./widgets').then((m) => m.Widget));
 
 /**
  * Renders server-sanitised Typst HTML. Code is highlighted here (the server
@@ -22,10 +26,14 @@ export function Prose({ html, css, className, lang: langProp, annotate }: { html
   const lang = langProp ?? courseLang;
   useTypstCss(css);
   const [widgets, setWidgets] = useState<WidgetHost[]>([]);
+  // Highlighting comes first and only once (gaps and the student's highlights are marks in the highlighted text), so
+  // the text waits for the languages it shows. They are usually there already: loading starts with the app.
+  useHighlighter();
+  const waiting = useMemo(() => codeLanguages(html), [html]).some(highlightPending);
 
   useEffect(() => {
     const root = ref.current;
-    if (!root) return;
+    if (!root || waiting) return;
     // Widgets first: their parts are rendered by a Prose of their own, and highlighted there.
     setWidgets(takeWidgets(root));
     const cleanups: (() => void)[] = [];
@@ -78,10 +86,10 @@ export function Prose({ html, css, className, lang: langProp, annotate }: { html
     wrapGaps(root);
     cleanups.push(citeCards(root, sourcesLabel));
     return () => cleanups.forEach((c) => c());
-  }, [html, copyLabel, sourcesLabel]);
+  }, [html, copyLabel, sourcesLabel, waiting]);
 
   const on = !!useSettings().data?.showAnnotations && !!annotate;
-  useHighlights(ref, on ? annotate : undefined, html);
+  useHighlights(ref, on && !waiting ? annotate : undefined, html);
 
   return (
     <>
@@ -92,7 +100,15 @@ export function Prose({ html, css, className, lang: langProp, annotate }: { html
         className={clsx('prose-task', className)}
         dangerouslySetInnerHTML={{ __html: html }}
       />
-      {widgets.map((w) => createPortal(<Widget host={w} />, w.el, w.key))}
+      {widgets.map((w) =>
+        createPortal(
+          <Suspense>
+            <Widget host={w} />
+          </Suspense>,
+          w.el,
+          w.key,
+        ),
+      )}
     </>
   );
 }

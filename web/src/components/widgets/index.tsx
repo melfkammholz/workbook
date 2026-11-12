@@ -5,7 +5,7 @@ import { api, keys, saveNote, useSettings, type Work } from '@/lib/api';
 import { appendToOpenNote, escapeMarkup } from '@/lib/annotations';
 import { MakeCardDialog } from '../MakeCardDialog';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { highlightToHtml } from '@/lib/highlight';
+import { highlightToHtml, useHighlighter } from '@/lib/highlight';
 import { useT } from '@/lib/i18n';
 import { Prose } from '../Prose';
 import { clsx } from '../ui';
@@ -24,60 +24,8 @@ import { Practice } from './Practice';
  * component in their place. Nothing a widget does is stored: it starts fresh on every visit.
  */
 
-export interface Part {
-  name: string;
-  attrs: Record<string, string>;
-  /** The part as rendered by Typst, sub-parts included. */
-  html: string;
-  parts: Part[];
-}
-
-export interface WidgetHost {
-  key: string;
-  el: HTMLElement;
-  kind: string;
-  attrs: Record<string, string>;
-  parts: Part[];
-  /** What Typst wrote inside, for a kind this app does not know. */
-  html: string;
-}
-
-/** The parts of rendered HTML that holds a widget's parts, e.g. a quiz card's front. */
-export function partsOfHtml(html: string): Part[] {
-  const el = document.createElement('div');
-  el.innerHTML = html;
-  return partsOf(el);
-}
-
-const dataOf = (el: HTMLElement): Record<string, string> => ({ ...el.dataset }) as Record<string, string>;
-
-function partsOf(el: Element): Part[] {
-  return [...el.children]
-    .filter((c): c is HTMLElement => c instanceof HTMLElement && c.dataset.part !== undefined)
-    .map((c) => ({ name: c.dataset.part!, attrs: dataOf(c), html: c.innerHTML, parts: partsOf(c) }));
-}
-
-let counter = 0;
-/** What was read from a host before it was emptied: effects may run twice on the same element. */
-const taken = new WeakMap<HTMLElement, WidgetHost>();
-
-/** Finds the outermost widgets of a rendered text and empties them, ready for their component. */
-export function takeWidgets(root: HTMLElement): WidgetHost[] {
-  // Outermost within this text: a widget inside a widget's part is left to that part's own Prose.
-  const hosts = [...root.querySelectorAll<HTMLElement>('div[data-widget]')].filter((el) => {
-    const outer = el.parentElement?.closest('[data-widget]');
-    return !outer || !root.contains(outer);
-  });
-  return hosts.map((el) => {
-    let host = taken.get(el);
-    if (!host) {
-      host = { key: `w${counter++}`, el, kind: el.dataset.widget!, attrs: dataOf(el), parts: partsOf(el), html: el.innerHTML };
-      taken.set(el, host);
-      el.replaceChildren();
-    }
-    return host;
-  });
-}
+export { partsOfHtml, takeWidgets, type Part, type WidgetHost } from './host';
+import type { Part, WidgetHost } from './host';
 
 export function Widget({ host }: { host: WidgetHost }) {
   switch (host.kind) {
@@ -119,17 +67,19 @@ export function Widget({ host }: { host: WidgetHost }) {
 /** Rendered Typst inside a line, such as an answer on a button: inline code is highlighted, nothing else. */
 export function Inline({ html, className }: { html: string; className?: string }) {
   const ref = useRef<HTMLSpanElement>(null);
+  const hl = useHighlighter();
   useEffect(() => {
     ref.current?.querySelectorAll<HTMLElement>('code[data-lang]').forEach((code) => {
       const h = highlightToHtml(code.textContent ?? '', code.getAttribute('data-lang') ?? '');
       if (h !== null) code.innerHTML = h;
     });
-  }, [html]);
+  }, [html, hl]);
   return <span ref={ref} className={clsx('wb-inline', className)} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 /** A Haskell type, highlighted. A span, so the text's rules for `code` stay out of it. */
 export function Code({ children, className }: { children: string; className?: string }) {
+  useHighlighter();
   return <span className={clsx('font-mono', className)} dangerouslySetInnerHTML={{ __html: highlightToHtml(children, 'haskell') ?? children.replace(/[&<>]/g, (c) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt' }[c]};`) }} />;
 }
 

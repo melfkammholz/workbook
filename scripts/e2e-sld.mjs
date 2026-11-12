@@ -28,6 +28,8 @@ try {
   await page.click('[role=dialog] button:has-text("English")');
   await page.click('[role=dialog] button:has-text("Get started")');
   await page.click('[role=dialog] [role=radio]:has-text("Thorough")');
+  // An SLD exercise opens on its preview; the syntax check has a tab of its own.
+  await page.click('role=tab[name=/Syntax/]');
   await page.waitForSelector('text=No syntax errors.', { timeout: 20_000 });
 
   // A syntax error shows while writing.
@@ -41,16 +43,16 @@ try {
   await page.click('text=Run tests');
   await page.waitForSelector('text=The tree is correct', { timeout: 20_000 });
   await page.click('role=tab[name=/Preview/]');
-  await page.waitForSelector('svg[role=img] g[data-line]');
-  const parts = await page.locator('svg[role=img] g[data-line]').count();
+  await page.waitForSelector('svg[role=group] g[data-line]');
+  const parts = await page.locator('svg[role=group] g[data-line]').count();
   if (parts < 10) throw new Error(`the picture has only ${parts} parts`);
 
-  await page.click('button[aria-label^="Wide layout"]');
+  await page.click('button[aria-label="Wide"]');
   await page.waitForSelector('button[aria-label="Show the task"]');
   if (!(await page.locator('.cm-content').innerText()).includes('member(X4, [_4|T4])')) throw new Error('the text was lost');
 
   // A click on a node goes to its line.
-  const node = await page.locator('svg[role=img] g[data-line="11"]').first().boundingBox();
+  const node = await page.locator('svg[role=group] g[data-line="11"]').first().boundingBox();
   await page.mouse.click(node.x + node.width / 2, node.y + node.height / 2);
   if (!(await page.locator('.cm-activeLine').innerText()).includes('member(X, [2])')) throw new Error('the click did not go to the line');
 
@@ -59,7 +61,7 @@ try {
   await page.click('role=tab[name=/Tests/]');
   await page.click('text=Run again');
   await page.waitForSelector('text=/1 problem in the tree/', { timeout: 20_000 });
-  if ((await page.locator('svg[role=img] .stroke-danger').count()) === 0) throw new Error('nothing is marked in the picture');
+  if ((await page.locator('svg[role=group] .stroke-danger').count()) === 0) throw new Error('nothing is marked in the picture');
 
   // The task opens over the editor and closes with Escape.
   await page.click('button[aria-label="Show the task"]');

@@ -5,7 +5,7 @@ import { lintGutter } from '@codemirror/lint';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { EditorState, type Extension } from '@codemirror/state';
 import { drawSelection, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers, EditorView, placeholder } from '@codemirror/view';
-import { classHighlighter, languageFor } from './highlight';
+import { classHighlighter, languageFor } from './highlighter';
 
 /**
  * The editor behaves like VS Code where it matters: auto-closing brackets,

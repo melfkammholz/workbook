@@ -1,5 +1,5 @@
 import { ArrowLeft, CircleHelp, ClipboardList, Layers, Menu, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Trophy, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { Link, Route, Router, Switch, useLocation, useRoute } from 'wouter';
 import { useAppLocation } from '@/lib/history';
 import { Celebration } from '@/components/Celebration';
@@ -7,7 +7,6 @@ import { AddCourseForm, CourseDialog } from '@/components/CourseDialog';
 import { CourseMenu, FocusQuestion } from '@/components/Focus';
 import { OutlinePanel } from '@/components/Outline';
 import { SearchDialog } from '@/components/SearchDialog';
-import { SettingsPage } from '@/pages/SettingsPage';
 import { QuickSettings } from '@/components/QuickMenus';
 import { SetupDialog } from '@/components/SetupDialog';
 import { Empty, IconButton, Spinner, clsx } from '@/components/ui';
@@ -21,27 +20,36 @@ import { canGoBack } from '@/lib/history';
 import { scrollPage, scrollToEdge, usePageKeys } from '@/lib/keys';
 import { applyTheme } from '@/lib/theme';
 import { useMediaQuery } from '@/lib/useActiveTime';
-import { AchievementsPage } from '@/pages/AchievementsPage';
-import { AdventurePage } from '@/pages/AdventurePage';
-import { ChapterPage } from '@/pages/ChapterPage';
 import { Dashboard } from '@/pages/Dashboard';
-import { DeckPage } from '@/pages/DeckPage';
-import { FlashcardReview } from '@/pages/FlashcardReview';
-import { FlashcardsPage } from '@/pages/FlashcardsPage';
-import { HelpPage } from '@/pages/HelpPage';
-import { StrugglingPage } from '@/pages/StrugglingPage';
-import { typstContext } from '@/lib/typst';
-import { LandingPage } from '@/pages/LandingPage';
-import { NotesPage } from '@/pages/NotesPage';
-import { HIGHLIGHT_FILTERS, HighlightsPage, type HighlightFilter } from '@/pages/HighlightsPage';
+import {
+  AchievementsPage,
+  AdventurePage,
+  ChapterPage,
+  DeckPage,
+  FlashcardReview,
+  FlashcardsPage,
+  HelpPage,
+  HighlightsPage,
+  ItemPage,
+  KindPage,
+  LandingPage,
+  NotesPage,
+  ReviewPage,
+  SettingsPage,
+  StrugglingPage,
+  preloadLinks,
+  preloadRoute,
+} from '@/lib/routes';
+import { typstContext } from '@/lib/typstContext';
 import { AnnotationLayer } from '@/components/AnnotationLayer';
-import { ItemPage } from '@/pages/ItemPage';
-import { ReviewPage } from '@/pages/ReviewPage';
-import { KindPage } from '@/pages/KindPage';
 import { useRewards } from '@/lib/rewards';
 import { THREAD_KINDS, type ThreadKind } from '@wb/shared';
 
 export function App() {
+  useEffect(() => {
+    preloadRoute(location.hash.slice(1));
+    return preloadLinks();
+  }, []);
   return (
     <Router hook={useAppLocation}>
       <Shell />
@@ -138,7 +146,9 @@ function NoCourse() {
           </Link>
         </header>
         <main className="min-h-0 flex-1">
-          <Switch>{flashcardRoutes()}</Switch>
+          <Suspense>
+            <Switch>{flashcardRoutes()}</Switch>
+          </Suspense>
         </main>
       </div>
     );
@@ -374,6 +384,8 @@ function CourseShell() {
       <div className="flex min-h-0 flex-1">
         {showOutline ? <aside className="w-[19rem] shrink-0 border-r border-line">{outlinePanel()}</aside> : null}
         <main className="min-w-0 flex-1">
+          {/* No spinner while a page loads: it is local and usually loaded already, a spinner would only flash. */}
+          <Suspense>
           <Switch>
             <Route path="/" component={Dashboard} />
             <Route path="/item/:id">{(p) => <ItemPage id={p.id} />}</Route>
@@ -385,7 +397,7 @@ function CourseShell() {
             <Route path="/achievements" component={AchievementsPage} />
             <Route path="/notes" component={NotesPage} />
             <Route path="/highlights">{() => <HighlightsPage />}</Route>
-            <Route path="/highlights/:filter">{(p) => <HighlightsPage key={p.filter} filter={HIGHLIGHT_FILTERS.includes(p.filter as HighlightFilter) ? (p.filter as HighlightFilter) : 'all'} />}</Route>
+            <Route path="/highlights/:filter">{(p) => <HighlightsPage key={p.filter} filter={p.filter} />}</Route>
             {flashcardRoutes()}
             <Route path="/chapter/:id">{(p) => <ChapterPage key={p.id} id={p.id} />}</Route>
             <Route path="/kind/:kind">{(p) => (THREAD_KINDS.includes(p.kind as ThreadKind) ? <KindPage key={p.kind} kind={p.kind as ThreadKind} /> : null)}</Route>
@@ -394,6 +406,7 @@ function CourseShell() {
               <Empty title={t.pageNotFound}>{t.pageNotFoundBody}</Empty>
             </Route>
           </Switch>
+          </Suspense>
         </main>
       </div>
 

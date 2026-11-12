@@ -22,7 +22,7 @@ import { useDebouncedCallback } from '@/lib/useDebounced';
 import { cursorCard } from '@/lib/currentCard';
 import { BackLink } from '@/lib/history';
 import { usePageKeys } from '@/lib/keys';
-import { tagLabel } from '@/lib/typst';
+import { tagLabel } from '@/lib/typstContext';
 
 const VIEWS = ['cards', 'text'] as const;
 type View = (typeof VIEWS)[number];

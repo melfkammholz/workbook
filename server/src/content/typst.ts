@@ -79,6 +79,8 @@ export class TypstRenderer {
       /* ignore */
     }
     fs.symlinkSync(o.contentDir, link, 'dir');
+    // Asked for by the first render (cache key) and by /api/info; spawning Typst then would add ~100 ms to either.
+    void this.version();
   }
 
   version(): Promise<string> {

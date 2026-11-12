@@ -23,7 +23,8 @@ import { ReplView } from './Repl';
 import { SldTreeView } from './SldTreeView';
 import { TestsPanel } from './TestsPanel';
 import { TypstEditor } from './TypstEditor';
-import { Button, IconButton, ResizeHandle, clsx } from './ui';
+import { ResizeHandle } from './ResizeHandle';
+import { Button, IconButton, clsx } from './ui';
 import { useRewards } from '@/lib/rewards';
 
 type TopTab = 'answer' | 'notes' | 'ai';

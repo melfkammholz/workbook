@@ -11,7 +11,8 @@ import { readPref, writePref } from '@/lib/shell';
 import { useMediaQuery } from '@/lib/useActiveTime';
 import { CodeEditor } from './CodeEditor';
 import { Prose } from './Prose';
-import { IconButton, ResizeHandle, clsx } from './ui';
+import { ResizeHandle } from './ResizeHandle';
+import { IconButton, clsx } from './ui';
 
 const LAYOUTS = ['stacked', 'side', 'write'] as const;
 type Layout = (typeof LAYOUTS)[number];

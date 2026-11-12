@@ -11,6 +11,8 @@
 #   --host          run with the tools on this machine instead of the toolchain image
 #   --no-build      skip `npm run build` even if sources are newer than the build
 #
+# NODE_ENV=development scripts/test-server.sh: the server logs every request slower than 50 ms (docker logs <name>).
+#
 # The default runs the server in the `workbook-toolchain` image (GHC with QuickCheck, Typst, sldcheck, SWI-Prolog), with
 # this checkout mounted and /data in memory, so nothing is left behind once it stops. The image is built when missing
 # (docker compose -f compose.dev.yaml build).
@@ -58,7 +60,7 @@ fi
 course=$(realpath "$course")
 if [ $mode = docker ]; then
   docker image inspect workbook-toolchain >/dev/null 2>&1 || docker compose -f compose.dev.yaml build >&2
-  docker run -d --rm --name "$name" -p "127.0.0.1:$port:8080" \
+  docker run -d --rm --name "$name" -p "127.0.0.1:$port:8080" ${NODE_ENV:+-e NODE_ENV=$NODE_ENV} \
     -v "$PWD:/app:ro" -v "$course:/content:ro" --tmpfs /data:uid=1000,gid=1000 \
     workbook-toolchain >/dev/null
   logs="docker logs $name"

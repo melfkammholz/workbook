@@ -13,8 +13,8 @@ import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { useDebouncedCallback } from '@/lib/useDebounced';
 
-export type HighlightFilter = 'all' | 'open' | 'missing';
-export const HIGHLIGHT_FILTERS: readonly HighlightFilter[] = ['all', 'open', 'missing'];
+type HighlightFilter = 'all' | 'open' | 'missing';
+const HIGHLIGHT_FILTERS: readonly HighlightFilter[] = ['all', 'open', 'missing'];
 
 interface Group {
   key: string;
@@ -49,7 +49,9 @@ function grouped(outline: Outline, list: AnnotationEntry[], t: ReturnType<typeof
 }
 
 /** Every highlight in the course: the second pass, where what was unclear gets cleared up. */
-export function HighlightsPage({ filter = 'all' }: { filter?: HighlightFilter }) {
+/** `filter` from the address; anything unknown shows all. */
+export function HighlightsPage({ filter: asked }: { filter?: string }) {
+  const filter: HighlightFilter = HIGHLIGHT_FILTERS.includes(asked as HighlightFilter) ? (asked as HighlightFilter) : 'all';
   const t = useT();
   const outline = useOutline().data;
   const settings = useSettings().data;

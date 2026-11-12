@@ -3,7 +3,6 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import { clsx } from 'clsx';
 import { X } from 'lucide-react';
 import { useLayoutEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
-import { Separator } from 'react-resizable-panels';
 import type { Status } from '@wb/shared';
 import { useT } from '@/lib/i18n';
 
@@ -248,22 +247,6 @@ export function Chip({ children, tone = 'plain', className }: { children: ReactN
 
 export function Spinner({ className }: { className?: string }) {
   return <span className={clsx('inline-block size-3.5 animate-spin rounded-full border-2 border-line-strong border-t-accent', className)} aria-hidden />;
-}
-
-/** The handle between two resizable panels. A wide invisible hit area around a thin line. */
-/**
- * Between two panels: a line, or with `gutter` the gap between two cards on warm paper (a line without it), which shows
- * a grip only while hovered or dragged.
- */
-export function ResizeHandle({ direction, disabled, gutter }: { direction: 'row' | 'column'; disabled?: boolean; gutter?: boolean }) {
-  return (
-    <Separator
-      disabled={disabled}
-      className={clsx('relative shrink-0 bg-line transition-colors', !disabled && 'hover:bg-accent data-[separator=active]:bg-accent', direction === 'row' ? 'w-px' : 'h-px', gutter && 'wb-gutter', gutter && direction === 'column' && 'wb-gutter-col', gutter && disabled && 'wb-gutter-off')}
-    >
-      <span className={clsx('absolute', direction === 'row' ? 'inset-y-0 -inset-x-1.5' : 'inset-x-0 -inset-y-1.5')} />
-    </Separator>
-  );
 }
 
 export function Empty({ title, children }: { title: string; children?: ReactNode }) {

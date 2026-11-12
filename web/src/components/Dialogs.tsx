@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AnswerVersion } from '@wb/shared';
 import { fetchVersions } from '@/lib/api';
-import { highlightToHtml } from '@/lib/highlight';
+import { highlightToHtml, useHighlighter } from '@/lib/highlight';
 import { commonLines } from '@/lib/diff';
 import { useLang, useT } from '@/lib/i18n';
 import { RenderedText } from './RenderedText';
@@ -45,6 +45,7 @@ export function ConfirmDialog({
 }
 
 export function CodeBlock({ code, language, className }: { code: string; language: string | null; className?: string }) {
+  useHighlighter();
   const html = language ? highlightToHtml(code, language) : null;
   return (
     <pre className={clsx('overflow-auto rounded-md border border-line bg-sunk p-3 font-mono text-[12.5px] leading-relaxed', className)}>
@@ -54,6 +55,7 @@ export function CodeBlock({ code, language, className }: { code: string; languag
 }
 
 function CompareColumn({ title, code, language, shared, mark }: { title: string; code: string; language: string; shared: boolean[] | null; mark: string }) {
+  useHighlighter();
   const lines = code.split('\n');
   return (
     <div className="min-w-0">
