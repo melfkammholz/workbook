@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpen, Compass, Highlighter, NotebookText, RotateCcw, Trophy } from 'lucide-react';
+import { ArrowRight, BookOpen, Compass, RotateCcw } from 'lucide-react';
 import { useMemo } from 'react';
 import { Link } from 'wouter';
 import type { ChapterMeta, ExerciseMeta, Status, StudentState } from '@wb/shared';
@@ -53,19 +53,6 @@ export function Dashboard() {
           {outline.landing ? (
             <Link href="/welcome" className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline">
               <BookOpen size={14} /> {t.aboutCourse}
-            </Link>
-          ) : null}
-          <Link href="/notes" className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline">
-            <NotebookText size={14} /> {t.allNotes}
-          </Link>
-          {settings?.showAnnotations ? (
-            <Link href="/highlights" className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline">
-              <Highlighter size={14} /> {t.highlights}
-            </Link>
-          ) : null}
-          {settings?.showAchievements ? (
-            <Link href="/achievements" className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline">
-              <Trophy size={14} /> {t.achievements}
             </Link>
           ) : null}
         </div>

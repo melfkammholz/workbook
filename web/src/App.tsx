@@ -1,4 +1,4 @@
-import { ArrowLeft, CircleHelp, ClipboardList, Layers, Library, Menu, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Trophy, X } from 'lucide-react';
+import { ArrowLeft, CircleHelp, ClipboardList, Highlighter, Layers, Library, Menu, NotebookText, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Trophy, X } from 'lucide-react';
 import { Suspense, memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Route, Router, Switch, useLocation, useRoute } from 'wouter';
 import { useAppLocation } from '@/lib/history';
@@ -370,6 +370,26 @@ function CourseShell() {
               <span className="block h-full rounded-full bg-done transition-[width]" style={{ width: `${totals.total ? (totals.done / totals.total) * 100 : 0}%` }} />
             </span>
           </div>
+          <Link
+            href="/notes"
+            className={clsx('inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk hover:text-ink', location === '/notes' ? 'bg-sunk text-ink' : 'text-ink-2')}
+            aria-label={t.allNotes}
+            aria-current={location === '/notes' ? 'page' : undefined}
+            title={t.allNotes}
+          >
+            <NotebookText size={18} />
+          </Link>
+          {annotationsOn ? (
+            <Link
+              href="/highlights"
+              className={clsx('inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk hover:text-ink', location === '/highlights' ? 'bg-sunk text-ink' : 'text-ink-2')}
+              aria-label={t.highlights}
+              aria-current={location === '/highlights' ? 'page' : undefined}
+              title={t.highlights}
+            >
+              <Highlighter size={18} />
+            </Link>
+          ) : null}
           {/* The meadow is worth coming back to, so it is one click away from anywhere. */}
           {achievementsOn ? (
             <Link
