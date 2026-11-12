@@ -86,9 +86,12 @@ export interface NotePreview {
   diagnostics: TypstDiagnostic[];
 }
 export interface SearchResponse {
-  items: { id: string; title: string; href: string; snippet: string | null }[];
-  /** `href`: where it is read; an annotation's `exerciseId` is its target, which may be a chapter introduction. */
-  mine: { exerciseId: string; source: 'note' | 'answer' | 'annotation'; snippet: string; href: string }[];
+  /** `course` is the id of the workbook the text is in; the dialog opens that workbook first if it is not the open one. */
+  items: { id: string; title: string; href: string; snippet: string | null; course: string; courseTitle: string }[];
+  /** The student's own text; `title` names the exercise, page or material it is on. */
+  mine: { source: 'note' | 'answer' | 'annotation' | 'question'; title: string; snippet: string; href: string; course: string | null; courseTitle: string | null }[];
+  /** Text of the materials' pages (1-based). */
+  materials: { resource: string; title: string; page: number; snippet: string; href: string }[];
   cards: { deckId: string; deckTitle: string; cardId: string; title: string; snippet: string | null }[];
 }
 

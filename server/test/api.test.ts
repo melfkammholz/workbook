@@ -91,7 +91,7 @@ describe('student data API', () => {
     expect(json.answers).toEqual({ text: 'Jeder Ausdruck hat einen Typ.' });
     expect(json.note.content).toContain('Compilezeit');
     const search = (await api('GET', '/api/search?q=compilezeit')).json;
-    expect(search.mine[0]).toMatchObject({ exerciseId: id, source: 'note' });
+    expect(search.mine[0]).toMatchObject({ href: `/item/${id}`, source: 'note' });
   });
 
   it('records a reflection and activity', async () => {
@@ -152,7 +152,7 @@ describe('student data API', () => {
     expect(list.find((a) => a.id === gone.id)?.found).toBe(false);
 
     const search = (await api('GET', '/api/search?q=herum')).json;
-    expect(search.mine).toContainEqual(expect.objectContaining({ exerciseId: id, source: 'annotation', href: `/item/${id}` }));
+    expect(search.mine).toContainEqual(expect.objectContaining({ source: 'annotation', href: `/item/${id}` }));
 
     expect((await api('DELETE', `/api/annotations/${gone.id}`)).status).toBe(200);
     expect((await api('DELETE', `/api/annotations/${gone.id}`)).status).toBe(404);

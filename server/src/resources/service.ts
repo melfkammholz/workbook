@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { Anchor, Placed, Reanchored, StaleItems, UnplacedItems, AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
 import { MAX_TOC_LEVEL, MAX_TOC_TITLE } from '@wb/shared';
 import type { Store } from '../db/store.js';
+import { extractPdfText } from './text.js';
 
 export class ResourceError extends Error {
   constructor(readonly code: 'unknown-resource' | 'unknown-series' | 'unknown-item' | 'same-file' | 'page-taken' | 'no-file') {
@@ -192,6 +193,7 @@ export class Resources {
       this.sql.run('UPDATE resources SET current_version = ? WHERE id = ?', version, id);
       this.setCourses(id, fields.courses);
     });
+    this.indexText();
     return this.get(id);
   }
 
@@ -218,6 +220,78 @@ export class Resources {
       this.dropEmptySeries();
     });
     for (const sha of shas) this.removeIfUnused(sha);
+  }
+
+  // ───────────────────────── text of the files, for search ─────────────────────────
+
+  private extracting = false;
+  private again = false;
+
+  /**
+   * Reads the text of every PDF in use that has not been read yet, one file at a time in the background. A file that
+   * cannot be parsed is marked and not tried again. Safe to call at any time: a run in progress picks up new files.
+   */
+  indexText(): void {
+    if (this.extracting) {
+      this.again = true;
+      return;
+    }
+    this.extracting = true;
+    void (async () => {
+      try {
+        for (;;) {
+          const next = this.sql.get(
+            `SELECT r.id, v.sha256, v.mime FROM resources r JOIN resource_versions v ON v.id = r.current_version
+             WHERE NOT EXISTS (SELECT 1 FROM resource_text_state s WHERE s.resource = r.id AND s.version = v.sha256) ORDER BY r.created_at LIMIT 1`,
+          );
+          if (!next) {
+            // Something may have arrived while the last file was read.
+            if (!this.again) return;
+            this.again = false;
+            continue;
+          }
+          await this.extractOne(next.id as string, next.sha256 as string, next.mime === 'application/pdf');
+        }
+      } catch (e) {
+        console.error('Reading the text of the materials stopped.', e);
+      } finally {
+        this.extracting = false;
+      }
+    })();
+  }
+
+  private async extractOne(id: string, sha: string, pdf: boolean): Promise<void> {
+    let pages: string[] | null = null;
+    const file = pdf ? this.filePath(sha) : null;
+    if (file) {
+      try {
+        pages = await extractPdfText(file);
+      } catch (e) {
+        console.error(`Could not read the text of a material (${id}); it is not searched.`, e instanceof Error ? e.message : e);
+        pages = null;
+      }
+    }
+    try {
+      this.sql.tx(() => {
+        // The resource may be gone or have a new file by now.
+        const cur = this.sql.get('SELECT v.sha256 FROM resources r JOIN resource_versions v ON v.id = r.current_version WHERE r.id = ?', id);
+        if (cur?.sha256 !== sha) return;
+        pages?.forEach((text, i) => text && this.sql.run('INSERT OR REPLACE INTO resource_text (resource, version, page_index, text) VALUES (?,?,?,?)', id, sha, i, text));
+        this.sql.run('INSERT OR REPLACE INTO resource_text_state (resource, version, status) VALUES (?,?,?)', id, sha, pages ? 'done' : 'failed');
+      });
+    } catch {
+      // Deleted while it was read.
+    }
+  }
+
+  /** The resources the student can see: those of no course and those of a course that is shown. */
+  visibleIds(courseIds: string[]): Set<string> {
+    const shown = new Set(courseIds);
+    const ids = new Set((this.sql.all('SELECT id FROM resources') as { id: string }[]).map((r) => r.id));
+    const linked = new Map<string, boolean>();
+    for (const r of this.sql.all('SELECT resource, course FROM resource_courses') as { resource: string; course: string }[]) linked.set(r.resource, (linked.get(r.resource) ?? false) || shown.has(r.course));
+    for (const [id, any] of linked) if (!any) ids.delete(id);
+    return ids;
   }
 
   /** The viewer remembers where the student was. */
@@ -416,8 +490,12 @@ export class Resources {
       this.sql.run('INSERT INTO resource_versions (resource, sha256, filename, mime, size, uploaded_at) VALUES (?,?,?,?,?,?)', id, file.sha256, file.filename, mimeOf(file.filename), file.size, now);
       const version = Number(this.sql.get('SELECT last_insert_rowid() AS id')!.id);
       this.sql.run('UPDATE resources SET current_version = ?, updated_at = ? WHERE id = ?', version, now, id);
+      // Only the text of the file in use is searched.
+      this.sql.run('DELETE FROM resource_text WHERE resource = ? AND version <> ?', id, file.sha256);
+      this.sql.run('DELETE FROM resource_text_state WHERE resource = ? AND version <> ?', id, file.sha256);
     });
     this.removeIfSuperseded(before.file.sha256);
+    this.indexText();
     return this.get(id);
   }
 

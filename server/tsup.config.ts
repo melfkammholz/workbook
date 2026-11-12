@@ -11,5 +11,6 @@ export default defineConfig({
   noExternal: ['@wb/shared'],
   // `node:sqlite` only exists with its prefix; tsup would strip it from built-in imports.
   removeNodeProtocol: false,
-  external: ['node:sqlite'],
+  // The PDF reader finds its worker file next to itself, so it stays a package.
+  external: ['node:sqlite', /^pdfjs-dist/],
 });

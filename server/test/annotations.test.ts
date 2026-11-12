@@ -113,7 +113,7 @@ describe('stored annotations', () => {
     const s = new Store(':memory:');
     const a = s.addAnnotation({ target: 'x', part: 'task', quote: 'Typklasse', prefix: '', suffix: '', color: 'pink', comment: 'Wie bei Interfaces?' });
     expect(s.updateAnnotation(a.id, { review: 'open' })).toMatchObject({ review: 'open', comment: 'Wie bei Interfaces?' });
-    expect(s.search('interfaces')).toEqual([expect.objectContaining({ exerciseId: 'x', source: 'annotation' })]);
+    expect(s.search('interfaces')).toEqual([expect.objectContaining({ anchor: expect.objectContaining({ target: 'x' }), source: 'annotation' })]);
     s.resetWork();
     expect(s.listAnnotations()).toHaveLength(1);
     expect(s.search('interfaces')).toHaveLength(1);

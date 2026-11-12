@@ -86,11 +86,39 @@ describe('Store', () => {
     const { store } = make();
     store.saveNote('a', 'typst', 'Monaden sind Monoide in der Kategorie der Endofunktoren');
     store.saveAnswer('b', 'text', 'Rekursion braucht einen Basisfall');
-    expect(store.search('endofunk').map((r) => r.exerciseId)).toEqual(['a']);
-    expect(store.search('basisfall')[0]).toMatchObject({ exerciseId: 'b', source: 'answer' });
+    expect(store.search('endofunk').map((r) => r.anchor.id)).toEqual(['a']);
+    expect(store.search('basisfall')[0]).toMatchObject({ anchor: { id: 'b' }, source: 'answer' });
     expect(store.search('"; DROP TABLE')).toEqual([]);
     store.saveNote('a', 'typst', '');
     expect(store.search('endofunk')).toEqual([]);
+  });
+
+  it('finds questions, in the courses asked for only, and keeps the index current on edit and delete', () => {
+    const { store } = make();
+    const a = store.forCourse('a');
+    const b = store.forCourse('b');
+    const q = a.addQuestion({ text: 'Warum terminiert foldr nicht?', anchor: { kind: 'exercise', course: 'a', id: 'x' } });
+    b.saveNote('y', 'typst', 'foldr Notiz in b');
+    expect(store.search('foldr', { courses: ['a'] })).toEqual([expect.objectContaining({ source: 'question', course: 'a', anchor: expect.objectContaining({ id: 'x', questionId: q.id }) })]);
+    expect(store.search('foldr', { courses: ['a', 'b'] })).toHaveLength(2);
+    expect(store.search('foldr', { courses: [] })).toEqual([]);
+    a.updateQuestion(q.id, { text: 'Warum divergiert zipWith?' });
+    expect(store.search('foldr', { courses: ['a'] })).toEqual([]);
+    expect(store.search('zipwith', { courses: ['a'] })).toHaveLength(1);
+    a.resetWork();
+    expect(store.search('zipwith', { courses: ['a'] })).toHaveLength(1);
+    a.deleteQuestion(q.id);
+    expect(store.search('zipwith', { courses: ['a'] })).toEqual([]);
+  });
+
+  it('indexes the text of materials apart from the rest, and drops it with the material', () => {
+    const { store } = make();
+    store.sql.run("INSERT INTO resources (id, title, type, created_at, updated_at) VALUES ('r1','Skript','notes',1,1)");
+    store.sql.run("INSERT INTO resource_text (resource, version, page_index, text) VALUES ('r1','v',3,'Der Satz von Bayes steht hier')");
+    expect(store.search('bayes', { courses: [] })).toEqual([]);
+    expect(store.search('bayes', { materials: true, courses: [] })).toEqual([expect.objectContaining({ source: 'material', anchor: expect.objectContaining({ resource: 'r1', pageIndex: 3 }) })]);
+    store.sql.run("DELETE FROM resources WHERE id = 'r1'");
+    expect(store.search('bayes', { materials: true, courses: [] })).toEqual([]);
   });
 
   it('gathers the work for the review page', () => {
@@ -370,12 +398,11 @@ describe('importing per-course databases of earlier versions', () => {
     // An old version of the schema: no annotations yet.
     oldDatabase(oldA, 7, `
       INSERT INTO progress (exercise_id, status, updated_at) VALUES ('x', 'done', 1);
-      INSERT INTO answers (exercise_id, slot, content, updated_at) VALUES ('x', 'text', 'A', 1);
+      INSERT INTO answers (exercise_id, slot, content, updated_at) VALUES ('x', 'text', 'Apfel', 1);
       INSERT INTO answer_versions (exercise_id, slot, content, reason, created_at) VALUES ('x', 'text', 'A0', 'run', 1), ('x', 'text', 'A1', 'run', 2);
       INSERT INTO reflections (exercise_id, confidence, how, created_at) VALUES ('x', 2, '[]', 1), ('x', 5, '[]', 2);
       INSERT INTO settings (key, value) VALUES ('landingSeen', 'true');
       INSERT INTO open_questions (exercise_id, content, updated_at) VALUES ('x', 'Warum?', 1);
-      INSERT INTO search (exercise_id, source, content) VALUES ('x', 'answer', 'Apfel');
     `);
     oldDatabase(oldB, 9, `
       INSERT INTO progress (exercise_id, status, updated_at) VALUES ('x', 'in_progress', 1);

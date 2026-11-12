@@ -42,7 +42,14 @@ const MAX_VERSIONS = 60;
 const MAX_TICK_SECONDS = 120;
 
 type Row = Record<string, unknown>;
-type SearchSource = 'note' | 'answer' | 'annotation';
+export type SearchSource = 'note' | 'answer' | 'annotation' | 'question' | 'material';
+/** What the index found; `anchor` says where it is (`kind` as in `Anchor`, plus `id` of the highlight, page item or question, and `slot`). */
+export interface SearchHit {
+  course: string | null;
+  anchor: { kind: string; course?: string; id?: string; questionId?: string; target?: string; slot?: string; resource?: string; pageIndex?: number };
+  source: SearchSource;
+  snippet: string;
+}
 /** Course of the rows that belong to the student rather than to a course. */
 const GLOBAL = '';
 
@@ -312,7 +319,6 @@ export class Store {
           MAX_VERSIONS,
         );
       }
-      this.reindex(id, 'answer', Object.values(this.getAnswers(id)).join('\n\n'));
     });
   }
 
@@ -353,7 +359,6 @@ export class Store {
           this.now(),
         );
       }
-      this.reindex(id, 'note', content);
     });
   }
 
@@ -560,7 +565,6 @@ export class Store {
         t,
       );
       if (a.review) this.setReview(id, a.review, this.textAnchor(id));
-      this.reindexAnnotations(a.target);
     });
     return this.getAnnotation(id)!;
   }
@@ -581,7 +585,6 @@ export class Store {
         this.course,
       );
       if (patch.review !== undefined) this.setReview(id, patch.review, this.textAnchor(id));
-      this.reindexAnnotations(prev.target);
     });
     return this.getAnnotation(id);
   }
@@ -591,17 +594,8 @@ export class Store {
     if (!prev) return false;
     this.tx(() => {
       this.run('DELETE FROM annotations WHERE id = ? AND course = ?', id, this.course);
-      this.reindexAnnotations(prev.target);
     });
     return true;
-  }
-
-  /** Quotes and comments are found by search, under the text they belong to. */
-  private reindexAnnotations(target: string): void {
-    const text = this.listAnnotations(target)
-      .map((a) => (a.comment ? `${a.quote}\n${a.comment}` : a.quote))
-      .join('\n\n');
-    this.reindex(target, 'annotation', text);
   }
 
   resolvedMarkCount(): number {
@@ -751,9 +745,7 @@ export class Store {
     this.tx(() => {
       for (const table of COURSE_TABLES) {
         if (table === 'settings') continue;
-        // What the student highlighted is theirs: it stays, and so does the way search finds it.
-        if (table === 'search') this.run("DELETE FROM search WHERE course = ? AND source != 'annotation'", this.course);
-        else this.run(`DELETE FROM ${table} WHERE course = ?`, this.course);
+        this.run(`DELETE FROM ${table} WHERE course = ?`, this.course);
       }
       // Course '' is also where the student's own values live.
       this.run(`DELETE FROM settings WHERE course = ? AND key NOT IN (${GLOBAL_KEYS.map(() => '?').join(',')})`, this.course, ...GLOBAL_KEYS);
@@ -770,7 +762,6 @@ export class Store {
   resetHighlights(): void {
     this.tx(() => {
       for (const table of COURSE_REFERENCE_TABLES) this.run(`DELETE FROM ${table}`);
-      this.run("DELETE FROM search WHERE source = 'annotation'");
     });
   }
 
@@ -813,23 +804,24 @@ export class Store {
 
   // ───────────────────────── search ─────────────────────────
 
-  private reindex(id: string, source: SearchSource, text: string): void {
-    this.run('DELETE FROM search WHERE course = ? AND exercise_id = ? AND source = ?', this.course, id, source);
-    if (text.trim()) this.run('INSERT INTO search (course, exercise_id, source, content) VALUES (?,?,?,?)', this.course, id, source, text);
-  }
-
-  /** Full-text search over the student's own notes, answers and annotations. `exerciseId` is an annotation's target. */
-  search(query: string, limit = 20): { exerciseId: string; source: SearchSource; snippet: string }[] {
+  /**
+   * Full-text search over the student's own text (notes, answers, highlights, questions) and the text of materials,
+   * in the given courses (default: this one) and in what belongs to no course. The index is kept by triggers.
+   */
+  search(query: string, o: { courses?: string[]; materials?: boolean; limit?: number } = {}): SearchHit[] {
     const terms = query.match(/[\p{L}\p{N}_]+/gu);
     if (!terms) return [];
     const match = terms.map((t) => `"${t}"*`).join(' ');
+    const courses = o.courses ?? [this.course];
     return this.all(
-      `SELECT exercise_id, source, snippet(search, 3, '«', '»', '…', 12) AS snippet
-       FROM search WHERE search MATCH ? AND course = ? ORDER BY rank LIMIT ?`,
+      `SELECT d.course, d.anchor, d.source, snippet(search, 0, '«', '»', '…', 12) AS snippet
+       FROM search JOIN search_docs d ON d.id = search.rowid
+       WHERE search MATCH ? AND ${o.materials ? "d.source = 'material'" : "d.source <> 'material'"} AND (d.course IS NULL OR d.course IN (${courses.map(() => '?').join(',') || "''"}))
+       ORDER BY search.rank LIMIT ?`,
       match,
-      this.course,
-      limit,
-    ).map((r) => ({ exerciseId: r.exercise_id as string, source: r.source as SearchSource, snippet: r.snippet as string }));
+      ...courses,
+      o.limit ?? 20,
+    ).map((r) => ({ course: (r.course as string | null) ?? null, anchor: JSON.parse(r.anchor as string) as SearchHit['anchor'], source: r.source as SearchSource, snippet: r.snippet as string }));
   }
 
   // ───────────────────────── review ─────────────────────────

@@ -345,6 +345,13 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   const arrived = useRef<string | null>(null);
   useEffect(() => {
     if (!highlight || !doc || !guess || !pages || (marksOn && !highlights) || arrived.current === highlight) return;
+    // From a search for text on a page.
+    const onPage = /^page:(\d+)$/.exec(highlight);
+    if (onPage) {
+      arrived.current = highlight;
+      requestAnimationFrame(() => goto(Number(onPage[1])));
+      return;
+    }
     const a = highlights?.find((x) => x.id === highlight);
     const p = a ? undefined : pages.find((x) => x.id === highlight);
     const q = a || p ? undefined : questions.find((x) => x.id === highlight);

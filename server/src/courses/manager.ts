@@ -116,6 +116,8 @@ export class CourseManager {
     this.resources = new Resources(this.global, o.config.dataDir, () => this.courseRefs());
     this.hasMount = isCourse(o.config.contentDir);
     this.importLegacy();
+    // After startup has settled: reading the files' text is background work.
+    setTimeout(() => this.resources.indexText(), 2000).unref();
     const known = this.ids();
     const stored = this.global.getValue<string | null>(ACTIVE_KEY, null);
     const saved = stored === OLD_MOUNTED ? MOUNTED : stored;
@@ -137,6 +139,14 @@ export class CourseManager {
   /** The student's courses by the id courses are referred to by (`workbook.yml`'s `id`), for decks and materials. */
   courseRefs(): { id: string; title: string }[] {
     return this.ids().map((id) => ({ id: this.openCourse(id).content.current.outline.id, title: this.openCourse(id).content.current.outline.title }));
+  }
+
+  /** The courses search looks in: those shown, with the `course` their work is stored under and their text. */
+  searchScope(): { id: string; key: string; title: string; content: Content }[] {
+    return this.ids().map((id) => {
+      const content = this.openCourse(id).content.current;
+      return { id, key: this.key(id), title: content.outline.title, content };
+    });
   }
 
   /** Decks are compiled in a root of their own, with no course content to reach. */
@@ -391,6 +401,7 @@ export class CourseManager {
     this.global.setValue(ACTIVE_KEY, this.activeId);
     this.o.onSwitch?.();
     void this.active;
+    this.resources.indexText();
     return this.list();
   }
 

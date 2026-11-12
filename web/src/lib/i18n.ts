@@ -902,6 +902,9 @@ const en = {
   searchSourceNote: 'Note',
   searchSourceAnswer: 'Answer',
   searchSourceAnnotation: 'Highlight',
+  searchSourceQuestion: 'Question',
+  searchPageIn: (title: string, page: number) => `${title}, page ${page}`,
+  searchInWorkbook: 'Other workbook',
 
   // highlights
   highlights: 'Highlights',
@@ -2182,6 +2185,9 @@ const de: Strings = {
   searchSourceNote: 'Notiz',
   searchSourceAnswer: 'Antwort',
   searchSourceAnnotation: 'Markierung',
+  searchSourceQuestion: 'Frage',
+  searchPageIn: (title: string, page: number) => `${title}, Seite ${page}`,
+  searchInWorkbook: 'Anderes Workbook',
 
   // highlights
   highlights: 'Markierungen',

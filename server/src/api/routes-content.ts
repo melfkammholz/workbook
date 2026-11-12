@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { FOCUSES, targetHref, type Focus, type ItemDetail } from '@wb/shared';
+import { FOCUSES, type Focus, type ItemDetail } from '@wb/shared';
 import type { Deps } from './deps.js';
 import { docKey } from '../content/loader.js';
-import { fold, snippetOf } from '../content/search.js';
+import { searchEverything } from '../courses/search.js';
 import { suggestNext } from '../suggest.js';
 
 export function contentRoutes(app: FastifyInstance, d: Deps): void {
@@ -57,30 +57,5 @@ export function contentRoutes(app: FastifyInstance, d: Deps): void {
     return d.renderer.renderNote(source, typeof width === 'number' && width >= 100 && width <= 2000 ? width : undefined);
   });
 
-  app.get<{ Querystring: { q?: string } }>('/api/search', async (req) => {
-    const q = (req.query.q ?? '').trim();
-    if (!q) return { items: [], mine: [], cards: [] };
-    const terms = fold(q).split(/\s+/).filter(Boolean);
-    // Every word has to be there, somewhere. Titles count for more than the text.
-    const items = d.content.current
-      .searchTexts()
-      .map((t) => ({ t, title: fold(t.title), text: fold(t.text) }))
-      .filter(({ t, title, text }) => terms.every((w) => title.includes(w) || text.includes(w) || t.id.includes(w)))
-      .sort((a, b) => Number(terms.every((w) => b.title.includes(w))) - Number(terms.every((w) => a.title.includes(w))))
-      .slice(0, 20)
-      .map(({ t }) => ({ id: t.id, title: t.title, href: t.href, snippet: snippetOf(t.text, terms) }));
-    // Work in shared files is stored apart from any one exercise, so it links to one that uses them.
-    // Annotations are under the text they are in, which may be a chapter introduction or an adventure page.
-    const mine = d.store.search(q).flatMap((hit) => {
-      if (hit.source === 'annotation') {
-        const text = d.content.current.get(hit.exerciseId) ?? d.content.current.doc(hit.exerciseId);
-        return text ? [{ ...hit, href: targetHref(hit.exerciseId) }] : [];
-      }
-      const exerciseId = d.content.current.exerciseOfOwner(hit.exerciseId);
-      return exerciseId ? [{ ...hit, exerciseId, href: `/item/${exerciseId}` }] : [];
-    });
-    // The student's flashcards too: they belong to no course, and are found from any.
-    const cards = d.courses.flashcards.search(terms, fold, snippetOf);
-    return { items, mine, cards };
-  });
+  app.get<{ Querystring: { q?: string } }>('/api/search', async (req) => searchEverything(d.courses, (req.query.q ?? '').trim()));
 }

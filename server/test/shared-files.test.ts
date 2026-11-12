@@ -219,8 +219,8 @@ describe.skipIf(!hasBinary(typstBin))('API: new course pages and shared work', (
   });
 
   it('finds shared work in search, linked to an exercise', async () => {
-    const { mine } = (await api('GET', '/api/search?q=meins')).json as { mine: { exerciseId: string }[] };
-    expect(mine[0]!.exerciseId).toMatch(/^rechner-/);
+    const { mine } = (await api('GET', '/api/search?q=meins')).json as { mine: { href: string }[] };
+    expect(mine[0]!.href).toMatch(/^\/item\/rechner-/);
   });
 
   it('shows only that exercise its part of the solution, and records who looked', async () => {

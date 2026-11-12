@@ -522,6 +522,69 @@ export const MIGRATIONS: Migration[] = [
     CREATE INDEX questions_source ON questions (highlight_id) WHERE highlight_id IS NOT NULL;
     `);
   },
+  /*
+   * 20: one search index over everything, global. `search_docs` has one row per searchable text (`ref_kind` + `ref_id`
+   * is its key, `course` NULL for what belongs to no course, `anchor` says where it is); `search` is the FTS5 index
+   * over it. Triggers on the source tables keep it current, so no write path can forget it. A migration that rebuilds
+   * one of these tables must create its triggers again. `resource_text` is the text of a material's pages, extracted
+   * by the server once per version (`resource_text_state` says it was tried, so a failure is not retried).
+   */ (db) => {
+    db.exec(`
+    CREATE TABLE resource_text (
+      resource   TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+      version    TEXT NOT NULL,
+      page_index INTEGER NOT NULL,
+      text       TEXT NOT NULL,
+      PRIMARY KEY (resource, version, page_index)
+    ) WITHOUT ROWID;
+    CREATE TABLE resource_text_state (
+      resource TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+      version  TEXT NOT NULL,
+      status   TEXT NOT NULL CHECK (status IN ('done','failed')),
+      PRIMARY KEY (resource, version)
+    ) WITHOUT ROWID;
+    DROP TABLE search;
+    CREATE TABLE search_docs (
+      id       INTEGER PRIMARY KEY,
+      ref_kind TEXT NOT NULL,
+      ref_id   TEXT NOT NULL,
+      course   TEXT,
+      anchor   TEXT NOT NULL,
+      source   TEXT NOT NULL,
+      content  TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX search_docs_ref ON search_docs (ref_kind, ref_id);
+    CREATE VIRTUAL TABLE search USING fts5(
+      content, content = 'search_docs', content_rowid = 'id', tokenize = 'unicode61 remove_diacritics 2'
+    );
+    CREATE TRIGGER search_docs_ai AFTER INSERT ON search_docs BEGIN
+      INSERT INTO search (rowid, content) VALUES (new.id, new.content);
+    END;
+    CREATE TRIGGER search_docs_ad AFTER DELETE ON search_docs BEGIN
+      INSERT INTO search (search, rowid, content) VALUES ('delete', old.id, old.content);
+    END;
+    `);
+    const page = (r: string) => `json_object('kind','page','resource',${r}.resource,'pageIndex',${r}.page_index,'id',${r}.id)`;
+    const sources: { table: string; kind: string; ref: (r: string) => string; course: (r: string) => string; anchor: (r: string) => string; source: string; content: (r: string) => string; when: (r: string) => string; touch: string }[] = [
+      { table: 'notes', kind: 'note', ref: (r) => `${r}.course || '/' || ${r}.exercise_id`, course: (r) => `NULLIF(${r}.course, '')`, anchor: (r) => `json_object('kind','exercise','course',${r}.course,'id',${r}.exercise_id)`, source: 'note', content: (r) => `${r}.content`, when: () => '1', touch: 'content' },
+      { table: 'answers', kind: 'answer', ref: (r) => `${r}.course || '/' || ${r}.exercise_id || '#' || ${r}.slot`, course: (r) => `NULLIF(${r}.course, '')`, anchor: (r) => `json_object('kind','exercise','course',${r}.course,'id',${r}.exercise_id,'slot',${r}.slot)`, source: 'answer', content: (r) => `${r}.content`, when: () => '1', touch: 'content' },
+      { table: 'annotations', kind: 'highlight', ref: (r) => `${r}.course || '/' || ${r}.id`, course: (r) => `NULLIF(${r}.course, '')`, anchor: (r) => `json_object('kind','text','course',${r}.course,'target',${r}.target,'id',${r}.id)`, source: 'annotation', content: (r) => `${r}.quote || char(10) || ${r}.comment`, when: () => '1', touch: 'quote' },
+      { table: 'pdf_annotations', kind: 'pdf-highlight', ref: (r) => `${r}.id`, course: () => 'NULL', anchor: page, source: 'annotation', content: (r) => `${r}.quote || char(10) || ${r}.comment`, when: (r) => `${r}.unplaced = 0`, touch: 'quote' },
+      { table: 'pdf_pages', kind: 'pdf-page', ref: (r) => `${r}.id`, course: () => 'NULL', anchor: page, source: 'note', content: (r) => `${r}.note`, when: (r) => `${r}.unplaced = 0`, touch: 'note' },
+      { table: 'questions', kind: 'question', ref: (r) => `${r}.id`, course: (r) => `NULLIF(${r}.course, '')`, anchor: (r) => `json_set(${r}.anchor, '$.questionId', ${r}.id)`, source: 'question', content: (r) => `${r}.text || char(10) || COALESCE(${r}.answer, '')`, when: (r) => `${r}.unplaced = 0`, touch: 'text' },
+      { table: 'resource_text', kind: 'material', ref: (r) => `${r}.resource || '/' || ${r}.page_index`, course: () => 'NULL', anchor: (r) => `json_object('kind','page','resource',${r}.resource,'pageIndex',${r}.page_index)`, source: 'material', content: (r) => `${r}.text`, when: () => '1', touch: 'text' },
+    ];
+    for (const s of sources) {
+      const drop = (r: string) => `DELETE FROM search_docs WHERE ref_kind = '${s.kind}' AND ref_id = ${s.ref(r)};`;
+      const add = (r: string) => `INSERT INTO search_docs (ref_kind, ref_id, course, anchor, source, content) SELECT '${s.kind}', ${s.ref(r)}, ${s.course(r)}, ${s.anchor(r)}, '${s.source}', ${s.content(r)} WHERE ${s.when(r)} AND trim(${s.content(r)}) <> '';`;
+      db.exec(`
+      CREATE TRIGGER ${s.table}_search_ai AFTER INSERT ON ${s.table} BEGIN ${drop('new')} ${add('new')} END;
+      CREATE TRIGGER ${s.table}_search_au AFTER UPDATE ON ${s.table} BEGIN ${drop('old')} ${drop('new')} ${add('new')} END;
+      CREATE TRIGGER ${s.table}_search_ad AFTER DELETE ON ${s.table} BEGIN ${drop('old')} END;
+      UPDATE ${s.table} SET ${s.touch} = ${s.touch};
+      `);
+    }
+  },
 ];
 
 /** The course a mounted `/content` folder is. */
@@ -549,7 +612,6 @@ export const COURSE_TABLES = [
   'checklist_ratings',
   'achievements',
   'settings',
-  'search',
 ];
 
 /** Brings a database up to the current schema. */
