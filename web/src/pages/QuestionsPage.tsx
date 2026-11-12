@@ -11,7 +11,7 @@ import { useT } from '@/lib/i18n';
 import { useResources } from '@/lib/resources';
 
 /** The item or text a workbook question is about. */
-const placeOf = (a: Exclude<Question['anchor'], { kind: 'page' | 'none' }>) => (a.kind === 'text' ? a.target : a.id);
+const placeOf = (a: Exclude<Question['anchor'], { kind: 'page' | 'none' | 'material' }>) => (a.kind === 'text' ? a.target : a.id);
 
 interface Group {
   key: string;
@@ -36,17 +36,20 @@ export function QuestionsPage() {
     const loose: Question[] = [];
     for (const q of shown) {
       const a = q.anchor;
-      if (a.kind === 'page') (byResource.get(a.resource) ?? byResource.set(a.resource, []).get(a.resource)!).push(q);
+      if (a.kind === 'page' || a.kind === 'material') (byResource.get(a.resource) ?? byResource.set(a.resource, []).get(a.resource)!).push(q);
       else if (a.kind === 'none') loose.push(q);
       else (byCourse.get(a.course) ?? byCourse.set(a.course, []).get(a.course)!).push(q);
     }
     const materials: Group[] = [...byResource].map(([id, qs]) => {
       const pages = new Map<number, Question[]>();
-      for (const q of qs) if (q.anchor.kind === 'page') (pages.get(q.anchor.pageIndex) ?? pages.set(q.anchor.pageIndex, []).get(q.anchor.pageIndex)!).push(q);
+      for (const q of qs) {
+        const n = q.anchor.kind === 'page' ? q.anchor.pageIndex : -1;
+        (pages.get(n) ?? pages.set(n, []).get(n)!).push(q);
+      }
       return {
         key: id,
         title: resources?.find((r) => r.id === id)?.title ?? id,
-        parts: [...pages].sort((a, b) => a[0] - b[0]).map(([n, items]) => ({ key: String(n), title: t.questionPageLabel(n + 1), href: `/resources/${encodeURIComponent(id)}/${encodeURIComponent(items[0]!.id)}`, items })),
+        parts: [...pages].sort((a, b) => a[0] - b[0]).map(([n, items]) => ({ key: String(n), title: n < 0 ? t.pdfQuestionWhole : t.questionPageLabel(n + 1), href: n < 0 ? `/resources/${encodeURIComponent(id)}` : `/resources/${encodeURIComponent(id)}/${encodeURIComponent(items[0]!.id)}`, items })),
       };
     });
     materials.sort((a, b) => a.title.localeCompare(b.title));
@@ -59,7 +62,7 @@ export function QuestionsPage() {
     const workbooks: Group[] = [...byCourse].map(([course, qs]) => {
       const here = !!courses?.activeId && courses.activeId === course;
       const items = new Map<string, Question[]>();
-      for (const q of qs) if (q.anchor.kind !== 'page' && q.anchor.kind !== 'none') (items.get(placeOf(q.anchor)) ?? items.set(placeOf(q.anchor), []).get(placeOf(q.anchor))!).push(q);
+      for (const q of qs) if (q.anchor.kind !== 'page' && q.anchor.kind !== 'none' && q.anchor.kind !== 'material') (items.get(placeOf(q.anchor)) ?? items.set(placeOf(q.anchor), []).get(placeOf(q.anchor))!).push(q);
       const parts = [...items]
         .sort((a, b) => (here ? (order.get(a[0]) ?? 1e9) - (order.get(b[0]) ?? 1e9) : 0) || a[0].localeCompare(b[0]))
         .map(([id, list]) => ({ key: id, title: here ? titleOf(id) : id, href: here ? (id.startsWith('chapter/') ? `/${id}` : `/item/${id}`) : null, items: list }));
@@ -109,7 +112,7 @@ export function QuestionsPage() {
                   )}
                   <ul className="divide-y divide-line">
                     {p.items.map((q) => (
-                      <QuestionRow key={q.id} item={q.anchor.kind === 'page' || q.anchor.kind === 'none' ? null : placeOf(q.anchor)} q={q} extra={<Quote q={q} />} />
+                      <QuestionRow key={q.id} item={q.anchor.kind === 'page' || q.anchor.kind === 'none' || q.anchor.kind === 'material' ? null : placeOf(q.anchor)} q={q} extra={<Quote q={q} />} />
                     ))}
                   </ul>
                 </div>

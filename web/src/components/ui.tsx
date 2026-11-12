@@ -1,6 +1,6 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { clsx } from 'clsx';
-import { X } from 'lucide-react';
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { cloneElement, useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactElement, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { Status } from '@wb/shared';
@@ -356,5 +356,45 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
       <p className="font-medium text-ink">{title}</p>
       {children ? <p className="mx-auto mt-1 max-w-sm text-sm text-ink-2">{children}</p> : null}
     </div>
+  );
+}
+
+/** A number field with its own small stepper: the browser's spin buttons ignore the theme and come out dark. Commits on every step and on blur. */
+export function NumberField({ value, min = 0, max, onCommit, className, ...rest }: { value: number; min?: number; max: number; onCommit: (n: number) => void; className?: string } & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'min' | 'max' | 'type'>) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const commit = (n: number) => {
+    const c = Math.max(min, Math.min(max, Math.round(n) || 0));
+    setText(String(c));
+    if (c !== value) onCommit(c);
+  };
+  const step = (d: number) => commit((Number(text) || 0) + d);
+  const btn = 'flex h-1/2 w-5 items-center justify-center text-ink-3 hover:text-ink';
+  return (
+    <span className={clsx('relative inline-block', className)}>
+      <input
+        {...rest}
+        type="text"
+        inputMode="numeric"
+        value={text}
+        onChange={(e) => setText(e.target.value.replace(/[^0-9]/g, ''))}
+        onBlur={() => commit(Number(text))}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            step(e.key === 'ArrowUp' ? 1 : -1);
+          } else if (e.key === 'Enter') commit(Number(text));
+        }}
+        className="wb-field h-8 w-full pl-2 pr-6 text-sm"
+      />
+      <span className="absolute inset-y-px right-px flex w-5 flex-col" aria-hidden>
+        <button type="button" tabIndex={-1} className={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => step(1)}>
+          <ChevronUp size={12} />
+        </button>
+        <button type="button" tabIndex={-1} className={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => step(-1)}>
+          <ChevronDown size={12} />
+        </button>
+      </span>
+    </span>
   );
 }

@@ -553,7 +553,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
           <div ref={scroller} className="min-h-0 flex-1 overflow-auto bg-sunk">
             {view}
           </div>
-          {doc ? <PdfQuestionBar resource={resource} current={current} pageInfo={pageInfo} scroller={scroller} labelOf={labelOf} /> : null}
+          {doc ? <PdfQuestionBar resource={resource} current={current} pageInfo={pageInfo} scroller={scroller} /> : null}
         </div>
         {marks && doc ? <PdfHighlightLayer resource={resource} scroller={scroller} list={highlights ?? []} editing={editing} setEditing={setEditing} /> : null}
         {column ? (

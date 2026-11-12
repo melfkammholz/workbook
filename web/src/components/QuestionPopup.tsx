@@ -1,10 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { askQuestion, useOutline } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { usePageKeys } from '@/lib/keys';
-import { CaptureField } from './Questions';
-import { Dialog } from './ui';
+import { CaptureField, QuestionCard } from './Questions';
 
 /** What is open, as a place for a question; a PDF has its own line, so it has no place here. */
 function useOpenPlace(location: string): { item: string | null; title: string | null } {
@@ -24,9 +23,9 @@ function useOpenPlace(location: string): { item: string | null; title: string | 
 }
 
 /**
- * `q` anywhere opens a small box to write a question into; it is tied to the exercise, lesson or chapter that is open,
- * else to nothing. In a PDF the pinned line at the bottom takes the key instead. Enter saves and keeps the box open,
- * Escape closes it.
+ * `q` anywhere opens the same card as under a PDF, floating at the bottom, to write a question into; it is tied to the
+ * exercise, lesson or chapter that is open, else to nothing. In a PDF the pinned card takes the key instead. Enter
+ * saves and keeps it open, Escape closes it.
  */
 export function QuestionPopup() {
   const t = useT();
@@ -39,9 +38,23 @@ export function QuestionPopup() {
       else setOpen(true);
     },
   });
+  useEffect(() => setOpen(false), [location]);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, [open]);
+  if (!open) return null;
   return (
-    <Dialog open={open} onOpenChange={setOpen} title={t.questionsTitle} description={place.title ? t.questionAbout(place.title) : t.questionAboutNothing} width="max-w-md">
-      <CaptureField autoFocus onSave={(text, carryOn) => void askQuestion(place.item ? { item: place.item } : {}, text, carryOn)} />
-    </Dialog>
+    <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+      <QuestionCard
+        context={place.title ? t.questionAbout(place.title) : t.questionAboutNothing}
+        onClose={() => setOpen(false)}
+        className="pointer-events-auto w-full max-w-xl"
+      >
+        <CaptureField autoFocus onCancel={() => setOpen(false)} onSave={(text, o) => void askQuestion(place.item ? { item: place.item } : {}, text, o.continuePass)} />
+      </QuestionCard>
+    </div>
   );
 }

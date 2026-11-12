@@ -393,6 +393,8 @@ const saved = (item: string | null, p: Promise<unknown>) =>
 export interface QuestionPlace {
   item?: string | undefined;
   page?: PageQuestion | undefined;
+  /** A whole material, no page. */
+  material?: string | undefined;
 }
 export interface PageQuestion {
   resource: string;
@@ -414,13 +416,15 @@ export const askQuestion = (where: QuestionPlace, text: string, continuePass = f
     ? { kind: 'exercise', course: '', id: where.item }
     : where.page
       ? { kind: 'page', ...where.page }
-      : { kind: 'none' };
+      : where.material
+        ? { kind: 'material', resource: where.material }
+        : { kind: 'none' };
   const q: Question = { id, text, anchor, course: '', highlightId: null, passId: null, unplaced: false, status: 'open', answer: null, createdAt: t, updatedAt: t, doneAt: null };
   const item = where.item ?? null;
   if (item) patchWork(item, (w) => ({ ...w, questions: [...w.questions, q] }));
   patchQuestions((qs) => [...qs, q]);
   const page = where.page && (({ version: _v, ...rest }) => rest)(where.page);
-  return saved(item, api.post('/api/questions', { id, text, ...(item ? { item } : {}), ...(page ? { page } : {}), ...(continuePass ? { continuePass } : {}) }));
+  return saved(item, api.post('/api/questions', { id, text, ...(item ? { item } : {}), ...(page ? { page } : {}), ...(where.material ? { material: where.material } : {}), ...(continuePass ? { continuePass } : {}) }));
 };
 export const addQuestion = (item: string, text: string) => askQuestion({ item }, text);
 export const updateQuestion = (item: string | null, id: string, patch: { text?: string; status?: 'open' | 'done' }) => {

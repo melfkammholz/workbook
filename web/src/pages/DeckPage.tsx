@@ -11,7 +11,7 @@ import { CardForm } from '@/components/CardForm';
 import { ConfirmDialog } from '@/components/Dialogs';
 import { MoreMenu } from '@/components/ExerciseView';
 import { TypstEditor } from '@/components/TypstEditor';
-import { Button, Dialog, Empty, IconButton, Segmented, Spinner, clsx } from '@/components/ui';
+import { Button, Dialog, Empty, IconButton, NumberField, Segmented, Spinner, clsx } from '@/components/ui';
 import { useSettings } from '@/lib/api';
 import { showAnnotationOnArrival } from '@/lib/annotations';
 import { Title } from '@/components/Title';
@@ -603,12 +603,12 @@ function SettingsForm({ deck, onChange }: { deck: DeckDoc; onChange: (s: Partial
       <div className="flex gap-6">
         <label className="block">
           <span className="block font-medium">{t.newPerDay}</span>
-          <input type="number" min={0} max={500} defaultValue={s.newPerDay} onBlur={(e) => onChange({ newPerDay: clamp(e.target.value, 500) })} className={`${input} mt-1 w-24`} />
+          <NumberField value={s.newPerDay} max={500} onCommit={(n) => onChange({ newPerDay: n })} className="mt-1 w-24" />
           <span className="mt-1 block text-[12.5px] text-ink-3">{t.newPerDayHint}</span>
         </label>
         <label className="block">
           <span className="block font-medium">{t.maxCards}</span>
-          <input type="number" min={0} max={10000} defaultValue={s.maxCards} onBlur={(e) => onChange({ maxCards: clamp(e.target.value, 10000) })} className={`${input} mt-1 w-24`} />
+          <NumberField value={s.maxCards} max={10000} onCommit={(n) => onChange({ maxCards: n })} className="mt-1 w-24" />
           <span className="mt-1 block text-[12.5px] text-ink-3">{t.maxCardsHint}</span>
         </label>
       </div>
@@ -667,7 +667,6 @@ function SettingsForm({ deck, onChange }: { deck: DeckDoc; onChange: (s: Partial
   );
 }
 
-const clamp = (v: string, max: number) => Math.max(0, Math.min(max, Math.round(Number(v) || 0)));
 
 /** Like the AI review of an answer: a prompt to paste into the student's own chat. */
 function CheckDeckDialog({ open, onClose, deckId }: { open: boolean; onClose: () => void; deckId: string }) {

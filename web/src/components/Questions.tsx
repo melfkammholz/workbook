@@ -1,5 +1,5 @@
 import * as Popover from '@radix-ui/react-popover';
-import { Check, Circle, HelpCircle, Pencil, Trash2 } from 'lucide-react';
+import { Check, Circle, HelpCircle, Pencil, Trash2, X } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { PASS_GAP_MS, type Question } from '@wb/shared';
 import { askQuestion, deleteQuestion, updateQuestion, useQuestions } from '@/lib/api';
@@ -30,9 +30,53 @@ function submitKey(e: React.KeyboardEvent, submit: () => void, cancel?: () => vo
   }
 }
 
+/** A tag a question may carry: typed as `!p` after the text, taken out of it when saved. */
+export interface QuestionTag {
+  key: string;
+  /** Shown under the line, e.g. "!p page 3". */
+  hint: string;
+  /** False: the hint is dimmed and the tag does nothing (no selection to take). */
+  available: boolean;
+}
+
+/** Takes `!x` words (surrounded by spaces) out of a text; returns the text without them and the ones found. */
+export function parseTags(raw: string, known: readonly string[]): { text: string; tags: string[] } {
+  const tags: string[] = [];
+  const text = raw
+    .replace(/(^|\s)!([a-z])(?=\s|$)/g, (m, pre: string, k: string) => {
+      if (!known.includes(k)) return m;
+      if (!tags.includes(k)) tags.push(k);
+      return pre;
+    })
+    .replace(/ {2,}/g, ' ')
+    .trim();
+  return { text, tags };
+}
+
+/** The look of the place a question is written in: a small card with an optional line about where it will land. */
+export function QuestionCard({ context, onClose, className, children }: { context?: string | null; onClose?: () => void; className?: string; children: React.ReactNode }) {
+  const t = useT();
+  return (
+    <div className={clsx('rounded-xl border border-line-strong bg-sheet p-2.5 shadow-[var(--shadow)]', className)}>
+      {context || onClose ? (
+        <div className="mb-1.5 flex items-center gap-2 px-1 text-[12px] text-ink-3">
+          <span className="min-w-0 flex-1 truncate">{context}</span>
+          {onClose ? (
+            <IconButton label={t.close} className="size-5" onClick={onClose}>
+              <X size={13} />
+            </IconButton>
+          ) : null}
+        </div>
+      ) : null}
+      {children}
+    </div>
+  );
+}
+
 /**
- * One line to write a question into: Enter saves it and the cursor stays, ready for the next. After a long pause the
- * next capture starts a new pass; a quiet line says so and offers to go on with the last one instead.
+ * One line to write a question into: Enter saves it and the cursor stays, ready for the next. `!x` tags at the end
+ * ask for more than the text (`!p`: this page, `!s`: the selection); the line under it lists what is on offer. After a
+ * long pause the next capture starts a new pass; a quiet line says so and offers to go on with the last one instead.
  */
 export function CaptureField({
   onSave,
@@ -40,13 +84,17 @@ export function CaptureField({
   fieldRef,
   attr,
   placeholder,
+  tags = [],
+  onCancel,
 }: {
-  onSave: (text: string, continuePass: boolean) => void;
+  onSave: (text: string, o: { continuePass: boolean; tags: string[] }) => void;
   autoFocus?: boolean;
   fieldRef?: React.Ref<HTMLTextAreaElement>;
   /** A data attribute to find the field by (the hotkey focuses it). */
   attr?: string;
   placeholder?: string;
+  tags?: QuestionTag[];
+  onCancel?: () => void;
 }) {
   const t = useT();
   const [text, setText] = useState('');
@@ -55,12 +103,13 @@ export function CaptureField({
   const all = useQuestions().data;
   const last = all?.reduce((m, q) => Math.max(m, q.createdAt), 0) ?? 0;
   const newPass = last > 0 && Date.now() - last >= PASS_GAP_MS;
+  const typed = parseTags(text, tags.filter((x) => x.available).map((x) => x.key)).tags;
   const save = () => {
-    const q = text.trim();
-    if (!q) return;
+    const parsed = parseTags(text, tags.filter((x) => x.available).map((x) => x.key));
+    if (!parsed.text) return;
     setText('');
     setCarryOn(false);
-    onSave(q, newPass && carryOn);
+    onSave(parsed.text, { continuePass: newPass && carryOn, tags: parsed.tags });
   };
   return (
     <div>
@@ -77,15 +126,24 @@ export function CaptureField({
         placeholder={placeholder ?? t.questionPlaceholder}
         {...(attr ? { [attr]: '' } : {})}
         onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => submitKey(e, save)}
+        onKeyDown={(e) => submitKey(e, save, onCancel)}
         className="block w-full resize-none wb-field px-3 py-2 text-sm placeholder:text-ink-3"
       />
-      {newPass ? (
-        <p className="mt-1 px-1 text-[12px] text-ink-3">
-          {carryOn ? t.questionContinuing : t.questionNewPass} ·{' '}
-          <button type="button" onClick={() => setCarryOn(!carryOn)} className="underline hover:text-ink">
-            {carryOn ? t.questionStartNewPass : t.questionContinuePass}
-          </button>
+      {tags.length || newPass ? (
+        <p className="mt-1 flex flex-wrap gap-x-3 px-1 text-[12px] text-ink-3">
+          {tags.map((x) => (
+            <span key={x.key} className={clsx(!x.available && 'opacity-60', typed.includes(x.key) && 'font-medium text-accent')}>
+              {x.hint}
+            </span>
+          ))}
+          {newPass ? (
+            <span>
+              {carryOn ? t.questionContinuing : t.questionNewPass} ·{' '}
+              <button type="button" onClick={() => setCarryOn(!carryOn)} className="underline hover:text-ink">
+                {carryOn ? t.questionStartNewPass : t.questionContinuePass}
+              </button>
+            </span>
+          ) : null}
         </p>
       ) : null}
     </div>
@@ -94,7 +152,7 @@ export function CaptureField({
 
 /** A question on an item: the line to write it, saved to that item. */
 export function QuestionInput({ item, autoFocus = false }: { item: string; autoFocus?: boolean }) {
-  return <CaptureField autoFocus={autoFocus} onSave={(text, carryOn) => void askQuestion({ item }, text, carryOn)} />;
+  return <CaptureField autoFocus={autoFocus} onSave={(text, o) => void askQuestion({ item }, text, o.continuePass)} />;
 }
 
 export function QuestionRow({ item, q, extra }: { item: string | null; q: Question; extra?: React.ReactNode }) {

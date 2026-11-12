@@ -213,8 +213,8 @@ export class Resources {
     const shas = (this.sql.all('SELECT DISTINCT sha256 FROM resource_versions WHERE resource = ?', id) as { sha256: string }[]).map((x) => x.sha256);
     this.sql.tx(() => {
       this.sql.run('DELETE FROM resources WHERE id = ?', id);
-      // Like its highlights, the questions asked on its pages go with it.
-      this.sql.run("DELETE FROM questions WHERE json_extract(anchor, '$.kind') = 'page' AND json_extract(anchor, '$.resource') = ?", id);
+      // Like its highlights, the questions asked about it go with it.
+      this.sql.run("DELETE FROM questions WHERE json_extract(anchor, '$.resource') = ?", id);
       this.dropEmptySeries();
     });
     for (const sha of shas) this.removeIfUnused(sha);

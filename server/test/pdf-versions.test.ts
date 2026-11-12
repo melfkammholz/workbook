@@ -150,6 +150,9 @@ describe('new versions of a file', () => {
     const qPage = (await ask(0, 'Was ist Logik?')).json() as { id: string };
     const qLost = (await ask(2, 'Was heißt eindeutig?')).json() as { id: string };
     expect(qSel.anchor.version).toBe(sha(a));
+    // A question about the whole material has no page: a new file leaves it alone.
+    const qWhole = (await app.inject({ method: 'POST', url: '/api/questions', payload: { text: 'Worum geht es?', material: id } })).json() as { id: string; anchor: { kind: string } };
+    expect(qWhole.anchor).toMatchObject({ kind: 'material', resource: id });
     expect(((await app.inject({ url: '/api/resources' })).json() as { resources: { stale: number; versions: number }[] }).resources[0]).toMatchObject({ stale: 0, versions: 1 });
     expect((await post(`/api/resources/${id}/version?filename=Skript.pdf`, a)).statusCode).toBe(409);
     const replaced = (await post(`/api/resources/${id}/version?filename=Skript2.pdf`, b)).json() as { file: { sha256: string; filename: string }; versions: number; stale: number };
@@ -165,11 +168,12 @@ describe('new versions of a file', () => {
     expect(left.pages.map((p) => p.note)).toEqual(['Unifikation']);
     expect(left.questions.map((q) => q.id)).toEqual([qLost.id]);
     const placed = (await app.inject({ url: `/api/questions?resource=${id}` })).json() as { id: string; unplaced: boolean; anchor: { version: string; pageIndex: number } }[];
-    expect(placed.map((q) => [q.id, q.anchor.pageIndex, q.anchor.version === sha(b), q.unplaced])).toEqual([
+    expect(placed.filter((q) => q.id !== qWhole.id).map((q) => [q.id, q.anchor.pageIndex, q.anchor.version === sha(b), q.unplaced])).toEqual([
       [qSel.id, 2, true, false],
       [qPage.id, 1, true, false],
       [qLost.id, 2, true, true],
     ]);
+    expect(placed.length).toBe(4);
 
     const list = (await app.inject({ url: `/api/resources/${id}/annotations` })).json() as { id: string; pageIndex: number; version: string }[];
     expect(list.map((x) => [x.id, x.pageIndex, x.version])).toEqual([[stays.id, 2, sha(b)]]);

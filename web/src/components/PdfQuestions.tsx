@@ -5,7 +5,7 @@ import { askQuestion, useQuestions } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { FoldSection } from './FoldSection';
 import { readSelection } from './PdfHighlights';
-import { CaptureField, QuestionRow } from './Questions';
+import { CaptureField, QuestionCard, QuestionRow } from './Questions';
 
 /** What the viewer knows about a page when a question is written on it. */
 export type PageInfo = (n: number) => Promise<{ fingerprint: string; text: string }>;
@@ -16,13 +16,14 @@ export function usePdfQuestions(resource: Resource): Question[] {
   return useMemo(
     () =>
       (all ?? [])
-        .filter((q) => q.anchor.kind === 'page' && q.anchor.resource === resource.id && !q.unplaced && q.anchor.version === resource.file.sha256)
+        .filter((q) => (q.anchor.kind === 'material' && q.anchor.resource === resource.id) || (q.anchor.kind === 'page' && q.anchor.resource === resource.id && !q.unplaced && q.anchor.version === resource.file.sha256))
         .sort((a, b) => pageOf(a) - pageOf(b) || a.createdAt - b.createdAt),
     [all, resource.id, resource.file.sha256],
   );
 }
 
-const pageOf = (q: Question) => (q.anchor.kind === 'page' ? q.anchor.pageIndex : 0);
+/** -1: about the whole material, before the pages. */
+const pageOf = (q: Question) => (q.anchor.kind === 'page' ? q.anchor.pageIndex : -1);
 
 /** About 200 characters of the page around the quote, or its start when there is no quote. */
 export function snippetOf(text: string, quote: string | null): string {
@@ -34,67 +35,88 @@ export function snippetOf(text: string, quote: string | null): string {
 }
 
 /**
- * The passage the student last selected on a page of the viewer. It is kept while the cursor is in the question line
- * (which empties the browser's own selection) and let go of on the next click on the pages.
+ * The passage the student last selected on a page of the viewer. Focusing the question line empties the browser's own
+ * selection, so the passage is kept (until the next click on the pages) and painted by the highlight API meanwhile.
  */
 function useSelectedPassage(scroller: RefObject<HTMLElement | null>) {
   const [sel, setSel] = useState<{ page: number; quote: TextQuote } | null>(null);
+  const range = useRef<Range | null>(null);
+  const keep = (next: { page: number; quote: TextQuote; range: Range } | null) => {
+    range.current = next?.range ?? null;
+    setSel(next && { page: next.page, quote: next.quote });
+    paintKept(next?.range ?? null);
+  };
   useEffect(() => {
     const onChange = () => {
       const s = getSelection();
       const box = scroller.current;
       if (!s || s.isCollapsed || !s.rangeCount || !box?.contains(s.getRangeAt(0).commonAncestorContainer)) return;
-      const read = readSelection(s.getRangeAt(0));
-      if (read && read !== 'crossed') setSel({ page: read.page, quote: read.quote });
+      const r = s.getRangeAt(0);
+      const read = readSelection(r);
+      if (read && read !== 'crossed') keep({ page: read.page, quote: read.quote, range: r.cloneRange() });
     };
     const onDown = (e: MouseEvent) => {
-      if (scroller.current?.contains(e.target as Node)) setSel(null);
+      if (scroller.current?.contains(e.target as Node)) keep(null);
     };
     document.addEventListener('selectionchange', onChange);
     document.addEventListener('mousedown', onDown, true);
     return () => {
       document.removeEventListener('selectionchange', onChange);
       document.removeEventListener('mousedown', onDown, true);
+      paintKept(null);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scroller]);
-  return [sel, setSel] as const;
+  return [sel, () => keep(null)] as const;
 }
 
-/** Pinned under the pages: one line, Enter saves it on the page in view (or the page of the selection) and the cursor stays. */
-export function PdfQuestionBar({ resource, current, pageInfo, scroller, labelOf }: { resource: Resource; current: number; pageInfo: PageInfo; scroller: RefObject<HTMLElement | null>; labelOf: (n: number) => string }) {
+/** Paints the kept passage like a selection, so it does not seem to vanish when the question line takes the focus. */
+function paintKept(r: Range | null): void {
+  if (typeof CSS === 'undefined' || !('highlights' in CSS)) return;
+  if (!document.getElementById('wb-q-sel-style')) {
+    const el = document.createElement('style');
+    el.id = 'wb-q-sel-style';
+    el.textContent = '::highlight(wb-q-sel){background-color:Highlight;color:HighlightText;}';
+    document.head.appendChild(el);
+  }
+  if (r) CSS.highlights.set('wb-q-sel', new Highlight(r));
+  else CSS.highlights.delete('wb-q-sel');
+}
+
+/**
+ * Pinned under the pages, a card with one line: Enter saves a question about the material and the cursor stays.
+ * `!p` ties it to the page in view, `!s` to the selection (and its page).
+ */
+export function PdfQuestionBar({ resource, current, pageInfo, scroller }: { resource: Resource; current: number; pageInfo: PageInfo; scroller: RefObject<HTMLElement | null> }) {
   const t = useT();
-  const [sel, setSel] = useSelectedPassage(scroller);
-  const [withSel, setWithSel] = useState(true);
-  const page = sel && withSel ? sel.page + 1 : current;
-  const save = (text: string, carryOn: boolean) => {
-    const use = sel && withSel ? sel : null;
-    const n = page;
-    setSel(null);
-    setWithSel(true);
+  const [sel, clearSel] = useSelectedPassage(scroller);
+  const short = sel ? (sel.quote.quote.length > 28 ? `${sel.quote.quote.slice(0, 28)}…` : sel.quote.quote) : '';
+  const save = (text: string, o: { continuePass: boolean; tags: string[] }) => {
+    const use = o.tags.includes('s') ? sel : null;
+    const n = use ? use.page + 1 : current;
+    if (use) clearSel();
+    if (!use && !o.tags.includes('p')) return void askQuestion({ material: resource.id }, text, o.continuePass);
     void pageInfo(n).then((info) =>
       askQuestion(
         { page: { resource: resource.id, version: resource.file.sha256, pageIndex: n - 1, fingerprint: info.fingerprint, ...(use ? { ...use.quote } : {}), snippet: snippetOf(info.text, use?.quote.quote ?? null) } },
         text,
-        carryOn,
+        o.continuePass,
       ),
     );
   };
   return (
-    <div className="shrink-0 border-t border-line bg-sheet px-3 py-2">
-      {sel ? (
-        <p className="mb-1.5 flex items-start gap-1.5 text-[12.5px] text-ink-2">
-          <span className="min-w-0 flex-1">
-            <span className="text-ink-3">{withSel ? t.pdfQuestionSelection : t.pdfQuestionDropSelection}: </span>
-            <span className="line-clamp-2 break-words italic">{sel.quote.quote}</span>
-          </span>
-          <button type="button" aria-pressed={!withSel} title={withSel ? t.pdfQuestionDropSelection : t.pdfQuestionSelection} onClick={() => setWithSel(!withSel)} className="rounded p-0.5 text-ink-3 hover:bg-sunk hover:text-ink">
-            <X size={14} />
-          </button>
-        </p>
-      ) : null}
-      <div className="mx-auto max-w-2xl" title={labelOf(page)}>
-        <CaptureField attr="data-pdf-question" placeholder={t.pdfQuestionPlaceholder(page)} onSave={save} />
-      </div>
+    <div className="shrink-0 bg-sunk px-3 pb-3 pt-1">
+      <QuestionCard className="mx-auto max-w-2xl">
+        <CaptureField
+          attr="data-pdf-question"
+          placeholder={t.pdfQuestionPlaceholder}
+          onSave={save}
+          tags={[
+            { key: 'p', hint: t.tagPage(current), available: true },
+            { key: 's', hint: sel ? t.tagSelection(short) : t.tagSelectionNone, available: !!sel },
+          ]}
+        />
+      </QuestionCard>
     </div>
   );
 }
@@ -121,9 +143,13 @@ export function PdfQuestionList({ resource, questions, current, labelOf, onGo }:
       {groups.length === 0 ? <p className="text-[13px] text-ink-3">{t.pdfQuestionsNone}</p> : null}
       {groups.map((g) => (
         <div key={g.page} className="mb-2" data-resource={resource.id}>
-          <button type="button" onClick={() => onGo(g.page)} className={`mb-0.5 px-1.5 text-[12px] font-medium hover:underline ${g.page === current ? 'text-accent' : 'text-ink-3'}`}>
-            {labelOf(g.page) !== String(g.page) ? `${t.pdfPageN(g.page)} (${labelOf(g.page)})` : t.pdfPageN(g.page)}
-          </button>
+          {g.page === 0 ? (
+            <span className="mb-0.5 block px-1.5 text-[12px] font-medium text-ink-3">{t.pdfQuestionWhole}</span>
+          ) : (
+            <button type="button" onClick={() => onGo(g.page)} className={`mb-0.5 px-1.5 text-[12px] font-medium hover:underline ${g.page === current ? 'text-accent' : 'text-ink-3'}`}>
+              {labelOf(g.page) !== String(g.page) ? `${t.pdfPageN(g.page)} (${labelOf(g.page)})` : t.pdfPageN(g.page)}
+            </button>
+          )}
           <ul className="divide-y divide-line">
             {g.items.map((q) => (
               <QuestionRow key={q.id} item={null} q={q} extra={<Quote q={q} />} />

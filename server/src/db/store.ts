@@ -395,7 +395,7 @@ export class Store {
       params.push(filter.exercise);
     }
     if (filter.resource !== undefined) {
-      where.push("json_extract(anchor, '$.kind') = 'page' AND json_extract(anchor, '$.resource') = ?");
+      where.push("json_extract(anchor, '$.resource') = ?");
       params.push(filter.resource);
     }
     const rows = this.all(`SELECT * FROM questions ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at, rowid`, ...params);

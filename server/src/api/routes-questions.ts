@@ -21,6 +21,8 @@ const bodies = {
         snippet: z.string().max(SNIPPET_LENGTH * 2).optional(),
       })
       .optional(),
+    /** A whole material, not tied to a page. */
+    material: z.string().min(1).max(200).optional(),
     text: z.string().max(MAX_QUESTION),
     /** The pause was long, but the student chose to go on with the last pass. */
     continuePass: z.boolean().optional(),
@@ -49,6 +51,9 @@ export function questionRoutes(app: FastifyInstance, d: Deps): void {
       const chapter = r.data.item.startsWith('chapter/') && d.content.current.outline.chapters.some((c) => `chapter/${c.id}` === r.data.item);
       if (!item && !chapter) return reply.code(404).send({ error: 'unknown item' });
       anchor = { kind: item?.meta.type === 'exercise' ? 'exercise' : 'item', course: d.store.course, id: item ? item.meta.id : r.data.item };
+    } else if (r.data.material) {
+      if (!d.courses.resources.list().resources.some((x) => x.id === r.data.material)) return reply.code(404).send({ error: 'unknown material' });
+      anchor = { kind: 'material', resource: r.data.material };
     } else if (r.data.page) {
       const p = r.data.page;
       const resource = d.courses.resources.list().resources.find((x) => x.id === p.resource);

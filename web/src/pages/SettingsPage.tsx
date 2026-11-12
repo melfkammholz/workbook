@@ -7,7 +7,7 @@ import { useAllPdfPages } from '@/lib/pdfPages';
 import { swatchProps } from '@/lib/annotations';
 import { useLang, useT } from '@/lib/i18n';
 import { applyTheme } from '@/lib/theme';
-import { Button, Segmented, clsx } from '@/components/ui';
+import { Button, NumberField, Segmented, clsx } from '@/components/ui';
 import { SectionedPage, type PageSection } from '@/components/SectionedPage';
 import { FONT_SIZES } from '@/components/QuickMenus';
 
@@ -384,17 +384,7 @@ export function SettingsPage({ section }: { section?: string }) {
           <Toggle checked={settings.showTimer} onChange={(v) => set({ showTimer: v })} title={t.showTimer} body={t.showTimerBody} />
           <label className="block text-sm">
             <span className="font-medium">{t.helpAfter}</span>{' '}
-            <input
-              type="number"
-              min={0}
-              max={1440}
-              value={settings.helpAfterMinutes}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                if (Number.isInteger(n) && n >= 0 && n <= 1440) set({ helpAfterMinutes: n });
-              }}
-              className="mx-1 h-8 w-20 wb-field px-2 text-sm"
-            />{' '}
+            <NumberField value={settings.helpAfterMinutes} max={1440} onCommit={(n) => set({ helpAfterMinutes: n })} className="mx-1 w-20 align-middle" />{' '}
             {t.minutes}
             <span className="block text-[13px] text-ink-3">{t.helpAfterBody}</span>
           </label>
