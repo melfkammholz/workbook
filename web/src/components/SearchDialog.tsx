@@ -4,6 +4,7 @@ import { useLocation } from 'wouter';
 import { indexItems, search, useOutline, useSettings, useState_, type SearchResponse } from '@/lib/api';
 import { focusOf, itemInFocus } from '@/lib/focus';
 import { useT } from '@/lib/i18n';
+import { fileUrl, useResources } from '@/lib/resources';
 import { Dialog } from './ui';
 import { Title } from '@/components/Title';
 
@@ -54,6 +55,11 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   const lessons = res?.items.filter((i) => isLesson(i.id)) ?? [];
   const others = res?.items.filter((i) => !isLesson(i.id)) ?? [];
   const cards = flashcards ? (res?.cards ?? []) : [];
+  // Materials are found here, in the browser: a short list with titles, authors and series.
+  const materialsOn = !!useSettings().data?.showMaterials;
+  const library = useResources(null, materialsOn && open).data;
+  const needle = q.trim().toLowerCase();
+  const materials = materialsOn && needle && library ? library.resources.filter((r) => [r.title, r.author, library.series.find((s) => s.id === r.series)?.title ?? ''].some((x) => x.toLowerCase().includes(needle))).slice(0, 8) : [];
   const first = others[0]?.href ?? lessons[0]?.href ?? res?.mine[0]?.href;
   const itemList = (list: typeof others) => (
     <ul>
@@ -88,7 +94,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
         />
       </label>
       <div className="mt-3 max-h-[50vh] overflow-y-auto">
-        {res && res.items.length === 0 && res.mine.length === 0 && cards.length === 0 ? <p className="px-1 py-6 text-center text-sm text-ink-2">{t.searchNothing(q)}</p> : null}
+        {res && res.items.length === 0 && res.mine.length === 0 && cards.length === 0 && materials.length === 0 ? <p className="px-1 py-6 text-center text-sm text-ink-2">{t.searchNothing(q)}</p> : null}
         {others.length ? (
           <section>
             <h3 className="px-2 pb-1 pt-2 text-xs font-semibold text-ink-2">{t.searchExercises}</h3>
@@ -114,6 +120,23 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
                       {m.snippet.replace(/[\[\]]/g, '')}
                     </span>
                   </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+        {materials.length ? (
+          <section>
+            <h3 className="px-2 pb-1 pt-3 text-xs font-semibold text-ink-2">{t.searchMaterials}</h3>
+            <ul>
+              {materials.map((m) => (
+                <li key={m.id}>
+                  <a href={fileUrl(m)} target="_blank" rel="noreferrer" onClick={onClose} className="block w-full rounded-md px-2 py-2 text-left hover:bg-sunk">
+                    <span className="flex items-baseline gap-3">
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium">{m.title}</span>
+                      <span className="shrink-0 text-[12px] text-ink-3">{t.resourceTypes[m.type]}</span>
+                    </span>
+                  </a>
                 </li>
               ))}
             </ul>

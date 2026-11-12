@@ -8,6 +8,7 @@ import { annotationRoutes } from './routes-annotations.js';
 import { contentRoutes } from './routes-content.js';
 import { courseRoutes } from './routes-courses.js';
 import { flashcardRoutes } from './routes-flashcards.js';
+import { resourceRoutes } from './routes-resources.js';
 import type { Deps } from './deps.js';
 import { replSocket } from './repl-socket.js';
 import { widgetRoutes } from './routes-widgets.js';
@@ -51,7 +52,7 @@ export async function buildApp(d: Deps): Promise<FastifyInstance> {
 
   // Before the first course is added, only what it takes to add one works, flashcards, which belong to no course, and
   // the backups, which may bring courses back.
-  const WITHOUT_COURSE = ['/api/courses', '/api/settings', '/api/info', '/api/flashcards', '/api/reset-all', '/api/snapshots'];
+  const WITHOUT_COURSE = ['/api/courses', '/api/settings', '/api/info', '/api/flashcards', '/api/resources', '/api/reset-all', '/api/snapshots'];
   app.addHook('onRequest', async (req, reply) => {
     if (d.courses.active || !(req.url.startsWith('/api/') || req.url.startsWith('/ws/'))) return;
     if (!WITHOUT_COURSE.some((p) => req.url.startsWith(p))) return reply.code(409).send({ error: 'no course yet' });
@@ -63,6 +64,7 @@ export async function buildApp(d: Deps): Promise<FastifyInstance> {
   annotationRoutes(app, d);
   courseRoutes(app, d);
   flashcardRoutes(app, d);
+  resourceRoutes(app, d);
   widgetRoutes(app, d);
   replSocket(app, d);
 

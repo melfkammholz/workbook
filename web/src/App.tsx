@@ -1,4 +1,4 @@
-import { ArrowLeft, CircleHelp, ClipboardList, Layers, Menu, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Trophy, X } from 'lucide-react';
+import { ArrowLeft, CircleHelp, ClipboardList, Layers, Library, Menu, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Trophy, X } from 'lucide-react';
 import { Suspense, memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Route, Router, Switch, useLocation, useRoute } from 'wouter';
 import { useAppLocation } from '@/lib/history';
@@ -34,6 +34,8 @@ import {
   ItemPage,
   KindPage,
   LandingPage,
+  LibraryPage,
+  MaterialsPage,
   NotesPage,
   ReviewPage,
   SettingsPage,
@@ -100,7 +102,7 @@ function Shell() {
   return <CourseShell key={courses.data.activeId} />;
 }
 
-/** Flashcards belong to no course, so they have their own routes in both shells. */
+/** Flashcards and the library belong to no course, so they have their own routes in both shells. */
 function flashcardRoutes() {
   return [
     <Route key="list" path="/flashcards" component={FlashcardsPage} />,
@@ -119,6 +121,7 @@ function flashcardRoutes() {
     <Route key="look-deck" path="/flashcards/look/:deck">
       {(p) => <StrugglingPage key={p.deck} deckId={p.deck} />}
     </Route>,
+    <Route key="library" path="/library" component={LibraryPage} />,
     <Route key="help" path="/help">
       {() => <HelpPage />}
     </Route>,
@@ -132,6 +135,7 @@ function NoCourse() {
   const t = useT();
   const [location, navigate] = useLocation();
   const flashcardsOn = !!useSettings().data?.showFlashcards;
+  const materialsOn = !!useSettings().data?.showMaterials;
   usePageKeys({
     h: () => canGoBack() && history.back(),
     l: () => history.forward(),
@@ -140,8 +144,9 @@ function NoCourse() {
     '?': () => navigate('/help/keys'),
     'g h': () => navigate('/'),
     'g f': flashcardsOn ? () => navigate('/flashcards') : undefined,
+    'g l': materialsOn ? () => navigate('/library') : undefined,
   });
-  if (location.startsWith('/flashcards') || location.startsWith('/help')) {
+  if (location.startsWith('/flashcards') || location.startsWith('/library') || location.startsWith('/help')) {
     return (
       <div className="flex h-full flex-col">
         <header className="wb-chrome-bar flex h-12 shrink-0 items-center gap-1 border-b border-line bg-sheet px-2 text-ink">
@@ -163,6 +168,11 @@ function NoCourse() {
         <h1 className="text-[1.75rem] font-semibold tracking-[-0.02em]">{t.noCourseTitle}</h1>
         <p className="mb-6 mt-2 text-ink-2">{t.noCourseBody}</p>
         <AddCourseForm autoFocus />
+        <p className={clsx('mt-3 text-sm text-ink-2', !materialsOn && 'hidden')}>
+          <Link href="/library" className="font-medium text-accent hover:underline">
+            {t.library}
+          </Link>
+        </p>
         <p className={clsx('mt-10 text-sm text-ink-2', !flashcardsOn && 'hidden')}>
           {t.flashcardsWithoutCourse}{' '}
           <Link href="/flashcards" className="font-medium text-accent hover:underline">
@@ -184,6 +194,7 @@ function CourseShell() {
   const achievementsOn = !!useSettings().data?.showAchievements;
   const rewardIcon = useRewards().icon;
   const flashcardsOn = !!useSettings().data?.showFlashcards;
+  const materialsOn = !!useSettings().data?.showMaterials;
   const annotationsOn = !!useSettings().data?.showAnnotations;
   const state = useState_().data?.state;
   const { filters, patch, reset } = useFilters();
@@ -263,6 +274,7 @@ function CourseShell() {
     'g n': () => navigate('/notes'),
     'g f': flashcardsOn ? () => navigate('/flashcards') : undefined,
     'g a': annotationsOn ? () => navigate('/highlights') : undefined,
+    'g l': materialsOn ? () => navigate('/materials') : undefined,
     'g m': achievementsOn ? () => navigate('/achievements') : undefined,
   });
 
@@ -371,6 +383,17 @@ function CourseShell() {
             </Link>
           ) : null}
           {flashcardsOn ? <FlashcardsLink active={location.startsWith('/flashcards')} /> : null}
+          {materialsOn ? (
+            <Link
+              href="/materials"
+              className={clsx('inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk hover:text-ink', location.startsWith('/materials') || location.startsWith('/library') ? 'bg-sunk text-ink' : 'text-ink-2')}
+              aria-label={t.materials}
+              aria-current={location.startsWith('/materials') ? 'page' : undefined}
+              title={t.materials}
+            >
+              <Library size={18} />
+            </Link>
+          ) : null}
           <Link href="/review" className="inline-flex size-8 items-center justify-center rounded-md text-ink-2 hover:bg-sunk hover:text-ink" aria-label={t.review} title={t.review}>
             <ClipboardList size={18} />
           </Link>
@@ -436,6 +459,7 @@ const CoursePages = memo(function CoursePages() {
         <Route path="/achievements" component={AchievementsPage} />
         <Route path="/notes" component={NotesPage} />
         <Route path="/highlights">{() => <HighlightsPage />}</Route>
+        <Route path="/materials" component={MaterialsPage} />
         <Route path="/highlights/:filter">{(p) => <HighlightsPage key={p.filter} filter={p.filter} />}</Route>
         {flashcardRoutes()}
         <Route path="/chapter/:id">{(p) => <ChapterPage key={p.id} id={p.id} />}</Route>

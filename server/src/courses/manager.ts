@@ -9,6 +9,7 @@ import { TypstRenderer } from '../content/typst.js';
 import { MOUNTED_COURSE } from '../db/migrations.js';
 import { Store } from '../db/store.js';
 import { Flashcards } from '../flashcards/service.js';
+import { Resources } from '../resources/service.js';
 import { Snapshots } from '../snapshots.js';
 import * as git from './git.js';
 
@@ -99,6 +100,8 @@ export class CourseManager {
   readonly global: Store;
   /** The student's decks. They belong to no course. */
   readonly flashcards: Flashcards;
+  /** The student's uploaded files. They belong to no course either. */
+  readonly resources: Resources;
   /** Backups of the one database and the uploaded files; the daily one is taken by whoever runs the app. */
   readonly snapshots: Snapshots;
   private deckRenderer: TypstRenderer | null = null;
@@ -110,6 +113,7 @@ export class CourseManager {
   constructor(private readonly o: Options) {
     this.global = new Store(path.join(o.config.dataDir, 'workbook.db'));
     this.snapshots = new Snapshots(o.config.dataDir, this.global);
+    this.resources = new Resources(this.global, o.config.dataDir, () => this.courseRefs());
     this.hasMount = isCourse(o.config.contentDir);
     this.importLegacy();
     const known = this.ids();
@@ -122,12 +126,17 @@ export class CourseManager {
         return found ? { ref, ...found } : null;
       },
       findHighlight: (ref) => this.findHighlight(ref),
-      courses: () => this.ids().map((id) => ({ id: this.openCourse(id).content.current.outline.id, title: this.openCourse(id).content.current.outline.title })),
+      courses: () => this.courseRefs(),
       language: () => {
         const ui = this.global.getSettings().uiLanguage;
         return ui !== 'auto' ? ui : (this.active?.content.current.outline.language ?? 'en');
       },
     });
+  }
+
+  /** The student's courses by the id courses are referred to by (`workbook.yml`'s `id`), for decks and materials. */
+  courseRefs(): { id: string; title: string }[] {
+    return this.ids().map((id) => ({ id: this.openCourse(id).content.current.outline.id, title: this.openCourse(id).content.current.outline.title }));
   }
 
   /** Decks are compiled in a root of their own, with no course content to reach. */
@@ -261,6 +270,7 @@ export class CourseManager {
     // Removed courses too: their work is still here.
     for (const id of [...(this.hasMount ? [MOUNTED] : []), ...this.records().map((r) => r.id)]) this.global.forCourse(this.key(id)).resetWork();
     this.flashcards.reset();
+    this.resources.reset();
     this.global.resetSettings();
     this.o.onSwitch?.();
     return this.list();

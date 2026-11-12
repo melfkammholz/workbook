@@ -403,6 +403,7 @@ export function SettingsPage({ section }: { section?: string }) {
           <Toggle checked={settings.showFlashcards} onChange={(v) => set({ showFlashcards: v })} title={t.showFlashcards} body={t.showFlashcardsBody} />
           <Toggle checked={settings.showAnnotations} onChange={(v) => set({ showAnnotations: v })} title={t.showAnnotations} body={t.showAnnotationsBody} />
           {settings.showAnnotations ? <LabelsEditor labels={settings.highlightLabels} onChange={(l) => set({ highlightLabels: l })} /> : null}
+          <Toggle checked={settings.showMaterials} onChange={(v) => set({ showMaterials: v })} title={t.showMaterials} body={t.showMaterialsBody} />
           <Toggle checked={settings.showAi} onChange={(v) => set({ showAi: v })} title={t.showAi} body={t.showAiBody} />
         </div>
       ),

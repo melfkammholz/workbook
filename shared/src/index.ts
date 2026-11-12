@@ -348,6 +348,8 @@ export interface Settings {
   showAnnotations: boolean;
   /** The student's own names for highlights, each with a color. Empty: the plain colors. */
   highlightLabels: HighlightLabel[];
+  /** Opt-in. While false, the materials and the library appear nowhere; uploaded files are kept. */
+  showMaterials: boolean;
   /** Opt-in. While false, nothing offers a prompt for an AI chat. */
   showAi: boolean;
   /** Language of the app itself. Exercises are not translated. `auto` follows the course. */
@@ -392,11 +394,63 @@ export const DEFAULT_SETTINGS: Settings = {
   showFlashcards: false,
   showAnnotations: false,
   highlightLabels: [],
+  showMaterials: false,
   showAi: false,
   editorFontSize: 13.5,
   editorKeys: 'default',
   aiPromptTemplate: '',
 };
+
+// ───────────────────────── materials ─────────────────────────
+
+export const RESOURCE_TYPES = ['notes', 'slides', 'other'] as const;
+export type ResourceType = (typeof RESOURCE_TYPES)[number];
+
+/** A file the student uploaded (a script, a slide deck, anything). It belongs to the student, with references to courses. */
+export interface Resource {
+  id: string;
+  title: string;
+  type: ResourceType;
+  author: string;
+  /** `YYYY-MM-DD`, or empty. */
+  date: string;
+  /** The series it is a part of, in order of `position`. */
+  series: string | null;
+  position: number;
+  /** The page it was last open at (set by the viewer). */
+  lastPage: number | null;
+  /** Ids of the courses (`workbook.yml`'s id) it is listed under. Empty: only in the library. */
+  courses: string[];
+  file: { sha256: string; filename: string; mime: string; size: number; uploadedAt: number };
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ResourceSeries {
+  id: string;
+  title: string;
+  type: ResourceType;
+}
+
+export interface ResourcesResponse {
+  resources: Resource[];
+  series: ResourceSeries[];
+  /** The student's courses, by the id resources refer to them by. */
+  courses: { id: string; title: string }[];
+}
+
+/** What the student can say about a resource when uploading or editing. */
+export interface ResourceFields {
+  title: string;
+  type: ResourceType;
+  author: string;
+  date: string;
+  courses: string[];
+  /** An existing series, or null. */
+  series: string | null;
+  /** The title of a series to make and put it in (wins over `series`). */
+  newSeries?: string;
+}
 
 // ───────────────────────── achievements ─────────────────────────
 

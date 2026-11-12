@@ -281,6 +281,48 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE search_new RENAME TO search;
     `);
   },
+  /*
+   * 11: materials (files the student uploads). Global, like decks; courses are referenced by their id. The files
+   * are in `<data>/files/<sha256>`. `current_version` points at the version row in use, so lists need no subquery.
+   */ `
+  CREATE TABLE resource_series (
+    id         TEXT PRIMARY KEY,
+    title      TEXT NOT NULL,
+    type       TEXT NOT NULL CHECK (type IN ('notes','slides','other')),
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE resources (
+    id              TEXT PRIMARY KEY,
+    title           TEXT NOT NULL,
+    type            TEXT NOT NULL CHECK (type IN ('notes','slides','other')),
+    author          TEXT NOT NULL DEFAULT '',
+    date            TEXT NOT NULL DEFAULT '',
+    series          TEXT REFERENCES resource_series(id) ON DELETE SET NULL,
+    position        INTEGER NOT NULL DEFAULT 0,
+    last_page       INTEGER,
+    current_version INTEGER,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
+  );
+  CREATE INDEX resources_series ON resources (series, position);
+  CREATE TABLE resource_courses (
+    resource TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+    course   TEXT NOT NULL,
+    PRIMARY KEY (resource, course)
+  ) WITHOUT ROWID;
+  CREATE INDEX resource_courses_course ON resource_courses (course, resource);
+  CREATE TABLE resource_versions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    resource    TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+    sha256      TEXT NOT NULL,
+    filename    TEXT NOT NULL,
+    mime        TEXT NOT NULL,
+    size        INTEGER NOT NULL,
+    uploaded_at INTEGER NOT NULL
+  );
+  CREATE INDEX resource_versions_resource ON resource_versions (resource, uploaded_at);
+  CREATE INDEX resource_versions_sha ON resource_versions (sha256);
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */
