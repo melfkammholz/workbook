@@ -114,11 +114,15 @@ export const useOutline = () => {
     // Authors edit content while students read: pick up changes when the tab regains focus.
     refetchOnWindowFocus: true,
     staleTime: 10_000,
+    // Not when a component subscribes: many do, on every page, and a fetch started then changes the result for all of
+    // them at once, which re-renders the shell and the page again before the page is painted.
+    refetchOnMount: false,
   });
 };
 
+/** Kept current by the app's own writes (they invalidate it), so a page that mounts does not fetch it again. See `useOutline`. */
 export const useState_ = () =>
-  useQuery({ queryKey: keys.state, queryFn: () => api.get<StateResponse>('/api/state'), placeholderData: keepPreviousData });
+  useQuery({ queryKey: keys.state, queryFn: () => api.get<StateResponse>('/api/state'), placeholderData: keepPreviousData, refetchOnMount: false });
 
 export const useItem = (id: string, version: string | undefined) =>
   useQuery({

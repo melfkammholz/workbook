@@ -21,6 +21,20 @@ export const useAppLocation = Object.assign((opts?: { ssrPath?: string }): [stri
   hrefs: (href: string) => `#${href}`,
 });
 
+/**
+ * A link that goes where wouter's `Link` goes, the same way (a numbered entry), but does not follow the location
+ * itself: `Link` re-renders on every page change, which adds up for the hundreds of rows in the outline.
+ */
+export function NavLink({ href, onClick, ...rest }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) {
+  const click = (e: MouseEvent<HTMLAnchorElement>) => {
+    onClick?.(e);
+    if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    navigate(href);
+  };
+  return <a href={`#${href}`} onClick={click} {...rest} />;
+}
+
 /** Whether going back stays in the app. */
 export const canGoBack = () => indexNow() > 0;
 

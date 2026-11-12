@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { createContext, createElement, useContext, useEffect, type ReactNode } from 'react';
 import type { PaletteColor, DuskColor, CardKind, CourseErrorCode, DeckWarningCode, Focus, ItemMeta, Status, ThreadKind, UiLanguage } from '@wb/shared';
 import type { Sprite, TraceId, VariantLabel } from '@/components/meadow/types';
 import { useOutline, useSettings } from './api';
@@ -2254,10 +2254,20 @@ export function resolveLanguage(setting: UiLanguage | undefined, course: string 
   return (course ?? navigator.language).toLowerCase().startsWith('de') ? 'de' : 'en';
 }
 
-export function useLang(): 'de' | 'en' {
+const LangContext = createContext<'de' | 'en' | null>(null);
+
+/**
+ * Works out the language once for the whole app. `useT` is called by hundreds of components (every outline row,
+ * several times), and two query subscriptions in each made every page change slow.
+ */
+export function LangProvider({ children }: { children: ReactNode }) {
   const settings = useSettings().data;
   const outline = useOutline().data;
-  return resolveLanguage(settings?.uiLanguage, outline?.language);
+  return createElement(LangContext.Provider, { value: resolveLanguage(settings?.uiLanguage, outline?.language) }, children);
+}
+
+export function useLang(): 'de' | 'en' {
+  return useContext(LangContext) ?? resolveLanguage(undefined, undefined);
 }
 
 export function useT(): Strings {

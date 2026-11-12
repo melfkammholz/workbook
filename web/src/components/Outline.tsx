@@ -1,6 +1,6 @@
 import * as Popover from '@radix-ui/react-popover';
 import { BookOpen, ChevronDown, Clock, Compass, FileText, Flame, ListChecks, ListFilter, Search, X } from 'lucide-react';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useRoute } from 'wouter';
 import type { ChapterMeta, ExerciseKind, ItemMeta, Outline as OutlineT, PartMeta, Status, StudentState, ThreadInfo } from '@wb/shared';
 import { statusOf, useSettings } from '@/lib/api';
@@ -13,6 +13,7 @@ import { ITEM_TYPES, activeCount, matches, type Filters } from '@/lib/filters';
 import { Plant } from './Plant';
 import { Level, StatusMark, clsx } from './ui';
 import { Title } from '@/components/Title';
+import { NavLink } from '@/lib/history';
 
 const STATUSES: Status[] = ['todo', 'in_progress', 'done', 'review'];
 
@@ -40,6 +41,10 @@ export function OutlinePanel({ outline, state, currentId, filters, patch, reset,
     [outline, state, filters],
   );
   const shown = visible.reduce((s, v) => s + v.items.length, 0);
+  // Grouped once, so a part's list stays the same object and an unchanged part is not drawn again.
+  const byPart = useMemo(() => new Map(outline.parts.map((p) => [p.id, visible.filter((v) => v.chapter.partId === p.id)])), [outline.parts, visible]);
+  // Only the part and chapter that hold the open item learn which one it is; the others stay as they were on a page change.
+  const holds = (items: ItemMeta[]) => (currentId !== null && items.some((i) => i.id === currentId) ? currentId : null);
 
   return (
     <nav aria-label={t.outline} className="wb-chrome-side flex h-full min-h-0 flex-col bg-sheet text-ink">
@@ -73,13 +78,14 @@ export function OutlinePanel({ outline, state, currentId, filters, patch, reset,
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-6">
         {filtering ? null : <KindLinks outline={outline} state={state} onNavigate={onNavigate} />}
-        {outline.parts.map((part, i) => (
-          <PartBlock key={part.id} number={i + 1} outline={outline} part={part} chapters={visible.filter((v) => v.chapter.partId === part.id)} state={state} currentId={currentId} filtering={filtering} onNavigate={onNavigate} />
-        ))}
+        {outline.parts.map((part, i) => {
+          const chapters = byPart.get(part.id)!;
+          return <PartBlock key={part.id} number={i + 1} outline={outline} part={part} chapters={chapters} state={state} currentId={holds(chapters.flatMap((v) => v.chapter.items))} filtering={filtering} onNavigate={onNavigate} />;
+        })}
         {visible
           .filter((v) => v.chapter.partId === null)
           .map(({ chapter, items }) => (
-            <ChapterBlock key={chapter.id} outline={outline} chapter={chapter} items={items} state={state} currentId={currentId} forceOpen={filtering} onNavigate={onNavigate} />
+            <ChapterBlock key={chapter.id} outline={outline} chapter={chapter} items={items} state={state} currentId={holds(chapter.items)} forceOpen={filtering} onNavigate={onNavigate} />
           ))}
         {shown === 0 && filtering ? (
           <p className="px-4 py-8 text-center text-sm text-ink-2">{t.noExerciseFits}</p>
@@ -155,7 +161,7 @@ function KindLinks({ outline, state, onNavigate }: { outline: OutlineT; state: S
 type VisibleChapter = { chapter: ChapterMeta; items: ItemMeta[] };
 
 /** The top level. Collapses as a whole, so a course in two big parts can show one at a time. */
-function PartBlock({
+const PartBlock = memo(function PartBlock({
   number,
   outline,
   part,
@@ -174,7 +180,7 @@ function PartBlock({
   filtering: boolean;
   onNavigate?: (() => void) | undefined;
 }) {
-  const containsCurrent = chapters.some((v) => v.chapter.items.some((i) => i.id === currentId));
+  const containsCurrent = currentId !== null;
   const [open, setOpen] = useState(() => readOpen(`part-${part.id}`));
   useEffect(() => {
     if (containsCurrent) setOpen(true);
@@ -221,13 +227,15 @@ function PartBlock({
         <ChevronDown size={14} className={clsx('shrink-0 text-ink-3 transition-transform', !expanded && '-rotate-90')} />
       </button>
       {expanded
-        ? chapters.map(({ chapter, items }) => <ChapterBlock key={chapter.id} outline={outline} chapter={chapter} items={items} state={state} currentId={currentId} forceOpen={filtering} onNavigate={onNavigate} />)
+        ? chapters.map(({ chapter, items }) => (
+            <ChapterBlock key={chapter.id} outline={outline} chapter={chapter} items={items} state={state} currentId={chapter.items.some((i) => i.id === currentId) ? currentId : null} forceOpen={filtering} onNavigate={onNavigate} />
+          ))
         : null}
     </section>
   );
-}
+});
 
-function ChapterBlock({
+const ChapterBlock = memo(function ChapterBlock({
   outline,
   chapter,
   items,
@@ -245,7 +253,7 @@ function ChapterBlock({
   onNavigate?: (() => void) | undefined;
 }) {
   const t = useT();
-  const containsCurrent = chapter.items.some((i) => i.id === currentId);
+  const containsCurrent = currentId !== null;
   const [open, setOpen] = useState(() => readOpen(chapter.id));
   useEffect(() => {
     if (containsCurrent) setOpen(true);
@@ -269,7 +277,7 @@ function ChapterBlock({
         <button type="button" onClick={() => setOpen(!open)} aria-expanded={expanded} aria-label={expanded ? t.collapseChapter(chapter.title) : t.expandChapter(chapter.title)} className="shrink-0 rounded p-1 text-ink-3 hover:text-ink">
           <ChevronDown size={14} className={clsx('transition-transform', !expanded && '-rotate-90')} />
         </button>
-        <Link
+        <NavLink
           href={`/chapter/${chapter.id}`}
           onClick={() => {
             setOpen(true);
@@ -284,7 +292,7 @@ function ChapterBlock({
           <span className="shrink-0 text-xs font-medium tabular-nums text-ink-3">
             {done}/{exercises.length}
           </span>
-        </Link>
+        </NavLink>
       </div>
       {expanded ? (
         <ol className="pb-1">
@@ -323,7 +331,7 @@ function ChapterBlock({
       ) : null}
     </section>
   );
-}
+});
 
 /** Exercises outside the focus, folded into one quiet line on the thread. */
 function FoldRow({ text, open, first, last, onClick }: { text: string; open: boolean; first: boolean; last: boolean; onClick: () => void }) {
@@ -340,25 +348,29 @@ function FoldRow({ text, open, first, last, onClick }: { text: string; open: boo
   );
 }
 
+const SECTION_TEXT = 'relative pb-[3px] pl-[38px] pr-3.5 pt-2.5 text-xs font-semibold';
+
 function SectionLabel({ title, adventure, onNavigate }: { title: string; adventure: ThreadInfo | undefined; onNavigate?: () => void }) {
-  const t = useT();
-  const here = useRoute(`/adventure/${adventure?.id ?? ''}`)[0] && !!adventure;
-  const text = 'relative pb-[3px] pl-[38px] pr-3.5 pt-2.5 text-xs font-semibold';
   return (
     <li className="relative">
-      {adventure ? (
-        <Link href={`/adventure/${adventure.id}`} onClick={onNavigate} aria-current={here ? 'page' : undefined} title={t.openAdventure} className={clsx(text, 'flex items-center gap-1.5 hover:underline', here ? 'text-accent' : 'text-ink-3')}>
-          <span className="min-w-0 truncate">{title}</span>
-          <Compass size={12} className="shrink-0 text-accent" aria-hidden />
-        </Link>
-      ) : (
-        <p className={clsx(text, 'truncate text-ink-3')}>{title}</p>
-      )}
+      {adventure ? <AdventureLabel title={title} adventure={adventure} {...(onNavigate ? { onNavigate } : {})} /> : <p className={clsx(SECTION_TEXT, 'truncate text-ink-3')}>{title}</p>}
     </li>
   );
 }
 
-function Row({ item, status, answered, current, first, last, wide, outside, onNavigate }: { item: ItemMeta; status: Status; answered: boolean; current: boolean; first: boolean; last: boolean; wide: boolean; outside: boolean; onNavigate?: (() => void) | undefined }) {
+/** Only these few labels follow the location; a plain section title has no reason to be drawn again on a page change. */
+function AdventureLabel({ title, adventure, onNavigate }: { title: string; adventure: ThreadInfo; onNavigate?: () => void }) {
+  const t = useT();
+  const [here] = useRoute(`/adventure/${adventure.id}`);
+  return (
+    <Link href={`/adventure/${adventure.id}`} onClick={onNavigate} aria-current={here ? 'page' : undefined} title={t.openAdventure} className={clsx(SECTION_TEXT, 'flex items-center gap-1.5 hover:underline', here ? 'text-accent' : 'text-ink-3')}>
+      <span className="min-w-0 truncate">{title}</span>
+      <Compass size={12} className="shrink-0 text-accent" aria-hidden />
+    </Link>
+  );
+}
+
+const Row = memo(function Row({ item, status, answered, current, first, last, wide, outside, onNavigate }: { item: ItemMeta; status: Status; answered: boolean; current: boolean; first: boolean; last: boolean; wide: boolean; outside: boolean; onNavigate?: (() => void) | undefined }) {
   const t = useT();
   const ex = item.type === 'exercise' ? item : null;
   const done = status === 'done';
@@ -371,7 +383,7 @@ function Row({ item, status, answered, current, first, last, wide, outside, onNa
     <li ref={row} className={clsx('relative scroll-mt-10', wide && 'mt-1.5')} data-first={first || undefined} data-last={last || undefined}>
       {/* A short rule inside the chapter, not across the pane, so it does not read as the start of the next chapter. */}
       {wide ? <span aria-hidden className="absolute left-[14px] right-3.5 top-0 h-px bg-line" /> : null}
-      <Link
+      <NavLink
         href={`/item/${item.id}`}
         onClick={onNavigate}
         aria-current={current ? 'page' : undefined}
@@ -409,11 +421,11 @@ function Row({ item, status, answered, current, first, last, wide, outside, onNa
             <span className="flex w-[14px] justify-end"><Level level={ex.level} compact className="gap-[2.5px] [&>span]:size-[3.5px] [&>span]:opacity-55" /></span>
           </span>
         ) : null}
-      </Link>
+      </NavLink>
       {current && (item.type === 'lesson' || item.type === 'page') ? <LessonSections id={item.id} /> : null}
     </li>
   );
-}
+});
 
 /** The sections of the lesson that is open, with the one being read marked. */
 function LessonSections({ id }: { id: string }) {

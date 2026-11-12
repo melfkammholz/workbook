@@ -4,12 +4,15 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { loadHighlighter } from './lib/highlight';
+import { LangProvider } from './lib/i18n';
 import { queryClient } from './lib/queryClient';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      <LangProvider>
+        <App />
+      </LangProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

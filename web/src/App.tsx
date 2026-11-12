@@ -1,5 +1,5 @@
 import { ArrowLeft, CircleHelp, ClipboardList, Layers, Menu, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Trophy, X } from 'lucide-react';
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Route, Router, Switch, useLocation, useRoute } from 'wouter';
 import { useAppLocation } from '@/lib/history';
 import { Celebration } from '@/components/Celebration';
@@ -197,6 +197,8 @@ function CourseShell() {
     }
   });
   const [drawer, setDrawer] = useState(false);
+  // Stable, so the outline's memoized rows are not all drawn again whenever the shell is.
+  const closeDrawer = useCallback(() => setDrawer(false), []);
   /** `b`: the outline in or out of sight, as the button next to the course's name does; the drawer on a narrow screen. */
   const toggleOutline = () => {
     if (!matchMedia('(min-width: 1024px)').matches) return setDrawer((d) => !d);
@@ -386,29 +388,7 @@ function CourseShell() {
       <div className="flex min-h-0 flex-1">
         {showOutline ? <aside className="w-[19rem] shrink-0 border-r border-line">{outlinePanel()}</aside> : null}
         <main className="min-w-0 flex-1">
-          {/* No spinner while a page loads: it is local and usually loaded already, a spinner would only flash. */}
-          <Suspense>
-          <Switch>
-            <Route path="/" component={Dashboard} />
-            <Route path="/item/:id">{(p) => <ItemPage id={p.id} />}</Route>
-            <Route path="/item/:id/in/:group">{(p) => <ItemPage id={p.id} group={decodeURIComponent(p.group)} />}</Route>
-            <Route path="/review" component={ReviewPage} />
-            <Route path="/settings">{() => <SettingsPage />}</Route>
-            <Route path="/settings/:section">{(p) => <SettingsPage section={p.section} />}</Route>
-            <Route path="/welcome" component={LandingPage} />
-            <Route path="/achievements" component={AchievementsPage} />
-            <Route path="/notes" component={NotesPage} />
-            <Route path="/highlights">{() => <HighlightsPage />}</Route>
-            <Route path="/highlights/:filter">{(p) => <HighlightsPage key={p.filter} filter={p.filter} />}</Route>
-            {flashcardRoutes()}
-            <Route path="/chapter/:id">{(p) => <ChapterPage key={p.id} id={p.id} />}</Route>
-            <Route path="/kind/:kind">{(p) => (THREAD_KINDS.includes(p.kind as ThreadKind) ? <KindPage key={p.kind} kind={p.kind as ThreadKind} /> : null)}</Route>
-            <Route path="/adventure/:id">{(p) => <AdventurePage key={p.id} id={p.id} />}</Route>
-            <Route>
-              <Empty title={t.pageNotFound}>{t.pageNotFoundBody}</Empty>
-            </Route>
-          </Switch>
-          </Suspense>
+          <CoursePages />
         </main>
       </div>
 
@@ -421,7 +401,7 @@ function CourseShell() {
                 <X size={18} />
               </IconButton>
             </div>
-            <div className={clsx('h-[calc(100%-3rem)]')}>{outlinePanel(() => setDrawer(false))}</div>
+            <div className={clsx('h-[calc(100%-3rem)]')}>{outlinePanel(closeDrawer)}</div>
           </div>
           <button type="button" aria-label={t.closeOutline} className="flex-1 bg-ink/30" onClick={() => setDrawer(false)} />
         </div>
@@ -436,6 +416,36 @@ function CourseShell() {
     </div>
   );
 }
+
+/** The page in the main area. Memoized without props: the shell re-renders for its own reasons (a dialog, the drawer) without drawing the page again. */
+const CoursePages = memo(function CoursePages() {
+  const t = useT();
+  return (
+    // No spinner while a page loads: it is local and usually loaded already, a spinner would only flash.
+    <Suspense>
+      <Switch>
+        <Route path="/" component={Dashboard} />
+        <Route path="/item/:id">{(p) => <ItemPage id={p.id} />}</Route>
+        <Route path="/item/:id/in/:group">{(p) => <ItemPage id={p.id} group={decodeURIComponent(p.group)} />}</Route>
+        <Route path="/review" component={ReviewPage} />
+        <Route path="/settings">{() => <SettingsPage />}</Route>
+        <Route path="/settings/:section">{(p) => <SettingsPage section={p.section} />}</Route>
+        <Route path="/welcome" component={LandingPage} />
+        <Route path="/achievements" component={AchievementsPage} />
+        <Route path="/notes" component={NotesPage} />
+        <Route path="/highlights">{() => <HighlightsPage />}</Route>
+        <Route path="/highlights/:filter">{(p) => <HighlightsPage key={p.filter} filter={p.filter} />}</Route>
+        {flashcardRoutes()}
+        <Route path="/chapter/:id">{(p) => <ChapterPage key={p.id} id={p.id} />}</Route>
+        <Route path="/kind/:kind">{(p) => (THREAD_KINDS.includes(p.kind as ThreadKind) ? <KindPage key={p.kind} kind={p.kind as ThreadKind} /> : null)}</Route>
+        <Route path="/adventure/:id">{(p) => <AdventurePage key={p.id} id={p.id} />}</Route>
+        <Route>
+          <Empty title={t.pageNotFound}>{t.pageNotFoundBody}</Empty>
+        </Route>
+      </Switch>
+    </Suspense>
+  );
+});
 
 /** A dot when cards wait. Only a dot: a number of cards owed would read as a debt. */
 function FlashcardsLink({ active }: { active: boolean }) {
