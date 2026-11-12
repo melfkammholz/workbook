@@ -12,6 +12,10 @@ export function isTyping(target: EventTarget | null): boolean {
   return !!el?.closest?.('input, textarea, select, [contenteditable=true], .cm-editor');
 }
 
+/** Set while a `g` waits for its second key, so other single-key handlers leave that key alone. */
+let gWaiting = 0;
+export const gPending = () => Date.now() - gWaiting < 1200;
+
 const dialogOpen = () => !!document.querySelector('[role=dialog]');
 
 /**
@@ -29,12 +33,14 @@ export function usePageKeys(handlers: Record<string, ((e: KeyboardEvent) => void
       if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || isTyping(e.target) || dialogOpen()) return;
       const sequence = prefix !== null && Date.now() - prefix < 1200;
       prefix = null;
+      if (sequence) gWaiting = 0;
       const fn = ref.current[sequence ? `g ${e.key}` : e.key];
       if (fn) {
         e.preventDefault();
         fn(e);
       } else if (e.key === 'g' && !sequence && Object.keys(ref.current).some((k) => k.startsWith('g '))) {
         prefix = Date.now();
+        gWaiting = prefix;
       }
     };
     addEventListener('keydown', onKey);

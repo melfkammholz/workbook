@@ -448,6 +448,7 @@ const en = {
   layoutWide: 'Wide: the task folded away, the editor beside the feedback',
   showTask: 'Show the task',
   hideTask: 'Hide the task',
+  unfoldTask: 'Unfold the task (standard layout)',
   taskRail: 'Task',
   treeCorrect: 'The tree is correct',
   treeProblems: (n: number) => `${n} ${n === 1 ? 'problem' : 'problems'} in the tree`,
@@ -604,6 +605,7 @@ const en = {
         ['g, then l', 'Go to the materials'],
         ['g, then m', 'Go to the meadow'],
         ['g, then q', 'Go to your open questions'],
+        ['g, then i', 'Go to the assistant inbox (assistant on)'],
         ['q', 'Write down a question about what is open'],
       ],
     ],
@@ -619,6 +621,10 @@ const en = {
         ['q', 'Write a question about this page (or the selection)'],
         ['b', 'Show or hide the workbook outline'],
       ],
+    ],
+    [
+      'On an exercise with code, when not typing',
+      [['w', 'Switch between the split and wide layout']],
     ],
     [
       'On an exercise, also while typing',
@@ -1829,6 +1835,7 @@ const de: Strings = {
   layoutWide: 'Breit: die Aufgabe eingeklappt, der Editor neben der Rückmeldung',
   showTask: 'Aufgabe anzeigen',
   hideTask: 'Aufgabe ausblenden',
+  unfoldTask: 'Aufgabe ausklappen (Standardlayout)',
   taskRail: 'Aufgabe',
   treeCorrect: 'Der Baum ist korrekt',
   treeProblems: (n) => `${n} ${n === 1 ? 'Problem' : 'Probleme'} im Baum`,
@@ -1977,6 +1984,7 @@ const de: Strings = {
         ['g, dann l', 'Zu den Materialien'],
         ['g, dann m', 'Zur Wiese'],
         ['g, dann q', 'Zu deinen offenen Fragen'],
+        ['g, dann i', 'Zum Assistenten-Eingang (Assistent an)'],
         ['q', 'Eine Frage zu dem notieren, was gerade offen ist'],
       ],
     ],
@@ -1992,6 +2000,10 @@ const de: Strings = {
         ['q', 'Eine Frage zu dieser Seite (oder der Auswahl) notieren'],
         ['b', 'Gliederung des Workbooks zeigen oder verstecken'],
       ],
+    ],
+    [
+      'In einer Aufgabe mit Code, wenn du nicht tippst',
+      [['w', 'Zwischen geteiltem und breitem Layout wechseln']],
     ],
     [
       'In einer Aufgabe, auch beim Tippen',

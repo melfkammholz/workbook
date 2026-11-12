@@ -242,17 +242,21 @@ function WideIcon() {
   return (
     <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <rect x="3" y="3" width="18" height="18" rx="2" />
-      <path d="M7 3v18M14 3v18" />
+      <path d="M6.5 3v18M14 3v18" />
+      <rect x="3" y="3" width="3.5" height="18" rx="1" fill="currentColor" stroke="none" opacity={0.45} />
     </svg>
   );
 }
+
+/** One key toggles the two layouts, while nothing is being typed. */
+export const LAYOUT_KEY = 'w';
 
 function LayoutSwitch() {
   const t = useT();
   const [layout, setLayout] = useWorkLayout();
   const options = [
-    { value: 'standard', label: t.layoutSplitShort, title: t.layoutStandard, icon: <SplitIcon /> },
-    { value: 'wide', label: t.layoutWideShort, title: t.layoutWide, icon: <WideIcon /> },
+    { value: 'standard', label: t.layoutSplitShort, title: `${t.layoutStandard} (${LAYOUT_KEY})`, icon: <SplitIcon /> },
+    { value: 'wide', label: t.layoutWideShort, title: `${t.layoutWide} (${LAYOUT_KEY})`, icon: <WideIcon /> },
   ] as const;
   return (
     <div role="group" aria-label={t.workspaceLayout} className="hidden items-center gap-0.5 rounded-lg border border-line bg-sunk p-0.5 lg:flex">

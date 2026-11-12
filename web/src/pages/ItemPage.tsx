@@ -1,11 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { BookOpen } from 'lucide-react';
+import { BookOpen, PanelLeftOpen } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Panel, usePanelRef } from '@/components/Panels';
 import { useLocation } from 'wouter';
 import type { HowSolved, Reflection, Status } from '@wb/shared';
 import { ConfirmDialog } from '@/components/Dialogs';
-import { CardInvitation, ContinueBanner, ExerciseBar, HelpPrompt } from '@/components/ExerciseBar';
+import { CardInvitation, ContinueBanner, ExerciseBar, HelpPrompt, LAYOUT_KEY } from '@/components/ExerciseBar';
 import { ExerciseView } from '@/components/ExerciseView';
 import { MakeCardDialog } from '@/components/MakeCardDialog';
 import { ReflectionDialog, type ReflectionInput, type ReflectionMode } from '@/components/ReflectionDialog';
@@ -17,6 +17,7 @@ import { api, indexItems, itemHref, keys, neighbours, patchWork, postReflection,
 import { useT } from '@/lib/i18n';
 import { reportSaveFailed } from '@/lib/saveNotice';
 import { useActiveTime, useMediaQuery } from '@/lib/useActiveTime';
+import { usePageKeys } from '@/lib/keys';
 import { useWorkLayout } from '@/lib/workLayout';
 import { plainTitle } from '@/components/Title';
 
@@ -58,7 +59,7 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
   const { map } = useMemo(() => indexItems(outline), [outline]);
   const wide = useMediaQuery('(min-width: 1024px)');
   // The wide layout folds the task into a strip; it opens over the editor, for as long as it is needed.
-  const [workLayout] = useWorkLayout();
+  const [workLayout, setWorkLayout] = useWorkLayout();
   const [taskOpen, setTaskOpen] = useState(false);
   const taskPanel = usePanelRef();
   useEffect(() => setTaskOpen(false), [id]);
@@ -90,6 +91,16 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
     if (strip) p.collapse();
     else if (p.isCollapsed()) p.expand();
   }, [strip, taskPanel]);
+  // Folding the task (dragging it shut) is the wide layout, and unfolding it the standard one.
+  const switchable = wide && !!ex?.code?.runnable;
+  const onTaskResize = () => {
+    const folded = taskPanel.current?.isCollapsed();
+    if (!switchable || folded === undefined) return;
+    if (folded && workLayout !== 'wide') setWorkLayout('wide');
+    else if (!folded && workLayout === 'wide') setWorkLayout('standard');
+  };
+  // `w`: the same switch from the keyboard.
+  usePageKeys({ [LAYOUT_KEY]: switchable ? () => setWorkLayout(workLayout === 'wide' ? 'standard' : 'wide') : undefined });
   const status = statusOf(state, id);
   // Until the status is known, an already finished exercise must not start counting.
   const stateUnknown = state === undefined;
@@ -377,11 +388,14 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
       {invitation}
       <div className="relative min-h-0 flex-1">
         <Group orientation="horizontal" className="h-full">
-          <Panel panelRef={taskPanel} defaultSize={strip ? TASK_STRIP_PX : '46'} minSize="28" collapsible collapsedSize={TASK_STRIP_PX}>
+          <Panel panelRef={taskPanel} onResize={onTaskResize} defaultSize={strip ? TASK_STRIP_PX : '46'} minSize="28" collapsible collapsedSize={TASK_STRIP_PX}>
             {strip ? (
               <div className="wb-strip flex h-full flex-col items-center gap-3 bg-sheet py-2">
                 <IconButton label={taskOpen ? t.hideTask : t.showTask} aria-pressed={taskOpen} onClick={() => setTaskOpen((open) => !open)}>
                   <BookOpen size={17} />
+                </IconButton>
+                <IconButton label={t.unfoldTask} onClick={() => setWorkLayout('standard')}>
+                  <PanelLeftOpen size={17} />
                 </IconButton>
                 <span className="rotate-180 select-none text-xs font-medium tracking-wide text-ink-3 [writing-mode:vertical-rl]">{t.taskRail}</span>
               </div>

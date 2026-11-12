@@ -6,7 +6,7 @@ import { Button, Empty, Spinner, clsx } from '@/components/ui';
 import { acceptChanges, decideChange, undoBatch, useChanges, useQuestions } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
-import { isTyping } from '@/lib/keys';
+import { gPending, isTyping } from '@/lib/keys';
 
 /** The inbox: what the assistant proposed for the student's questions, one line each, quick to go through. */
 export function InboxPage() {
@@ -61,7 +61,7 @@ export function InboxPage() {
 
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target) || !current) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target) || !current || gPending()) return;
       if (e.key === 'ArrowDown') setCursor((n) => Math.min(n + 1, flat.length - 1));
       else if (e.key === 'ArrowUp') setCursor((n) => Math.max(n - 1, 0));
       else if (e.key === 'a') void act(current, 'accept');
