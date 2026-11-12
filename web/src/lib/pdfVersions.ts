@@ -47,7 +47,7 @@ export function placeStale(qc: QueryClient, resource: Resource, doc?: PDFDocumen
   if (prev) return prev;
   const job = (async () => {
     const stale = await api.get<StaleItems>(`${base(resource.id)}/stale`);
-    if (stale.highlights.length + stale.pages.length + stale.toc.length > 0) {
+    if (stale.highlights.length + stale.pages.length + stale.toc.length + stale.questions.length > 0) {
       const own = doc ? null : await openPdf(fileUrl(resource));
       try {
         const pages = await readPages(doc ?? own!);
@@ -56,7 +56,7 @@ export function placeStale(qc: QueryClient, resource: Resource, doc?: PDFDocumen
         void own?.loadingTask.destroy();
       }
     }
-    for (const key of ['pdf-annotations', 'pdf-pages', 'pdf-toc', 'pdf-unplaced']) void qc.invalidateQueries({ queryKey: [key] });
+    for (const key of ['pdf-annotations', 'pdf-pages', 'pdf-toc', 'pdf-unplaced', 'questions']) void qc.invalidateQueries({ queryKey: [key] });
     await refreshResources(qc);
   })().finally(() => running.delete(resource.id));
   running.set(resource.id, job);
@@ -69,7 +69,7 @@ export const unplacedKey = (resource: string) => ['pdf-unplaced', resource] as c
 export const useUnplaced = (resource: string, enabled: boolean) =>
   useQuery({ queryKey: unplacedKey(resource), queryFn: () => api.get<UnplacedItems>(`${base(resource)}/unplaced`), enabled, staleTime: 30_000 });
 
-export type UnplacedKind = 'highlight' | 'page' | 'toc';
+export type UnplacedKind = 'highlight' | 'page' | 'toc' | 'question';
 
 /** Puts an item on a page of the current file (a highlight with its rectangles). Resolves false if the page has a note already. */
 export async function placeUnplaced(qc: QueryClient, resource: string, kind: UnplacedKind, item: string, where: { pageIndex: number; rects?: PageRect[]; fingerprint?: string }): Promise<boolean> {
@@ -79,12 +79,13 @@ export async function placeUnplaced(qc: QueryClient, resource: string, kind: Unp
     if (e instanceof ApiError && e.status === 409) return false;
     throw e;
   }
-  for (const key of ['pdf-annotations', 'pdf-pages', 'pdf-toc']) void qc.invalidateQueries({ queryKey: [key] });
+  for (const key of ['pdf-annotations', 'pdf-pages', 'pdf-toc', 'questions']) void qc.invalidateQueries({ queryKey: [key] });
   await refreshResources(qc);
   return true;
 }
 
 export async function dropUnplaced(qc: QueryClient, resource: string, kind: UnplacedKind, item: string): Promise<void> {
   qc.setQueryData(unplacedKey(resource), await api.delete<UnplacedItems>(`${base(resource)}/unplaced/${kind}/${encodeURIComponent(item)}`));
+  void qc.invalidateQueries({ queryKey: ['questions'] });
   await refreshResources(qc);
 }

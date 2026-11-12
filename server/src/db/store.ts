@@ -383,7 +383,7 @@ export class Store {
   // ───────────────────────── questions ─────────────────────────
 
   /** Questions are the student's, in every course: a reset of a course's work keeps them. */
-  listQuestions(filter: { course?: string; exercise?: string } = {}): Question[] {
+  listQuestions(filter: { course?: string; exercise?: string; resource?: string } = {}): Question[] {
     const where: string[] = [];
     const params: SQLInputValue[] = [];
     if (filter.course !== undefined) {
@@ -393,6 +393,10 @@ export class Store {
     if (filter.exercise !== undefined) {
       where.push("json_extract(anchor, '$.id') = ?");
       params.push(filter.exercise);
+    }
+    if (filter.resource !== undefined) {
+      where.push("json_extract(anchor, '$.kind') = 'page' AND json_extract(anchor, '$.resource') = ?");
+      params.push(filter.resource);
     }
     const rows = this.all(`SELECT * FROM questions ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at, rowid`, ...params);
     return rows.map(rowToQuestion);
@@ -404,9 +408,9 @@ export class Store {
   }
 
   /** The pass a capture now belongs to: the running one, or a new one after a pause. */
-  private currentPass(t: number): number {
+  private currentPass(t: number, carryOn = false): number {
     const last = this.get('SELECT id, last_at FROM question_passes ORDER BY id DESC LIMIT 1');
-    if (last && t - Number(last.last_at) < PASS_GAP_MS) {
+    if (last && (carryOn || t - Number(last.last_at) < PASS_GAP_MS)) {
       this.run('UPDATE question_passes SET last_at = ? WHERE id = ?', t, last.id as number);
       return Number(last.id);
     }
@@ -414,14 +418,15 @@ export class Store {
     return Number(this.get('SELECT last_insert_rowid() AS id')!.id);
   }
 
-  addQuestion(q: { id?: string | undefined; text: string; anchor: Anchor; highlightId?: string | null }): Question {
+  /** `continuePass`: the capture joins the last pass although the pause was long (the student said so). */
+  addQuestion(q: { id?: string | undefined; text: string; anchor: Anchor; highlightId?: string | null; continuePass?: boolean }): Question {
     const t = this.now();
     const id = q.id ?? `q-${randomUUID()}`;
-    const course = q.anchor.kind === 'page' ? '' : q.anchor.course;
+    const course = 'course' in q.anchor ? q.anchor.course : '';
     this.tx(() => {
       this.run(
         `INSERT INTO questions (id, text, anchor, course, highlight_id, pass_id, status, created_at, updated_at) VALUES (?,?,?,?,?,?,'open',?,?)`,
-        id, q.text.trim().slice(0, MAX_QUESTION), JSON.stringify(q.anchor), course, q.highlightId ?? null, this.currentPass(t), t, t,
+        id, q.text.trim().slice(0, MAX_QUESTION), JSON.stringify(q.anchor), course, q.highlightId ?? null, this.currentPass(t, q.continuePass), t, t,
       );
     });
     return this.getQuestion(id)!;
@@ -868,6 +873,7 @@ function rowToQuestion(r: Row): Question {
     course: r.course as string,
     highlightId: (r.highlight_id as string | null) ?? null,
     passId: r.pass_id === null ? null : Number(r.pass_id),
+    unplaced: Number(r.unplaced) === 1,
     status: r.status as 'open' | 'done',
     answer: (r.answer as string | null) ?? null,
     createdAt: Number(r.created_at),

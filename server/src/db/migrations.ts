@@ -483,6 +483,15 @@ export const MIGRATIONS: Migration[] = [
     }
     db.exec('DROP TABLE open_questions');
   },
+  /*
+   * 18: a question on a page of a PDF follows a new version of the file like a highlight; one the new file could not
+   * place waits (`unplaced`) to be put on a page or dropped.
+   */ (db) => {
+    db.exec(`
+    ALTER TABLE questions ADD COLUMN unplaced INTEGER NOT NULL DEFAULT 0;
+    CREATE INDEX questions_resource ON questions (json_extract(anchor, '$.resource')) WHERE json_extract(anchor, '$.kind') = 'page';
+    `);
+  },
 ];
 
 /** The course a mounted `/content` folder is. */

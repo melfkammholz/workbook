@@ -13,6 +13,7 @@ export const LandingPage = lazyComponent(() => import('@/pages/LandingPage').the
 export const AchievementsPage = lazyComponent(() => import('@/pages/AchievementsPage').then((m) => m.AchievementsPage));
 export const NotesPage = lazyComponent(() => Promise.all([import('@/pages/NotesPage'), loadEditor()]).then(([m]) => m.NotesPage));
 export const HighlightsPage = lazyComponent(() => import('@/pages/HighlightsPage').then((m) => m.HighlightsPage));
+export const QuestionsPage = lazyComponent(() => import('@/pages/QuestionsPage').then((m) => m.QuestionsPage));
 export const MaterialsPage = lazyComponent(() => import('@/pages/MaterialsPage').then((m) => m.MaterialsPage));
 export const PdfPage = lazyComponent(() => import('@/pages/PdfPage').then((m) => m.PdfPage));
 export const LibraryPage = lazyComponent(() => import('@/pages/MaterialsPage').then((m) => m.LibraryPage));
@@ -31,6 +32,7 @@ const PREFIXES: [string, { preload: () => Promise<void> }][] = [
   ['/chapter/', ChapterPage],
   ['/review', ReviewPage],
   ['/notes', NotesPage],
+  ['/questions', QuestionsPage],
   ['/flashcards/deck/', DeckPage],
   ['/flashcards/review/', FlashcardReview],
   ['/flashcards/look', StrugglingPage],

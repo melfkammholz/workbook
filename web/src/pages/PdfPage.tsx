@@ -8,6 +8,7 @@ import { MakeCardDialog } from '@/components/MakeCardDialog';
 import { CopyRefButton, PdfHighlightLayer, type Editing } from '@/components/PdfHighlights';
 import { PagesWithNotes, PdfPageNotes } from '@/components/PdfPageNotes';
 import { PdfUnplaced } from '@/components/PdfUnplaced';
+import { PdfQuestionBar, PdfQuestionList, usePdfQuestions } from '@/components/PdfQuestions';
 import { PdfToc, type TocActions } from '@/components/PdfToc';
 import { NotesView, SlidesView, type Marks, type PdfLayout, type Size } from '@/components/PdfViewer';
 import { IconButton, Segmented, Spinner, Empty } from '@/components/ui';
@@ -138,6 +139,8 @@ export function PdfPage({ id, highlight }: { id: string; highlight?: string | un
   return <Viewer key={`${resource.id}-${resource.file.sha256}`} resource={resource} highlight={highlight} />;
 }
 
+const pageOfQuestion = (q: { anchor: { kind: string; pageIndex?: number } }) => (q.anchor.kind === 'page' ? (q.anchor.pageIndex ?? 0) : 0);
+
 function Viewer({ resource, highlight }: { resource: Resource; highlight?: string | undefined }) {
   const t = useT();
   const qc = useQueryClient();
@@ -176,6 +179,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   const tocEdits = usePdfToc(resource.id).data;
   const [typed, setTyped] = useState<string | null>(null);
   const pages = usePdfPages(resource.id).data;
+  const questions = usePdfQuestions(resource);
   const settings = useSettings().data;
   const cards = !!settings?.showFlashcards;
   const [pageCard, setPageCard] = useState<string | null>(null);
@@ -343,11 +347,12 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
     if (!highlight || !doc || !guess || !pages || (marksOn && !highlights) || arrived.current === highlight) return;
     const a = highlights?.find((x) => x.id === highlight);
     const p = a ? undefined : pages.find((x) => x.id === highlight);
-    if (!a && !p) return;
+    const q = a || p ? undefined : questions.find((x) => x.id === highlight);
+    if (!a && !p && !q) return;
     arrived.current = highlight;
     // After the view has placed itself at the page it remembered.
-    requestAnimationFrame(() => (a ? jumpTo(a, true) : goto(p!.pageIndex + 1)));
-  }, [highlight, doc, highlights, pages, marksOn, guess, jumpTo, goto]);
+    requestAnimationFrame(() => (a ? jumpTo(a, true) : goto((p ? p.pageIndex : pageOfQuestion(q!)) + 1)));
+  }, [highlight, doc, highlights, pages, questions, marksOn, guess, jumpTo, goto]);
   /** The printed label if there is one, else the index. */
   const resolve = (text: string): number | null => {
     const s = text.trim();
@@ -398,7 +403,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   );
 
   /** What the page's item needs when it is made: the fingerprint of its text and the first words, for the reference. Read once per page. */
-  const infos = useRef(new Map<number, Promise<{ fingerprint: string; quote: string }>>());
+  const infos = useRef(new Map<number, Promise<{ fingerprint: string; quote: string; text: string }>>());
   const pageInfo = useCallback(
     (n: number) => {
       let p = infos.current.get(n);
@@ -411,7 +416,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
           } catch {
             /* a page that cannot be read is told by its place */
           }
-          return { fingerprint: pageFingerprint(text, n - 1), quote: pageQuote(text) || t.pdfPageN(n) };
+          return { fingerprint: pageFingerprint(text, n - 1), quote: pageQuote(text) || t.pdfPageN(n), text };
         })();
         infos.current.set(n, p);
       }
@@ -538,14 +543,17 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
               <p className="mt-1 text-[13px] text-ink-2">
                 {resource.file.filename} · {formatSize(resource.file.size)}
               </p>
-              <NewVersionButton resource={resource} className="mt-2" />
+              <NewVersionButton resource={resource} icon className="mt-1 block" />
               {doc && toc ? <PdfToc entries={toc} current={current} currentKey={chapter?.key ?? null} labelOf={labelOf} onGo={goto} actions={tocActions} hasOutline={!!outline?.length} /> : null}
             </aside>
             <ColumnHandle side="left" width={leftW} onWidth={setLeftW} label={t.pdfResizeToc} />
           </>
         ) : null}
-        <div ref={scroller} className="min-w-0 flex-1 overflow-auto bg-sunk">
-          {view}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div ref={scroller} className="min-h-0 flex-1 overflow-auto bg-sunk">
+            {view}
+          </div>
+          {doc ? <PdfQuestionBar resource={resource} current={current} pageInfo={pageInfo} scroller={scroller} labelOf={labelOf} /> : null}
         </div>
         {marks && doc ? <PdfHighlightLayer resource={resource} scroller={scroller} list={highlights ?? []} editing={editing} setEditing={setEditing} /> : null}
         {column ? (
@@ -555,6 +563,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
               {chapter ? <p className="font-medium">{chapter.title}</p> : null}
               {doc ? <p className={chapter ? 'text-ink-2' : 'font-medium'}>{t.pdfPageInfo(current, count, labelOf(current))}</p> : null}
               {marks && doc ? <AllHighlights resource={resource.id} list={highlights ?? []} current={current} labelOf={labelOf} chapterAt={chapterAt} editing={editing?.id ?? null} onJump={(a) => jumpTo(a, true)} /> : null}
+              {doc ? <PdfQuestionList resource={resource} questions={questions} current={current} labelOf={labelOf} onGo={goto} /> : null}
               {doc ? <PdfUnplaced resource={resource} current={current} pageInfo={pageInfo} /> : null}
               {marksOn && doc && pages ? (
                 <>

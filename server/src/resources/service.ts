@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Placed, Reanchored, StaleItems, UnplacedItems, AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
+import type { Anchor, Placed, Reanchored, StaleItems, UnplacedItems, AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
 import { MAX_TOC_LEVEL, MAX_TOC_TITLE } from '@wb/shared';
 import type { Store } from '../db/store.js';
 
@@ -31,16 +31,23 @@ export function mimeOf(filename: string): string {
   return SAFE_MIME[ext] ?? 'application/octet-stream';
 }
 
+type UnplacedKind = 'highlight' | 'page' | 'toc' | 'question';
+const TABLES: Record<UnplacedKind, string> = { highlight: 'pdf_annotations', page: 'pdf_pages', toc: 'pdf_toc', question: 'questions' };
+/** A question asked on a page of the resource; the resource id is the parameter. */
+const ON_RESOURCE = "json_extract(anchor, '$.kind') = 'page' AND json_extract(anchor, '$.resource') = ?";
+
 const COLUMNS = `r.id, r.title, r.type, r.author, r.date, r.series, r.position, r.last_page, r.created_at, r.updated_at,
   v.sha256, v.filename, v.mime, v.size, v.uploaded_at,
   (SELECT group_concat(course, char(31)) FROM resource_courses WHERE resource = r.id) AS courses,
   (SELECT COUNT(*) FROM resource_versions WHERE resource = r.id) AS versions,
   (SELECT COUNT(*) FROM pdf_annotations WHERE resource = r.id AND version <> v.sha256)
     + (SELECT COUNT(*) FROM pdf_pages WHERE resource = r.id AND version <> v.sha256)
-    + (SELECT COUNT(*) FROM pdf_toc WHERE resource = r.id AND embedded_key IS NULL AND version <> v.sha256) AS stale,
+    + (SELECT COUNT(*) FROM pdf_toc WHERE resource = r.id AND embedded_key IS NULL AND version <> v.sha256)
+    + (SELECT COUNT(*) FROM questions WHERE json_extract(anchor, '$.kind') = 'page' AND json_extract(anchor, '$.resource') = r.id AND json_extract(anchor, '$.version') <> v.sha256) AS stale,
   (SELECT COUNT(*) FROM pdf_annotations WHERE resource = r.id AND unplaced = 1)
     + (SELECT COUNT(*) FROM pdf_pages WHERE resource = r.id AND unplaced = 1)
-    + (SELECT COUNT(*) FROM pdf_toc WHERE resource = r.id AND unplaced = 1) AS unplaced`;
+    + (SELECT COUNT(*) FROM pdf_toc WHERE resource = r.id AND unplaced = 1)
+    + (SELECT COUNT(*) FROM questions WHERE json_extract(anchor, '$.kind') = 'page' AND json_extract(anchor, '$.resource') = r.id AND unplaced = 1) AS unplaced`;
 
 type Row = Record<string, unknown>;
 
@@ -206,6 +213,8 @@ export class Resources {
     const shas = (this.sql.all('SELECT DISTINCT sha256 FROM resource_versions WHERE resource = ?', id) as { sha256: string }[]).map((x) => x.sha256);
     this.sql.tx(() => {
       this.sql.run('DELETE FROM resources WHERE id = ?', id);
+      // Like its highlights, the questions asked on its pages go with it.
+      this.sql.run("DELETE FROM questions WHERE json_extract(anchor, '$.kind') = 'page' AND json_extract(anchor, '$.resource') = ?", id);
       this.dropEmptySeries();
     });
     for (const sha of shas) this.removeIfUnused(sha);
@@ -384,6 +393,12 @@ export class Resources {
       highlights: this.sql.all('SELECT id, page_index, quote, prefix, suffix FROM pdf_annotations WHERE resource = ? AND version <> ?', id, version).map((r) => ({ id: r.id as string, pageIndex: Number(r.page_index), quote: r.quote as string, prefix: r.prefix as string, suffix: r.suffix as string })),
       pages: this.sql.all('SELECT id, page_index, fingerprint FROM pdf_pages WHERE resource = ? AND version <> ?', id, version).map((r) => ({ id: r.id as string, pageIndex: Number(r.page_index), fingerprint: r.fingerprint as string })),
       toc: this.sql.all('SELECT id, page_index, fingerprint FROM pdf_toc WHERE resource = ? AND embedded_key IS NULL AND version <> ?', id, version).map((r) => ({ id: r.id as string, pageIndex: Number(r.page_index), fingerprint: r.fingerprint as string })),
+      questions: this.sql
+        .all(`SELECT id, anchor FROM questions WHERE ${ON_RESOURCE} AND json_extract(anchor, '$.version') <> ?`, id, version)
+        .map((r) => {
+          const a = JSON.parse(r.anchor as string) as Extract<Anchor, { kind: 'page' }>;
+          return { id: r.id as string, pageIndex: a.pageIndex, fingerprint: a.fingerprint, quote: a.quote ?? '', prefix: a.prefix ?? '', suffix: a.suffix ?? '' };
+        }),
     };
   }
 
@@ -413,6 +428,10 @@ export class Resources {
           this.sql.run('UPDATE pdf_pages SET version = ? WHERE id = ? AND resource = ?', found.version, p.id, id);
         }
       }
+      for (const q of found.questions) {
+        if (q.pageIndex === null) this.sql.run(`UPDATE questions SET anchor = json_set(anchor, '$.version', ?), unplaced = 1 WHERE id = ? AND ${ON_RESOURCE}`, found.version, q.id, id);
+        else this.movePageQuestion(id, q.id, found.version, q.pageIndex, q.fingerprint);
+      }
       for (const e of found.toc) {
         if (e.pageIndex === null) this.sql.run('UPDATE pdf_toc SET version = ?, unplaced = 1 WHERE id = ? AND resource = ?', found.version, e.id, id);
         else this.sql.run('UPDATE pdf_toc SET version = ?, page_index = ?, fingerprint = COALESCE(?, fingerprint), unplaced = 0, updated_at = ? WHERE id = ? AND resource = ?', found.version, e.pageIndex, e.fingerprint ?? null, t, e.id, id);
@@ -428,15 +447,26 @@ export class Resources {
       highlights: this.sql.all('SELECT * FROM pdf_annotations WHERE resource = ? AND unplaced = 1 ORDER BY page_index, created_at', id).map(toHighlight),
       pages: this.sql.all('SELECT * FROM pdf_pages WHERE resource = ? AND unplaced = 1 ORDER BY page_index', id).map(toPage),
       toc: this.sql.all('SELECT * FROM pdf_toc WHERE resource = ? AND unplaced = 1 ORDER BY page_index', id).map(toToc),
+      questions: this.store.listQuestions({ resource: id }).filter((q) => q.unplaced),
     };
   }
 
+  /** A question's anchor on the new file: its version, page and (when known) the page's fingerprint. */
+  private movePageQuestion(resource: string, question: string, version: string, pageIndex: number, fingerprint?: string): void {
+    this.sql.run(
+      `UPDATE questions SET anchor = json_set(anchor, '$.version', ?, '$.pageIndex', ?, '$.fingerprint', COALESCE(?, json_extract(anchor, '$.fingerprint'))), unplaced = 0 WHERE id = ? AND ${ON_RESOURCE}`,
+      version, pageIndex, fingerprint ?? null, question, resource,
+    );
+  }
+
   /** Puts an unplaced item on a page of the current file. A page that has its own item already says no. */
-  placeUnplaced(id: string, kind: 'highlight' | 'page' | 'toc', item: string, where: { pageIndex: number; rects?: Placed['rects']; fingerprint?: string }): void {
+  placeUnplaced(id: string, kind: UnplacedKind, item: string, where: { pageIndex: number; rects?: Placed['rects']; fingerprint?: string }): void {
     const version = this.get(id).file.sha256;
     const t = this.now();
     this.unplacedRow(id, kind, item);
-    if (kind === 'highlight') {
+    if (kind === 'question') {
+      this.movePageQuestion(id, item, version, where.pageIndex, where.fingerprint);
+    } else if (kind === 'highlight') {
       if (!where.rects?.length) throw new ResourceError('unknown-item');
       this.sql.run('UPDATE pdf_annotations SET version = ?, page_index = ?, rects = ?, unplaced = 0, updated_at = ? WHERE id = ? AND resource = ? AND unplaced = 1', version, where.pageIndex, JSON.stringify(where.rects), t, item, id);
     } else if (kind === 'page') {
@@ -448,8 +478,8 @@ export class Resources {
   }
 
   /** Throws an unplaced item away. */
-  dropUnplaced(id: string, kind: 'highlight' | 'page' | 'toc', item: string): void {
-    const table = kind === 'highlight' ? 'pdf_annotations' : kind === 'page' ? 'pdf_pages' : 'pdf_toc';
+  dropUnplaced(id: string, kind: UnplacedKind, item: string): void {
+    const table = TABLES[kind];
     this.unplacedRow(id, kind, item);
     this.sql.run(`DELETE FROM ${table} WHERE id = ?`, item);
   }
@@ -468,9 +498,9 @@ export class Resources {
     if (file) fs.rmSync(file, { force: true });
   }
 
-  private unplacedRow(id: string, kind: 'highlight' | 'page' | 'toc', item: string): void {
-    const table = kind === 'highlight' ? 'pdf_annotations' : kind === 'page' ? 'pdf_pages' : 'pdf_toc';
-    if (!this.sql.get(`SELECT 1 AS x FROM ${table} WHERE id = ? AND resource = ? AND unplaced = 1`, item, id)) throw new ResourceError('unknown-item');
+  private unplacedRow(id: string, kind: UnplacedKind, item: string): void {
+    const where = kind === 'question' ? ON_RESOURCE : 'resource = ?';
+    if (!this.sql.get(`SELECT 1 AS x FROM ${TABLES[kind]} WHERE id = ? AND ${where} AND unplaced = 1`, item, id)) throw new ResourceError('unknown-item');
   }
 
   /** The file of a replaced version goes, unless some resource has it as its current file. */

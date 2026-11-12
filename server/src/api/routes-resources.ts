@@ -229,6 +229,7 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
     highlights: z.array(z.object({ id: z.string().min(1).max(100), place: placed.nullable() })).max(100_000),
     pages: z.array(movedPage).max(100_000),
     toc: z.array(movedPage).max(100_000),
+    questions: z.array(movedPage).max(100_000),
   });
   app.post<{ Params: { id: string } }>('/api/resources/:id/reanchor', async (req, reply) => {
     const b = parse(reanchored, req.body, reply);
@@ -246,7 +247,7 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
       return fail(e, reply);
     }
   });
-  const kind = z.enum(['highlight', 'page', 'toc']);
+  const kind = z.enum(['highlight', 'page', 'toc', 'question']);
   app.put<{ Params: { id: string; kind: string; item: string } }>('/api/resources/:id/unplaced/:kind/:item', async (req, reply) => {
     const k = parse(kind, req.params.kind, reply);
     const b = parse(z.object({ pageIndex: z.number().int().min(0).max(1_000_000), rects: placed.shape.rects.optional(), fingerprint: z.string().min(1).max(400).optional() }), req.body, reply);

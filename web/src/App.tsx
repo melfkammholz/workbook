@@ -1,4 +1,4 @@
-import { ArrowLeft, CircleHelp, ClipboardList, Highlighter, Layers, Library, Menu, NotebookText, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Trophy, X } from 'lucide-react';
+import { ArrowLeft, CircleHelp, ClipboardList, Highlighter, Layers, Library, Menu, MessageCircleQuestion, NotebookText, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Trophy, X } from 'lucide-react';
 import { Suspense, memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Route, Router, Switch, useLocation, useRoute } from 'wouter';
 import { useAppLocation } from '@/lib/history';
@@ -38,6 +38,7 @@ import {
   MaterialsPage,
   NotesPage,
   PdfPage,
+  QuestionsPage,
   ReviewPage,
   SettingsPage,
   StrugglingPage,
@@ -46,6 +47,7 @@ import {
 } from '@/lib/routes';
 import { typstContext } from '@/lib/typstContext';
 import { AnnotationLayer } from '@/components/AnnotationLayer';
+import { QuestionPopup } from '@/components/QuestionPopup';
 import { PdfRefPicker } from '@/components/PdfRefPicker';
 import { useRewards } from '@/lib/rewards';
 import { THREAD_KINDS, type ThreadKind } from '@wb/shared';
@@ -285,6 +287,7 @@ function CourseShell() {
     'g a': annotationsOn ? () => navigate('/highlights') : undefined,
     'g l': materialsOn ? () => navigate('/materials') : undefined,
     'g m': achievementsOn ? () => navigate('/achievements') : undefined,
+    'g q': () => navigate('/questions'),
   });
 
   useEffect(() => {
@@ -355,7 +358,7 @@ function CourseShell() {
           <button
             type="button"
             onClick={() => setSearching(true)}
-            className="hidden h-8 items-center gap-2 rounded-md border border-line bg-paper px-3 text-[13px] text-ink-3 hover:border-line-strong sm:inline-flex"
+            className="hidden h-8 items-center gap-2 wb-field px-3 text-[13px] text-ink-3 sm:inline-flex"
           >
             <Search size={14} /> {t.search}
           </button>
@@ -370,6 +373,18 @@ function CourseShell() {
               <span className="block h-full rounded-full bg-done transition-[width]" style={{ width: `${totals.total ? (totals.done / totals.total) * 100 : 0}%` }} />
             </span>
           </div>
+          {materialsOn ? (
+            <Link
+              href="/materials"
+              className={clsx('inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk hover:text-ink', location.startsWith('/materials') || location.startsWith('/library') ? 'bg-sunk text-ink' : 'text-ink-2')}
+              aria-label={t.materials}
+              aria-current={location.startsWith('/materials') ? 'page' : undefined}
+              title={t.materials}
+            >
+              <Library size={18} />
+            </Link>
+          ) : null}
+          {flashcardsOn ? <FlashcardsLink active={location.startsWith('/flashcards')} /> : null}
           <Link
             href="/notes"
             className={clsx('inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk hover:text-ink', location === '/notes' ? 'bg-sunk text-ink' : 'text-ink-2')}
@@ -378,6 +393,15 @@ function CourseShell() {
             title={t.allNotes}
           >
             <NotebookText size={18} />
+          </Link>
+          <Link
+            href="/questions"
+            className={clsx('inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk hover:text-ink', location === '/questions' ? 'bg-sunk text-ink' : 'text-ink-2')}
+            aria-label={t.questionsTitle}
+            aria-current={location === '/questions' ? 'page' : undefined}
+            title={t.questionsTitle}
+          >
+            <MessageCircleQuestion size={18} />
           </Link>
           {annotationsOn ? (
             <Link
@@ -390,6 +414,9 @@ function CourseShell() {
               <Highlighter size={18} />
             </Link>
           ) : null}
+          <Link href="/review" className="inline-flex size-8 items-center justify-center rounded-md text-ink-2 hover:bg-sunk hover:text-ink" aria-label={t.review} title={t.review}>
+            <ClipboardList size={18} />
+          </Link>
           {/* The meadow is worth coming back to, so it is one click away from anywhere. */}
           {achievementsOn ? (
             <Link
@@ -402,21 +429,6 @@ function CourseShell() {
               {rewardIcon === 'paw' ? <PawPrint size={18} /> : <Trophy size={18} />}
             </Link>
           ) : null}
-          {flashcardsOn ? <FlashcardsLink active={location.startsWith('/flashcards')} /> : null}
-          {materialsOn ? (
-            <Link
-              href="/materials"
-              className={clsx('inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk hover:text-ink', location.startsWith('/materials') || location.startsWith('/library') ? 'bg-sunk text-ink' : 'text-ink-2')}
-              aria-label={t.materials}
-              aria-current={location.startsWith('/materials') ? 'page' : undefined}
-              title={t.materials}
-            >
-              <Library size={18} />
-            </Link>
-          ) : null}
-          <Link href="/review" className="inline-flex size-8 items-center justify-center rounded-md text-ink-2 hover:bg-sunk hover:text-ink" aria-label={t.review} title={t.review}>
-            <ClipboardList size={18} />
-          </Link>
           <Link
             href="/help"
             className={clsx('inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk hover:text-ink', location.startsWith('/help') ? 'bg-sunk text-ink' : 'text-ink-2')}
@@ -459,6 +471,7 @@ function CourseShell() {
       <CourseDialog open={switching} onClose={() => setSwitching(false)} />
       <SetupDialog />
       <FocusQuestion />
+      <QuestionPopup />
     </div>
   );
 }
@@ -479,6 +492,7 @@ const CoursePages = memo(function CoursePages() {
         <Route path="/welcome" component={LandingPage} />
         <Route path="/achievements" component={AchievementsPage} />
         <Route path="/notes" component={NotesPage} />
+        <Route path="/questions" component={QuestionsPage} />
         <Route path="/highlights">{() => <HighlightsPage />}</Route>
         <Route path="/materials" component={MaterialsPage} />
         <Route path="/highlights/:filter">{(p) => <HighlightsPage key={p.filter} filter={p.filter} />}</Route>

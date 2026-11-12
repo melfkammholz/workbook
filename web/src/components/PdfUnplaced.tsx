@@ -74,6 +74,13 @@ export function PdfUnplaced({ resource, current, pageInfo }: { resource: Resourc
             </Button>
           )),
         )}
+        {data.questions.map((q) =>
+          row(q.id, 'question', q.anchor.kind === 'page' ? q.anchor.pageIndex : 0, <span className="line-clamp-3 whitespace-pre-wrap break-words">{q.text.trim() || '…'}</span>, (
+            <Button size="sm" onClick={() => void placeOnPage('question', q.id)}>
+              {t.pdfFixPlaceHere(current)}
+            </Button>
+          )),
+        )}
         {data.toc.map((e) =>
           row(e.id, 'toc', e.pageIndex, <span className="line-clamp-2 break-words">{e.title.trim() || '…'}</span>, (
             <Button size="sm" onClick={() => void placeOnPage('toc', e.id)}>

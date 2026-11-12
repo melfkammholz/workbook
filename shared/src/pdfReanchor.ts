@@ -160,6 +160,8 @@ export interface StaleItems {
   highlights: { id: string; pageIndex: number; quote: string; prefix: string; suffix: string }[];
   pages: PageItemRef[];
   toc: PageItemRef[];
+  /** Questions on a page; `quote` is the selection they were asked about, if there was one. */
+  questions: { id: string; pageIndex: number; fingerprint: string; quote: string; prefix: string; suffix: string }[];
 }
 
 /** What the browser found: for each item its new place, or none. */
@@ -168,6 +170,7 @@ export interface Reanchored {
   highlights: { id: string; place: Placed | null }[];
   pages: { id: string; pageIndex: number | null; fingerprint?: string }[];
   toc: { id: string; pageIndex: number | null; fingerprint?: string }[];
+  questions: { id: string; pageIndex: number | null; fingerprint?: string }[];
 }
 
 /** What the student sees in the "fix or drop" list. */
@@ -175,6 +178,7 @@ export interface UnplacedItems {
   highlights: import('./pdfAnnotations').PdfAnnotation[];
   pages: import('./pdfPages').PdfPageItem[];
   toc: import('./pdfToc').TocEdit[];
+  questions: import('./questions').Question[];
 }
 
 /** The viewport of a page as pdf.js has it (only what is used here). */
@@ -206,12 +210,19 @@ export function reanchor(stale: StaleItems, pages: readonly PageText[]): Reancho
   const fps = pages.map((p, i) => pageFingerprint(p.text, i));
   const pageMatch = matchPages(stale.pages, fps, true);
   const tocMatch = matchPages(stale.toc, fps, false);
+  // A question follows its selection if it had one and it is found, else its page by fingerprint; several may share a page.
+  const questionMatch = matchPages(stale.questions, fps, false);
   return {
     version: stale.version,
     highlights: stale.highlights.map((h) => ({ id: h.id, place: placeHighlight(pages, h, h.pageIndex) })),
     pages: stale.pages.map((p) => {
       const at = pageMatch.get(p.id) ?? null;
       return at === null ? { id: p.id, pageIndex: null } : { id: p.id, pageIndex: at, fingerprint: fps[at]! };
+    }),
+    questions: stale.questions.map((q) => {
+      const hit = q.quote ? placeHighlight(pages, q, q.pageIndex) : null;
+      const at = hit ? hit.pageIndex : (questionMatch.get(q.id) ?? null);
+      return at === null ? { id: q.id, pageIndex: null } : { id: q.id, pageIndex: at, fingerprint: fps[at]! };
     }),
     toc: stale.toc.map((p) => {
       const at = tocMatch.get(p.id) ?? null;

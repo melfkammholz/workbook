@@ -1,8 +1,8 @@
 import * as Popover from '@radix-ui/react-popover';
 import { Check, Circle, HelpCircle, Pencil, Trash2 } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
-import type { Question } from '@wb/shared';
-import { addQuestion, deleteQuestion, updateQuestion } from '@/lib/api';
+import { PASS_GAP_MS, type Question } from '@wb/shared';
+import { askQuestion, deleteQuestion, updateQuestion, useQuestions } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Button, IconButton, clsx } from './ui';
 
@@ -30,33 +30,74 @@ function submitKey(e: React.KeyboardEvent, submit: () => void, cancel?: () => vo
   }
 }
 
-/** One line to write a question into: Enter saves it and the cursor stays, ready for the next. */
-export function QuestionInput({ item, autoFocus = false }: { item: string; autoFocus?: boolean }) {
+/**
+ * One line to write a question into: Enter saves it and the cursor stays, ready for the next. After a long pause the
+ * next capture starts a new pass; a quiet line says so and offers to go on with the last one instead.
+ */
+export function CaptureField({
+  onSave,
+  autoFocus = false,
+  fieldRef,
+  attr,
+  placeholder,
+}: {
+  onSave: (text: string, continuePass: boolean) => void;
+  autoFocus?: boolean;
+  fieldRef?: React.Ref<HTMLTextAreaElement>;
+  /** A data attribute to find the field by (the hotkey focuses it). */
+  attr?: string;
+  placeholder?: string;
+}) {
   const t = useT();
   const [text, setText] = useState('');
-  const ref = useAutoGrow(text);
+  const [carryOn, setCarryOn] = useState(false);
+  const grow = useAutoGrow(text);
+  const all = useQuestions().data;
+  const last = all?.reduce((m, q) => Math.max(m, q.createdAt), 0) ?? 0;
+  const newPass = last > 0 && Date.now() - last >= PASS_GAP_MS;
   const save = () => {
     const q = text.trim();
     if (!q) return;
     setText('');
-    void addQuestion(item, q);
+    setCarryOn(false);
+    onSave(q, newPass && carryOn);
   };
   return (
-    <textarea
-      ref={ref}
-      rows={1}
-      autoFocus={autoFocus}
-      value={text}
-      aria-label={t.questionInput}
-      placeholder={t.questionPlaceholder}
-      onChange={(e) => setText(e.target.value)}
-      onKeyDown={(e) => submitKey(e, save)}
-      className="block w-full resize-none wb-field px-3 py-2 text-sm placeholder:text-ink-3"
-    />
+    <div>
+      <textarea
+        ref={(el) => {
+          (grow as { current: HTMLTextAreaElement | null }).current = el;
+          if (typeof fieldRef === 'function') fieldRef(el);
+          else if (fieldRef) (fieldRef as { current: HTMLTextAreaElement | null }).current = el;
+        }}
+        rows={1}
+        autoFocus={autoFocus}
+        value={text}
+        aria-label={t.questionInput}
+        placeholder={placeholder ?? t.questionPlaceholder}
+        {...(attr ? { [attr]: '' } : {})}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => submitKey(e, save)}
+        className="block w-full resize-none wb-field px-3 py-2 text-sm placeholder:text-ink-3"
+      />
+      {newPass ? (
+        <p className="mt-1 px-1 text-[12px] text-ink-3">
+          {carryOn ? t.questionContinuing : t.questionNewPass} ·{' '}
+          <button type="button" onClick={() => setCarryOn(!carryOn)} className="underline hover:text-ink">
+            {carryOn ? t.questionStartNewPass : t.questionContinuePass}
+          </button>
+        </p>
+      ) : null}
+    </div>
   );
 }
 
-function Row({ item, q }: { item: string; q: Question }) {
+/** A question on an item: the line to write it, saved to that item. */
+export function QuestionInput({ item, autoFocus = false }: { item: string; autoFocus?: boolean }) {
+  return <CaptureField autoFocus={autoFocus} onSave={(text, carryOn) => void askQuestion({ item }, text, carryOn)} />;
+}
+
+export function QuestionRow({ item, q, extra }: { item: string | null; q: Question; extra?: React.ReactNode }) {
   const t = useT();
   const [draft, setDraft] = useState<string | null>(null);
   const ref = useAutoGrow(draft ?? '');
@@ -102,7 +143,10 @@ function Row({ item, q }: { item: string; q: Question }) {
         </div>
       ) : (
         <>
-          <p className={clsx('min-w-0 flex-1 whitespace-pre-wrap break-words text-[14px] leading-snug', done && 'text-ink-3 line-through')}>{q.text}</p>
+          <div className="min-w-0 flex-1">
+            <p className={clsx('whitespace-pre-wrap break-words text-[14px] leading-snug', done && 'text-ink-3 line-through')}>{q.text}</p>
+            {extra}
+          </div>
           <span className="flex shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
             <IconButton label={t.editQuestion} className="size-6" onClick={() => setDraft(q.text)}>
               <Pencil size={13} />
@@ -118,7 +162,7 @@ function Row({ item, q }: { item: string; q: Question }) {
 }
 
 /** The questions on one item: open ones, and done ones behind a switch. No counts: a list is not a score. */
-export function QuestionList({ item, questions }: { item: string; questions: Question[] }) {
+export function QuestionList({ item, questions }: { item: string | null; questions: Question[] }) {
   const t = useT();
   const [showDone, setShowDone] = useState(false);
   const open = questions.filter((q) => q.status === 'open');
@@ -129,7 +173,7 @@ export function QuestionList({ item, questions }: { item: string; questions: Que
       {shown.length ? (
         <ul className="divide-y divide-line">
           {shown.map((q) => (
-            <Row key={q.id} item={item} q={q} />
+            <QuestionRow key={q.id} item={item} q={q} />
           ))}
         </ul>
       ) : (

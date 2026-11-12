@@ -88,13 +88,15 @@ export function locateQuoteScored(text: string, q: TextQuote): { start: number; 
  * What a student's note, highlight or question points at. `text`: a quoted passage of a workbook's text (`target` and
  * `part` as in `AnnotationPlace`). `page`: a page of a file the student uploaded, found again in a new version by its
  * fingerprint, or by the quote when there is one. `exercise` and `item`: a whole exercise, or any other item of a
- * workbook (lesson, checklist, …), by its id; there is no text to find again.
+ * workbook (lesson, checklist, …) or a chapter (`chapter/<id>`), by its id; there is no text to find again. `none`: asked
+ * where nothing was open. `snippet` on a page: about 200 characters of the page around the question.
  */
 export type Anchor =
   | { kind: 'exercise'; course: string; id: string }
   | { kind: 'item'; course: string; id: string }
   | ({ kind: 'text'; course: string; target: string; part: string } & TextQuote)
-  | ({ kind: 'page'; resource: string; version: string; pageIndex: number; fingerprint: string; rects?: PageRect[] } & Partial<TextQuote>);
+  | ({ kind: 'page'; resource: string; version: string; pageIndex: number; fingerprint: string; rects?: PageRect[]; snippet?: string } & Partial<TextQuote>)
+  | { kind: 'none' };
 
 /** A reference to something stored; `version` is its `updatedAt`, so a reader can tell the reference is stale. */
 export interface EntityRef {

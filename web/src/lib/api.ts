@@ -374,33 +374,65 @@ export const recordTick = (id: string, seconds: number) => {
 };
 export const postReflection = (id: string, confidence: number, how: HowSolved[], comment: string) =>
   api.post<Reflection>(`/api/work/${encodeURIComponent(id)}/reflection`, { confidence, how, comment });
-/** What a change to a question touches: the item's cached work, the review page, the dashboard. */
-const questionsChanged = (item: string) => {
-  void queryClient.invalidateQueries({ queryKey: keys.work(item) });
+/** Every question of the student, in every workbook and on every material (one query; pages filter it). */
+export const questionsKey = ['questions'] as const;
+export const useQuestions = () => useQuery({ queryKey: questionsKey, queryFn: () => api.get<Question[]>('/api/questions'), staleTime: 30_000 });
+const patchQuestions = (fn: (qs: Question[]) => Question[]) => queryClient.setQueryData<Question[]>(questionsKey, (qs) => qs && fn(qs));
+
+/** What a change to a question touches: the item's cached work, the list of all, the review page, the dashboard. */
+const questionsChanged = (item: string | null) => {
+  if (item) void queryClient.invalidateQueries({ queryKey: keys.work(item) });
+  void queryClient.invalidateQueries({ queryKey: questionsKey });
   void queryClient.invalidateQueries({ queryKey: keys.mine });
   void queryClient.invalidateQueries({ queryKey: keys.state });
 };
-const saved = (item: string, p: Promise<unknown>) =>
+const saved = (item: string | null, p: Promise<unknown>) =>
   p.catch(() => reportSaveFailed()).finally(() => questionsChanged(item));
 
-/** Shown at once, with the id the server will keep. */
-export const addQuestion = (item: string, text: string) => {
+/** Where a question is asked: an item (or `chapter/<id>`) of the open workbook, a page of a material, or nowhere. */
+export interface QuestionPlace {
+  item?: string | undefined;
+  page?: PageQuestion | undefined;
+}
+export interface PageQuestion {
+  resource: string;
+  /** The file it was asked on (the resource's current sha256). */
+  version: string;
+  pageIndex: number;
+  fingerprint: string;
+  quote?: string;
+  prefix?: string;
+  suffix?: string;
+  snippet?: string;
+}
+
+/** Shown at once, with the id the server will keep. `continuePass`: join the last pass although the pause was long. */
+export const askQuestion = (where: QuestionPlace, text: string, continuePass = false) => {
   const t = Date.now();
   const id = crypto.randomUUID();
-  const q: Question = { id, text, anchor: { kind: 'exercise', course: '', id: item }, course: '', highlightId: null, passId: null, status: 'open', answer: null, createdAt: t, updatedAt: t, doneAt: null };
-  patchWork(item, (w) => ({ ...w, questions: [...w.questions, q] }));
-  return saved(item, api.post('/api/questions', { id, item, text }));
+  const anchor: Question['anchor'] = where.item
+    ? { kind: 'exercise', course: '', id: where.item }
+    : where.page
+      ? { kind: 'page', ...where.page }
+      : { kind: 'none' };
+  const q: Question = { id, text, anchor, course: '', highlightId: null, passId: null, unplaced: false, status: 'open', answer: null, createdAt: t, updatedAt: t, doneAt: null };
+  const item = where.item ?? null;
+  if (item) patchWork(item, (w) => ({ ...w, questions: [...w.questions, q] }));
+  patchQuestions((qs) => [...qs, q]);
+  const page = where.page && (({ version: _v, ...rest }) => rest)(where.page);
+  return saved(item, api.post('/api/questions', { id, text, ...(item ? { item } : {}), ...(page ? { page } : {}), ...(continuePass ? { continuePass } : {}) }));
 };
-export const updateQuestion = (item: string, id: string, patch: { text?: string; status?: 'open' | 'done' }) => {
+export const addQuestion = (item: string, text: string) => askQuestion({ item }, text);
+export const updateQuestion = (item: string | null, id: string, patch: { text?: string; status?: 'open' | 'done' }) => {
   const t = Date.now();
-  patchWork(item, (w) => ({
-    ...w,
-    questions: w.questions.map((q) => (q.id !== id ? q : { ...q, ...patch, updatedAt: t, doneAt: patch.status ? (patch.status === 'done' ? t : null) : q.doneAt })),
-  }));
+  const apply = (qs: Question[]) => qs.map((q) => (q.id !== id ? q : { ...q, ...patch, updatedAt: t, doneAt: patch.status ? (patch.status === 'done' ? t : null) : q.doneAt }));
+  if (item) patchWork(item, (w) => ({ ...w, questions: apply(w.questions) }));
+  patchQuestions(apply);
   return saved(item, api.patch(`/api/questions/${encodeURIComponent(id)}`, patch));
 };
-export const deleteQuestion = (item: string, id: string) => {
-  patchWork(item, (w) => ({ ...w, questions: w.questions.filter((q) => q.id !== id) }));
+export const deleteQuestion = (item: string | null, id: string) => {
+  if (item) patchWork(item, (w) => ({ ...w, questions: w.questions.filter((q) => q.id !== id) }));
+  patchQuestions((qs) => qs.filter((q) => q.id !== id));
   return saved(item, api.delete(`/api/questions/${encodeURIComponent(id)}`));
 };
 export const saveChecklistAnswer = (id: string, question: string, confidence: number | null, note: string) =>

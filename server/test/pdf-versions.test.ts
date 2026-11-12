@@ -61,7 +61,7 @@ describe('placing items on a new version of a PDF', () => {
     const text = old[2]!.text;
     const start = text.indexOf('Zwei Terme sind unifizierbar');
     const q = quoteAt(text, start, start + 'Zwei Terme sind unifizierbar'.length)!;
-    const stale: StaleItems = { version: 'v'.repeat(64), highlights: [{ id: 'h', pageIndex: 2, ...q }, { id: 'gone', pageIndex: 2, quote: 'Zwei Terme sind unifizierbar, wenn', prefix: '', suffix: '' }], pages: [], toc: [] };
+    const stale: StaleItems = { version: 'v'.repeat(64), highlights: [{ id: 'h', pageIndex: 2, ...q }, { id: 'gone', pageIndex: 2, quote: 'Zwei Terme sind unifizierbar, wenn', prefix: '', suffix: '' }], pages: [], toc: [], questions: [] };
     const found = reanchor(stale, next);
     // The sentence was rewritten on the last page: only the one that is still there is found.
     expect(found.highlights[0]!.place).toBeNull();
@@ -89,6 +89,11 @@ describe('placing items on a new version of a PDF', () => {
         { id: 'scan', pageIndex: 5, fingerprint: 'index:5' },
       ],
       toc: [{ id: 't', pageIndex: 0, fingerprint: fp(0) }],
+      questions: [
+        { id: 'q-sel', pageIndex: 1, fingerprint: fp(1), ...quoteAt(old[1]!.text, old[1]!.text.indexOf('Sie ist korrekt'), old[1]!.text.indexOf('Sie ist korrekt') + 'Sie ist korrekt'.length)! },
+        { id: 'q-page', pageIndex: 0, fingerprint: fp(0), quote: '', prefix: '', suffix: '' },
+        { id: 'q-lost', pageIndex: 2, fingerprint: fp(2), quote: '', prefix: '', suffix: '' },
+      ],
     };
     const found = reanchor(stale, next);
     const at = (r: Reanchored, id: string) => r.pages.find((p) => p.id === id)!.pageIndex;
@@ -98,6 +103,8 @@ describe('placing items on a new version of a PDF', () => {
     expect(at(found, 'unif')).toBeNull();
     expect(at(found, 'scan')).toBeNull();
     expect(found.toc[0]!.pageIndex).toBe(1);
+    // A question follows its selection, else its page; one whose page is gone is left to the student.
+    expect(found.questions.map((q) => q.pageIndex)).toEqual([2, 1, null]);
   });
 });
 
@@ -136,31 +143,48 @@ describe('new versions of a file', () => {
     await put(`/api/resources/${id}/pages/0`, { version: sha(a), fingerprint: pageFingerprint(old[0]!.text, 0), note: 'Logik' });
     await put(`/api/resources/${id}/pages/2`, { version: sha(a), fingerprint: pageFingerprint(old[2]!.text, 2), note: 'Unifikation' });
 
+    // Questions on pages: one with a selection that stays, one on a page that moves, one on a page that changes.
+    const ask = (pageIndex: number, text: string, q?: ReturnType<typeof quote>) =>
+      app.inject({ method: 'POST', url: '/api/questions', payload: { text, page: { resource: id, pageIndex, fingerprint: pageFingerprint(old[pageIndex]!.text, pageIndex), ...q } } });
+    const qSel = (await ask(1, 'Warum korrekt?', quote(1, 'Sie ist korrekt'))).json() as { id: string; anchor: { version: string } };
+    const qPage = (await ask(0, 'Was ist Logik?')).json() as { id: string };
+    const qLost = (await ask(2, 'Was heißt eindeutig?')).json() as { id: string };
+    expect(qSel.anchor.version).toBe(sha(a));
     expect(((await app.inject({ url: '/api/resources' })).json() as { resources: { stale: number; versions: number }[] }).resources[0]).toMatchObject({ stale: 0, versions: 1 });
     expect((await post(`/api/resources/${id}/version?filename=Skript.pdf`, a)).statusCode).toBe(409);
     const replaced = (await post(`/api/resources/${id}/version?filename=Skript2.pdf`, b)).json() as { file: { sha256: string; filename: string }; versions: number; stale: number };
-    expect(replaced).toMatchObject({ file: { sha256: sha(b), filename: 'Skript2.pdf' }, versions: 2, stale: 4 });
+    expect(replaced).toMatchObject({ file: { sha256: sha(b), filename: 'Skript2.pdf' }, versions: 2, stale: 7 });
     expect(fs.existsSync(path.join(dataDir, 'files', sha(a)))).toBe(false);
     expect(fs.existsSync(path.join(dataDir, 'files', sha(b)))).toBe(true);
 
     const stale = (await app.inject({ url: `/api/resources/${id}/stale` })).json() as StaleItems;
     expect(stale.highlights).toHaveLength(2);
-    const left = (await app.inject({ method: 'POST', url: `/api/resources/${id}/reanchor`, payload: reanchor(stale, next) })).json() as { highlights: { id: string }[]; pages: { id: string; note: string }[] };
+    expect(stale.questions).toHaveLength(3);
+    const left = (await app.inject({ method: 'POST', url: `/api/resources/${id}/reanchor`, payload: reanchor(stale, next) })).json() as { highlights: { id: string }[]; pages: { id: string; note: string }[]; questions: { id: string }[] };
     expect(left.highlights.map((h) => h.id)).toEqual([goes.id]);
     expect(left.pages.map((p) => p.note)).toEqual(['Unifikation']);
+    expect(left.questions.map((q) => q.id)).toEqual([qLost.id]);
+    const placed = (await app.inject({ url: `/api/questions?resource=${id}` })).json() as { id: string; unplaced: boolean; anchor: { version: string; pageIndex: number } }[];
+    expect(placed.map((q) => [q.id, q.anchor.pageIndex, q.anchor.version === sha(b), q.unplaced])).toEqual([
+      [qSel.id, 2, true, false],
+      [qPage.id, 1, true, false],
+      [qLost.id, 2, true, true],
+    ]);
 
     const list = (await app.inject({ url: `/api/resources/${id}/annotations` })).json() as { id: string; pageIndex: number; version: string }[];
     expect(list.map((x) => [x.id, x.pageIndex, x.version])).toEqual([[stays.id, 2, sha(b)]]);
     const pages = (await app.inject({ url: `/api/resources/${id}/pages` })).json() as { note: string; pageIndex: number }[];
     expect(pages.map((p) => [p.note, p.pageIndex])).toEqual([['Logik', 1]]);
-    expect(((await app.inject({ url: '/api/resources' })).json() as { resources: { stale: number; unplaced: number }[] }).resources[0]).toMatchObject({ stale: 0, unplaced: 2 });
+    expect(((await app.inject({ url: '/api/resources' })).json() as { resources: { stale: number; unplaced: number }[] }).resources[0]).toMatchObject({ stale: 0, unplaced: 3 });
 
     // Fix: put the note on page 4 (a page that has none), and the highlight on a place of the student's choosing; then drop nothing left.
     const item = left.pages[0]! as { id: string };
     expect((await put(`/api/resources/${id}/unplaced/page/${item.id}`, { pageIndex: 1 })).statusCode).toBe(409);
     expect((await put(`/api/resources/${id}/unplaced/page/${item.id}`, { pageIndex: 3, fingerprint: 'x' })).statusCode).toBe(200);
-    const fixed = (await put(`/api/resources/${id}/unplaced/highlight/${goes.id}`, { pageIndex: 3, rects: rect })).json() as { highlights: unknown[]; pages: unknown[] };
-    expect(fixed).toMatchObject({ highlights: [], pages: [] });
+    expect((await put(`/api/resources/${id}/unplaced/question/${qLost.id}`, { pageIndex: 3 })).statusCode).toBe(200);
+    const fixed = (await put(`/api/resources/${id}/unplaced/highlight/${goes.id}`, { pageIndex: 3, rects: rect })).json() as { highlights: unknown[]; pages: unknown[]; questions: unknown[] };
+    expect(fixed).toMatchObject({ highlights: [], pages: [], questions: [] });
+    expect((await app.inject({ method: 'DELETE', url: `/api/resources/${id}/unplaced/question/${qLost.id}` })).statusCode).toBe(404);
     expect((await app.inject({ method: 'DELETE', url: `/api/resources/${id}/unplaced/highlight/${goes.id}` })).statusCode).toBe(404);
     expect(((await app.inject({ url: `/api/resources/${id}/pages` })).json() as unknown[]).length).toBe(2);
   });
