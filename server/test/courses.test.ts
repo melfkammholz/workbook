@@ -145,7 +145,7 @@ describe.skipIf(!hasBinary('git'))('courses', () => {
     again.close();
   });
 
-  it('resets the work in one course, and leaves the course and other courses alone', async () => {
+  it('deletes all data of one course, asking for the word, and leaves other courses alone', async () => {
     const before = await list();
     const open = before.activeId!;
     const other = before.courses.find((c) => c.id !== open)!.id;
@@ -154,30 +154,56 @@ describe.skipIf(!hasBinary('git'))('courses', () => {
     await api('PUT', '/api/work/mergesort/note', { format: 'typst', content: 'in the other course' });
     await api('POST', `/api/courses/${open}/activate`);
 
-    const before2 = switches.length;
-    const after = (await api('POST', `/api/courses/${open}/reset`)).json as CoursesResponse;
-    expect(after.courses).toHaveLength(before.courses.length);
-    expect(after.activeId).toBe(open);
-    expect(switches.length).toBe(before2 + 1);
-    expect(((await api('GET', '/api/work/mergesort')).json as { note: unknown }).note).toBeNull();
-    expect(((await api('GET', '/api/outline')).json as Outline).chapters.length).toBeGreaterThan(0);
-
-    await api('POST', `/api/courses/${other}/activate`);
+    expect((await api('POST', `/api/courses/${open}/delete`)).status).toBe(400);
+    expect((await api('POST', '/api/courses/nope/delete', { confirm: 'delete' })).status).toBe(404);
+    const after = (await api('POST', `/api/courses/${open}/delete`, { confirm: 'delete' })).json as CoursesResponse;
+    expect(after.courses.map((c) => c.id)).toEqual([other]);
+    expect(after.activeId).toBe(other);
+    expect(fs.existsSync(path.join(dataDir, 'courses', open))).toBe(false);
     expect(((await api('GET', '/api/work/mergesort')).json as { note: { content: string } }).note.content).toBe('in the other course');
-    await api('POST', `/api/courses/${open}/activate`);
-    expect((await api('POST', '/api/courses/nope/reset')).status).toBe(404);
+
+    // Added again, it starts fresh.
+    const url = before.courses.find((c) => c.id === open)!.url!;
+    const again = (await api('POST', '/api/courses', { url })).json as CoursesResponse;
+    expect(again.activeId).toBe(open);
+    expect(((await api('GET', '/api/work/mergesort')).json as { note: unknown }).note).toBeNull();
   });
 
-  it('removes a course with its work and moves on to the next', async () => {
+  it('removes a course by hiding it, and adding it again brings its work back', async () => {
     const before = await list();
     const open = before.activeId!;
+    const url = before.courses.find((c) => c.id === open)!.url!;
     const other = before.courses.find((c) => c.id !== open)!.id;
+    await api('PUT', '/api/work/mergesort/note', { format: 'typst', content: 'kept while hidden' });
+
     const data = (await api('DELETE', `/api/courses/${open}`)).json as CoursesResponse;
     expect(data.activeId).toBe(other);
-    expect(fs.existsSync(path.join(dataDir, 'courses', open))).toBe(false);
+    expect(data.courses.map((c) => c.id)).toEqual([other]);
+    expect(fs.existsSync(path.join(dataDir, 'courses', open, 'repo'))).toBe(true);
     expect((await api('DELETE', '/api/courses/nope')).status).toBe(404);
-    expect((await api('POST', '/api/courses/nope/activate')).status).toBe(404);
+    expect((await api('DELETE', `/api/courses/${open}`)).status).toBe(404);
+    expect((await api('POST', `/api/courses/${open}/activate`)).status).toBe(404);
+    expect((await api('POST', `/api/courses/${open}/update`)).status).toBe(404);
 
+    // The same address, written a little differently, is the same course.
+    const back = (await api('POST', '/api/courses', { url: `${url}/` })).json as CoursesResponse;
+    expect(back.activeId).toBe(open);
+    expect(back.courses).toHaveLength(2);
+    expect(((await api('GET', '/api/work/mergesort')).json as { note: { content: string } }).note.content).toBe('kept while hidden');
+
+    // A hidden course whose copy went missing is downloaded again, with its work.
+    await api('DELETE', `/api/courses/${open}`);
+    fs.rmSync(path.join(dataDir, 'courses', open), { recursive: true, force: true });
+    expect(((await api('POST', '/api/courses', { url })).json as CoursesResponse).activeId).toBe(open);
+    expect(((await api('GET', '/api/work/mergesort')).json as { note: { content: string } }).note.content).toBe('kept while hidden');
+
+    // Starting over reaches hidden courses too.
+    await api('DELETE', `/api/courses/${open}`);
+    await api('POST', '/api/reset-all', { confirm: 'reset' });
+    await api('POST', '/api/courses', { url });
+    expect(((await api('GET', '/api/work/mergesort')).json as { note: unknown }).note).toBeNull();
+
+    await api('DELETE', `/api/courses/${open}`);
     const none = (await api('DELETE', `/api/courses/${other}`)).json as CoursesResponse;
     expect(none).toEqual({ courses: [], activeId: null });
     expect((await api('GET', '/api/outline')).status).toBe(409);
@@ -185,18 +211,18 @@ describe.skipIf(!hasBinary('git'))('courses', () => {
 });
 
 describe('a mounted folder', () => {
-  it('is a course of its own that cannot be removed or updated, and keeps the existing work', async () => {
+  it('is a course of its own that cannot be removed or updated, and its data can be deleted', async () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-mount-'));
     const config = loadConfig({ CONTENT_DIR: EXAMPLE_CONTENT, DATA_DIR: dataDir } as NodeJS.ProcessEnv);
     const courses = new CourseManager({ config, typstAssets: path.resolve(import.meta.dirname, '../assets/typst') });
     expect(courses.list()).toEqual({ activeId: 'content', courses: [{ id: 'content', title: 'Deklarative Programmierung', source: 'mounted', url: null, update: 'unknown' }] });
     expect(courses.active!.store.course).toBe('content');
-    await expect(courses.remove('content')).rejects.toThrow('mounted');
+    expect(() => courses.remove('content')).toThrow('mounted');
     await expect(courses.update('content')).rejects.toThrow('mounted');
     // Its work shares the database with the settings, which have to survive this.
     courses.global.saveSettings({ displayName: 'Ada' });
     courses.active!.store.saveNote('x', 'typst', 'weg');
-    courses.reset('content');
+    expect(courses.deleteData('content').courses).toHaveLength(1);
     expect(courses.active!.store.getNote('x')).toBeNull();
     expect(courses.global.getSettings().displayName).toBe('Ada');
     expect(courses.list().activeId).toBe('content');

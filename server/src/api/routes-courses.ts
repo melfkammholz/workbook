@@ -38,6 +38,11 @@ export function courseRoutes(app: FastifyInstance, d: Deps): void {
     return d.courses.resetAll();
   });
 
-  app.post<{ Params: { id: string } }>('/api/courses/:id/reset', async (req, reply) => answer(reply, async () => d.courses.reset(req.params.id)));
-  app.delete<{ Params: { id: string } }>('/api/courses/:id', async (req, reply) => answer(reply, () => d.courses.remove(req.params.id)));
+  /** Every row of a course's work and its copy. Asks for the word, like starting over. */
+  app.post<{ Params: { id: string } }>('/api/courses/:id/delete', async (req, reply) => {
+    if ((req.body as { confirm?: unknown } | undefined)?.confirm !== 'delete') return reply.code(400).send({ error: 'confirm with "delete"' });
+    return answer(reply, async () => d.courses.deleteData(req.params.id));
+  });
+  /** Removing hides the course; its work stays for when it is added again. */
+  app.delete<{ Params: { id: string } }>('/api/courses/:id', async (req, reply) => answer(reply, async () => d.courses.remove(req.params.id)));
 }

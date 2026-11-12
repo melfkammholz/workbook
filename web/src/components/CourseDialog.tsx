@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { RotateCcw, Trash2 } from 'lucide-react';
+import { EyeOff, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { CourseErrorCode, CourseInfo } from '@wb/shared';
 import { checkCourseUpdates, keys, useCourseAction, useCourses } from '@/lib/api';
@@ -71,7 +71,7 @@ export function CourseDialog({ open, onClose }: { open: boolean; onClose: () => 
   const data = useCourses().data;
   const action = useCourseAction();
   const [removing, setRemoving] = useState<CourseInfo | null>(null);
-  const [resetting, setResetting] = useState<CourseInfo | null>(null);
+  const [deleting, setDeleting] = useState<CourseInfo | null>(null);
   const [checking, setChecking] = useState(false);
   const [checked, setChecked] = useState(false);
 
@@ -112,14 +112,14 @@ export function CourseDialog({ open, onClose }: { open: boolean; onClose: () => 
                   {t.courseOpen}
                 </Button>
               ) : null}
-              <IconButton label={t.courseResetNamed(c.title)} disabled={busyId !== null} onClick={() => setResetting(c)}>
-                <RotateCcw size={15} />
-              </IconButton>
               {c.source === 'git' ? (
                 <IconButton label={t.courseRemoveNamed(c.title)} disabled={busyId !== null} onClick={() => setRemoving(c)}>
-                  <Trash2 size={15} />
+                  <EyeOff size={15} />
                 </IconButton>
               ) : null}
+              <IconButton label={t.courseDeleteNamed(c.title)} disabled={busyId !== null} onClick={() => setDeleting(c)}>
+                <Trash2 size={15} />
+              </IconButton>
             </div>
           </li>
         ))}
@@ -148,15 +148,15 @@ export function CourseDialog({ open, onClose }: { open: boolean; onClose: () => 
       </section>
 
       <ConfirmDialog
-        open={resetting !== null}
-        onClose={() => setResetting(null)}
-        title={resetting ? t.courseResetNamed(resetting.title) : ''}
-        confirmLabel={t.courseReset}
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        title={deleting ? t.courseDeleteNamed(deleting.title) : ''}
+        confirmLabel={t.courseDelete}
         onConfirm={() => {
-          if (resetting) action.mutate({ type: 'reset', id: resetting.id }, { onSuccess: (d) => d.activeId === resetting.id && onClose() });
+          if (deleting) action.mutate({ type: 'delete', id: deleting.id }, { onSuccess: (d) => (d.activeId === deleting.id || d.activeId !== data?.activeId) && onClose() });
         }}
       >
-        {t.courseResetBody}
+        {deleting ? t.courseDeleteBody(deleting.title, deleting.source === 'mounted') : null}
       </ConfirmDialog>
 
       <ConfirmDialog

@@ -27,6 +27,8 @@ interface CourseRecord {
    * suffix when an earlier course already has it. Set once and kept, so the rows never have to move.
    */
   key?: string;
+  /** Removed by the student: the copy and the work stay, and adding the same address again brings it back. */
+  hidden?: boolean;
 }
 
 /** What a flashcard's `from:` points at. */
@@ -140,7 +142,7 @@ export class CourseManager {
   }
 
   list(): CoursesResponse {
-    const courses: CourseInfo[] = this.records().map((r) => ({ id: r.id, title: r.title, source: 'git', url: r.url, update: this.updates.get(r.id) ?? 'unknown' }));
+    const courses: CourseInfo[] = this.shown().map((r) => ({ id: r.id, title: r.title, source: 'git', url: r.url, update: this.updates.get(r.id) ?? 'unknown' }));
     if (this.hasMount) {
       const { title } = this.openCourse(MOUNTED).content.current.outline;
       courses.unshift({ id: MOUNTED, title, source: 'mounted', url: null, update: 'unknown' });
@@ -154,12 +156,32 @@ export class CourseManager {
     return this.list();
   }
 
-  /** Downloads a repository and opens it. Adding one that is already here just opens it. */
+  /**
+   * Downloads a repository and opens it. Adding one that is already here just opens it, and adding one that was
+   * removed brings it back with its work. A course is its address: the same course from another address is another
+   * course (its work is kept under a key of its own).
+   */
   async add(input: string): Promise<CoursesResponse> {
     const url = normalizeUrl(input);
     const id = `c-${crypto.createHash('sha1').update(url).digest('hex').slice(0, 12)}`;
-    if (this.records().some((r) => r.id === id)) return this.activate(id);
+    const known = this.records().find((r) => r.id === id);
+    if (known && !known.hidden) return this.activate(id);
+    if (known && isCourse(this.repo(id))) {
+      this.saveRecords(this.records().map((r) => (r.id === id ? { ...r, hidden: false } : r)));
+      return this.activate(id);
+    }
 
+    await this.download(url, id);
+    const { outline } = loadContent(this.repo(id));
+    if (known) this.saveRecords(this.records().map((r) => (r.id === id ? { ...r, title: outline.title, hidden: false } : r)));
+    else this.saveRecords([...this.records(), { id, url, title: outline.title, key: this.freeKey(outline.id) }]);
+    this.updates.set(id, 'current');
+    this.setActive(id);
+    return this.list();
+  }
+
+  /** A fresh copy at `repo(id)`, replacing whatever was there only once the download is a course. */
+  private async download(url: string, id: string): Promise<void> {
     const home = this.home(id);
     const tmp = `${home}.${crypto.randomBytes(4).toString('hex')}.tmp`;
     try {
@@ -173,19 +195,14 @@ export class CourseManager {
       throw new CourseError('not-a-course');
     }
     fs.mkdirSync(home, { recursive: true });
+    fs.rmSync(this.repo(id), { recursive: true, force: true });
     fs.renameSync(tmp, this.repo(id));
-
-    const { outline } = loadContent(this.repo(id));
-    this.saveRecords([...this.records(), { id, url, title: outline.title, key: this.freeKey(outline.id) }]);
-    this.updates.set(id, 'current');
-    this.setActive(id);
-    return this.list();
   }
 
   /** Looks for news in every repository. Without a network the answer is simply "unknown". */
   async checkUpdates(): Promise<void> {
     await Promise.all(
-      this.records().map(async ({ id }) => {
+      this.shown().map(async ({ id }) => {
         let update: CourseUpdate = 'unknown';
         try {
           const remote = await git.remoteHead(this.repo(id));
@@ -201,7 +218,7 @@ export class CourseManager {
   /** Answers and notes are stored by exercise id, so they stay even when an update removes their exercise. */
   async update(id: string): Promise<CoursesResponse> {
     if (id === MOUNTED) throw new CourseError('mounted');
-    if (!this.records().some((r) => r.id === id)) throw new CourseError('unknown-course');
+    if (!this.shown().some((r) => r.id === id)) throw new CourseError('unknown-course');
     try {
       await git.pull(this.repo(id));
     } catch {
@@ -214,33 +231,49 @@ export class CourseManager {
     return this.list();
   }
 
-  /** Forgets the work done in a course. The course itself stays. */
-  reset(id: string): CoursesResponse {
+  /**
+   * The only way to a fresh start in a course: deletes every row of its work and its copy. The mounted folder is not
+   * ours to delete, so it stays as a course with no work.
+   */
+  deleteData(id: string): CoursesResponse {
     if (!this.ids().includes(id)) throw new CourseError('unknown-course');
-    this.openCourse(id).store.resetWork();
-    // Whatever still runs was started with the old work.
-    if (id === this.activeId) this.o.onSwitch?.();
+    this.global.forCourse(this.key(id)).resetWork();
+    if (id === MOUNTED) {
+      // Whatever still runs was started with the old work.
+      if (id === this.activeId) this.o.onSwitch?.();
+      return this.list();
+    }
+    this.saveRecords(this.records().filter((r) => r.id !== id));
+    this.leave(id);
+    fs.rmSync(this.home(id), { recursive: true, force: true });
     return this.list();
   }
 
   /**
-   * Starts over: the work in every course, all flashcards, and the settings. The courses
+   * Starts over: the work in every course (removed ones too), all flashcards, and the settings. The courses
    * themselves stay downloaded.
    */
   resetAll(): CoursesResponse {
-    for (const id of this.ids()) this.openCourse(id).store.resetWork();
+    // Removed courses too: their work is still here.
+    for (const id of [...(this.hasMount ? [MOUNTED] : []), ...this.records().map((r) => r.id)]) this.global.forCourse(this.key(id)).resetWork();
     this.flashcards.reset();
     this.global.resetSettings();
     this.o.onSwitch?.();
     return this.list();
   }
 
-  /** Deletes the copy and the work done in it. */
-  async remove(id: string): Promise<CoursesResponse> {
+  /** Hides a course. Its copy and its work stay, so adding the same address again brings both back. */
+  remove(id: string): CoursesResponse {
     if (id === MOUNTED) throw new CourseError('mounted');
-    if (!this.records().some((r) => r.id === id)) throw new CourseError('unknown-course');
-    this.global.forCourse(this.key(id)).resetWork();
-    this.saveRecords(this.records().filter((r) => r.id !== id));
+    if (!this.shown().some((r) => r.id === id)) throw new CourseError('unknown-course');
+    this.key(id); // settled while the copy is surely here
+    this.saveRecords(this.records().map((r) => (r.id === id ? { ...r, hidden: true } : r)));
+    this.leave(id);
+    return this.list();
+  }
+
+  /** After a course left the list: another one opens, and nothing of it stays loaded. */
+  private leave(id: string): void {
     if (this.activeId === id) {
       const [next] = this.ids();
       if (next) this.setActive(next);
@@ -249,8 +282,6 @@ export class CourseManager {
     this.open.get(id)?.renderer.stopWarming();
     this.open.delete(id);
     this.updates.delete(id);
-    fs.rmSync(this.home(id), { recursive: true, force: true });
-    return this.list();
   }
 
   /**
@@ -359,7 +390,12 @@ export class CourseManager {
   }
 
   private ids(): string[] {
-    return [...(this.hasMount ? [MOUNTED] : []), ...this.records().map((r) => r.id)];
+    return [...(this.hasMount ? [MOUNTED] : []), ...this.shown().map((r) => r.id)];
+  }
+
+  /** The courses in the list; `records()` also has the removed ones, whose keys stay taken. */
+  private shown(): CourseRecord[] {
+    return this.records().filter((r) => !r.hidden);
   }
 
   private records(): CourseRecord[] {

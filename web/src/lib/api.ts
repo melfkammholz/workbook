@@ -240,12 +240,14 @@ export const useAchievements = () => {
 };
 export const acknowledgeAchievements = () => api.post('/api/achievements/seen');
 
-export type CourseAction = { type: 'add'; url: string } | { type: 'activate' | 'update' | 'remove' | 'reset'; id: string };
+export type CourseAction = { type: 'add'; url: string } | { type: 'activate' | 'update' | 'remove' | 'delete'; id: string };
 
 const courseRequest = (a: CourseAction) => {
   if (a.type === 'add') return api.post<CoursesResponse>('/api/courses', { url: a.url });
   const url = `/api/courses/${encodeURIComponent(a.id)}`;
-  return a.type === 'remove' ? api.delete<CoursesResponse>(url) : api.post<CoursesResponse>(`${url}/${a.type}`);
+  if (a.type === 'remove') return api.delete<CoursesResponse>(url);
+  if (a.type === 'delete') return api.post<CoursesResponse>(`${url}/delete`, { confirm: 'delete' });
+  return api.post<CoursesResponse>(`${url}/${a.type}`);
 };
 
 /** Everything below the course list and the settings depends on the course. */
@@ -255,8 +257,8 @@ export const useCourseAction = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (action: CourseAction) => {
-      // Leaving the page first: what an open exercise still has to save must not arrive after a reset.
-      if (action.type === 'reset' && action.id === qc.getQueryData<CoursesResponse>(keys.courses)?.activeId) {
+      // Leaving the page first: what an open exercise still has to save must not arrive after the delete.
+      if (action.type === 'delete' && action.id === qc.getQueryData<CoursesResponse>(keys.courses)?.activeId) {
         location.hash = '#/';
         await new Promise((resolve) => setTimeout(resolve, 150));
       }
@@ -264,7 +266,7 @@ export const useCourseAction = () => {
     },
     onSuccess: (data, action) => {
       const before = qc.getQueryData<CoursesResponse>(keys.courses)?.activeId;
-      const emptied = action.type === 'reset' && action.id === data.activeId;
+      const emptied = action.type === 'delete' && action.id === before;
       if (emptied) forgetBrowserMemory(qc.getQueryData<Outline>(keys.outline));
       if (before !== data.activeId || emptied) {
         // Exercises and tags of the previous course mean nothing in this one.
@@ -283,7 +285,7 @@ export const useCourseAction = () => {
   });
 };
 
-/** What this browser remembers per exercise, which a reset should not leave behind. */
+/** What this browser remembers per exercise, which deleting a course's data should not leave behind. */
 function forgetBrowserMemory(outline: Outline | undefined) {
   try {
     for (const item of outline?.chapters.flatMap((c) => c.items) ?? []) {
