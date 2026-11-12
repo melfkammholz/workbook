@@ -94,7 +94,7 @@ repositories can be added for now.
 This is optional: turn on *Prompts for an AI chat* in the settings. The *AI review* tab of an exercise copies a prompt with the task, your current answer and the latest test results.
 Paste it into the AI chat you already use, such as Claude or ChatGPT. The workbook needs no account or key for this,
 and sends nothing itself. The prompt never contains hints, author notes or the reference solution. You can change it in
-the same tab, using the placeholders `{title}`, `{task}`, `{language}`, `{answer}` and `{tests}`.
+the same tab, using the placeholders `{title}`, `{task}`, `{language}`, `{answer}`, `{tests}` and `{questions}` (the open questions on the exercise).
 
 ### Flashcards
 

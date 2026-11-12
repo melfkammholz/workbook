@@ -16,7 +16,10 @@ import {
   type HowSolved,
   type NoteDoc,
   type NoteFormat,
-  type OpenQuestion,
+  type Question,
+  type Anchor,
+  MAX_QUESTION,
+  PASS_GAP_MS,
   type ProgressEntry,
   type Reflection,
   type ReviewData,
@@ -214,7 +217,7 @@ export class Store {
       checklists,
       landingSeen: this.getSettingRaw<boolean>('landingSeen', false),
       focus: this.getSettingRaw<Focus | null>('focus', null),
-      openQuestions: this.allOpenQuestions(),
+      questions: this.listQuestions({ course: this.course }),
       reflections,
       stats,
       lastOpenedId: this.getSettingRaw<string | null>('lastOpenedId', null),
@@ -377,30 +380,76 @@ export class Store {
     return rows.map(rowToReflection);
   }
 
-  // ───────────────────────── open questions ─────────────────────────
+  // ───────────────────────── questions ─────────────────────────
 
-  private allOpenQuestions(): Record<string, OpenQuestion> {
-    const out: Record<string, OpenQuestion> = {};
-    for (const r of this.all('SELECT * FROM open_questions WHERE course = ?', this.course))
-      out[r.exercise_id as string] = { content: r.content as string, updatedAt: Number(r.updated_at) };
-    return out;
+  /** Questions are the student's, in every course: a reset of a course's work keeps them. */
+  listQuestions(filter: { course?: string; exercise?: string } = {}): Question[] {
+    const where: string[] = [];
+    const params: SQLInputValue[] = [];
+    if (filter.course !== undefined) {
+      where.push('course = ?');
+      params.push(filter.course);
+    }
+    if (filter.exercise !== undefined) {
+      where.push("json_extract(anchor, '$.id') = ?");
+      params.push(filter.exercise);
+    }
+    const rows = this.all(`SELECT * FROM questions ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at, rowid`, ...params);
+    return rows.map(rowToQuestion);
   }
 
-  /** An empty question removes it: that is how a question gets resolved. */
-  saveOpenQuestion(id: string, content: string): void {
-    const text = content.trim().slice(0, 2000);
-    if (!text) {
-      this.run('DELETE FROM open_questions WHERE course = ? AND exercise_id = ?', this.course, id);
-      return;
+  getQuestion(id: string): Question | null {
+    const r = this.get('SELECT * FROM questions WHERE id = ?', id);
+    return r ? rowToQuestion(r) : null;
+  }
+
+  /** The pass a capture now belongs to: the running one, or a new one after a pause. */
+  private currentPass(t: number): number {
+    const last = this.get('SELECT id, last_at FROM question_passes ORDER BY id DESC LIMIT 1');
+    if (last && t - Number(last.last_at) < PASS_GAP_MS) {
+      this.run('UPDATE question_passes SET last_at = ? WHERE id = ?', t, last.id as number);
+      return Number(last.id);
     }
+    this.run('INSERT INTO question_passes (started_at, last_at) VALUES (?,?)', t, t);
+    return Number(this.get('SELECT last_insert_rowid() AS id')!.id);
+  }
+
+  addQuestion(q: { id?: string | undefined; text: string; anchor: Anchor; highlightId?: string | null }): Question {
+    const t = this.now();
+    const id = q.id ?? `q-${randomUUID()}`;
+    const course = q.anchor.kind === 'page' ? '' : q.anchor.course;
+    this.tx(() => {
+      this.run(
+        `INSERT INTO questions (id, text, anchor, course, highlight_id, pass_id, status, created_at, updated_at) VALUES (?,?,?,?,?,?,'open',?,?)`,
+        id, q.text.trim().slice(0, MAX_QUESTION), JSON.stringify(q.anchor), course, q.highlightId ?? null, this.currentPass(t), t, t,
+      );
+    });
+    return this.getQuestion(id)!;
+  }
+
+  /** Reopening forgets when it was done; the answer, if any, stays. */
+  updateQuestion(id: string, patch: { text?: string; status?: 'open' | 'done'; answer?: string | null }): Question | null {
+    const cur = this.getQuestion(id);
+    if (!cur) return null;
+    const t = this.now();
+    const status = patch.status ?? cur.status;
+    const doneAt = status === 'done' ? (cur.status === 'done' ? cur.doneAt : t) : null;
     this.run(
-      `INSERT INTO open_questions (course, exercise_id, content, updated_at) VALUES (?,?,?,?)
-       ON CONFLICT(course, exercise_id) DO UPDATE SET content=excluded.content, updated_at=excluded.updated_at`,
-      this.course,
+      'UPDATE questions SET text = ?, status = ?, answer = ?, done_at = ?, updated_at = ? WHERE id = ?',
+      patch.text === undefined ? cur.text : patch.text.trim().slice(0, MAX_QUESTION),
+      status,
+      patch.answer === undefined ? cur.answer : patch.answer,
+      doneAt,
+      t,
       id,
-      text,
-      this.now(),
     );
+    return this.getQuestion(id);
+  }
+
+  deleteQuestion(id: string): boolean {
+    const had = this.getQuestion(id) !== null;
+    if (had) this.run('DELETE FROM questions WHERE id = ?', id);
+    return had;
   }
 
   // ───────────────────────── checklists ─────────────────────────
@@ -754,7 +803,7 @@ export class Store {
     const notes: ReviewData['notes'] = {};
     for (const r of this.all('SELECT exercise_id, format, content, updated_at FROM notes WHERE course = ?', this.course))
       notes[r.exercise_id as string] = { format: r.format as NoteFormat, content: r.content as string, updatedAt: Number(r.updated_at) };
-    return { progress: state.progress, reflections: this.listReflections(), openQuestions: state.openQuestions, stats: state.stats, answers, notes };
+    return { progress: state.progress, reflections: this.listReflections(), questions: state.questions, stats: state.stats, answers, notes };
   }
 
   // ───────────────────────── old databases ─────────────────────────
@@ -790,6 +839,13 @@ export class Store {
               .prepare(`INSERT INTO main.${table} (course, ${columns}) SELECT ?, ${columns} FROM legacy.${table} ${where} ORDER BY rowid`)
               .run(this.course, ...(table === 'settings' ? GLOBAL_KEYS : []));
           }
+          // Questions are global and carry their course in the anchor too.
+          this.db.raw
+            .prepare(
+              `INSERT INTO main.questions (id, text, anchor, course, highlight_id, pass_id, status, answer, created_at, updated_at, done_at)
+               SELECT id, text, json_set(anchor, '$.course', ?), ?, highlight_id, NULL, status, answer, created_at, updated_at, done_at FROM legacy.questions ORDER BY rowid`,
+            )
+            .run(this.course, this.course);
           this.setSetting('legacyImported', true);
         });
       } finally {
@@ -803,6 +859,22 @@ export class Store {
 }
 
 // ───────────────────────── row mapping ─────────────────────────
+
+function rowToQuestion(r: Row): Question {
+  return {
+    id: r.id as string,
+    text: r.text as string,
+    anchor: JSON.parse(r.anchor as string) as Anchor,
+    course: r.course as string,
+    highlightId: (r.highlight_id as string | null) ?? null,
+    passId: r.pass_id === null ? null : Number(r.pass_id),
+    status: r.status as 'open' | 'done',
+    answer: (r.answer as string | null) ?? null,
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+    doneAt: r.done_at === null ? null : Number(r.done_at),
+  };
+}
 
 function rowToProgress(r: Row): ProgressEntry {
   return {

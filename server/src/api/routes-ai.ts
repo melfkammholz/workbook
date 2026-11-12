@@ -30,6 +30,7 @@ export function aiRoutes(app: FastifyInstance, d: Deps): void {
         answer: parsed.data.answer,
         language: ex.meta.code?.language ?? null,
         tests: parsed.data.tests,
+        questions: d.store.listQuestions({ course: d.store.course, exercise: req.params.id }).filter((q) => q.status === 'open' && q.text).map((q) => q.text),
         lang: parsed.data.lang,
       }),
     };

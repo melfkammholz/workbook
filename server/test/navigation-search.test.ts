@@ -288,7 +288,7 @@ describe('adventureOfSection', () => {
 describe('topics on the review page', () => {
   const outline = loadContent(EXAMPLE_CONTENT).outline;
   const reflection = (exerciseId: string, confidence: number) => ({ id: 1, exerciseId, confidence, how: [], comment: '', createdAt: 1 }) as never;
-  const data = { progress: {}, stats: {}, openQuestions: {}, answers: {}, notes: {}, checklists: [], reflections: [reflection('symbolic-differentiation', 2), reflection('mutual-recursion', 4)] } as never;
+  const data = { progress: {}, stats: {}, questions: [], answers: {}, notes: {}, checklists: [], reflections: [reflection('symbolic-differentiation', 2), reflection('mutual-recursion', 4)] } as never;
 
   it('lists course topics, and leaves out topics that are only examples', () => {
     const { topics } = confidenceRows(outline, data);
@@ -296,7 +296,7 @@ describe('topics on the review page', () => {
   });
 
   it('counts self-evaluation questions in a chapter, both as rated and in the total', () => {
-    const withAnswer = { progress: {}, stats: {}, openQuestions: {}, answers: {}, notes: {}, reflections: [], checklists: [{ checklistId: 'selbstevaluation-typklassen', title: 'x', question: { id: 'q', html: '' }, answer: { confidence: 1, note: '', updatedAt: 1 } }] } as never;
+    const withAnswer = { progress: {}, stats: {}, questions: [], answers: {}, notes: {}, reflections: [], checklists: [{ checklistId: 'selbstevaluation-typklassen', title: 'x', question: { id: 'q', html: '' }, answer: { confidence: 1, note: '', updatedAt: 1 } }] } as never;
     const { chapters, topics } = confidenceRows(outline, withAnswer);
     const typklassen = chapters.find((c) => c.label === 'Typklassen')!;
     const exercises = outline.chapters.find((c) => c.id === 'typklassen')!.items.filter((i) => i.type === 'exercise').length;

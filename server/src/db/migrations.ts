@@ -2,6 +2,7 @@
  * Schema migrations, applied in order. `PRAGMA user_version` records how many
  * have run. Never edit a released migration: append a new one.
  */
+import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 
 /** SQL, or a function for a step that has to look at the database first. */
@@ -445,6 +446,43 @@ export const MIGRATIONS: Migration[] = [
     }
     db.prepare("UPDATE settings SET value = ? WHERE course = '' AND key = 'settings'").run(JSON.stringify(settings));
   },
+  /*
+   * 17: open questions become a list of their own, global like highlights: a question stores where it was asked
+   * (`anchor`, JSON) and the course it belongs to, so a reset of a course's work keeps it. The one question per
+   * exercise becomes one row each. `pass_id` groups captures made in one sitting (a new pass after a pause).
+   */ (db) => {
+    db.exec(`
+    CREATE TABLE question_passes (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      started_at INTEGER NOT NULL,
+      last_at    INTEGER NOT NULL
+    );
+    CREATE TABLE questions (
+      id           TEXT PRIMARY KEY,
+      text         TEXT NOT NULL DEFAULT '',
+      anchor       TEXT NOT NULL,
+      course       TEXT NOT NULL DEFAULT '',
+      highlight_id TEXT,
+      pass_id      INTEGER REFERENCES question_passes(id),
+      status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','done')),
+      answer       TEXT,
+      created_at   INTEGER NOT NULL,
+      updated_at   INTEGER NOT NULL,
+      done_at      INTEGER
+    );
+    CREATE INDEX questions_course ON questions (course, status);
+    CREATE INDEX questions_pass ON questions (pass_id);
+    `);
+    const insert = db.prepare(
+      'INSERT INTO questions (id, text, anchor, course, highlight_id, pass_id, status, answer, created_at, updated_at, done_at) VALUES (?,?,?,?,NULL,NULL,\'open\',NULL,?,?,NULL)',
+    );
+    const rows = db.prepare('SELECT course, exercise_id, content, updated_at FROM open_questions ORDER BY updated_at').all() as { course: string; exercise_id: string; content: string; updated_at: number }[];
+    for (const r of rows) {
+      const anchor = JSON.stringify({ kind: 'exercise', course: r.course, id: r.exercise_id });
+      insert.run(`q-${randomUUID()}`, r.content, anchor, r.course, r.updated_at, r.updated_at);
+    }
+    db.exec('DROP TABLE open_questions');
+  },
 ];
 
 /** The course a mounted `/content` folder is. */
@@ -468,7 +506,6 @@ export const COURSE_TABLES = [
   'reflections',
   'stats',
   'check_history',
-  'open_questions',
   'checklist_answers',
   'checklist_ratings',
   'achievements',

@@ -2,7 +2,7 @@ import { ArrowRight, Bookmark, Check, ChevronLeft, ChevronRight, Layers, LifeBuo
 import { Link } from 'wouter';
 import { useState } from 'react';
 import { useWorkLayout } from '@/lib/workLayout';
-import type { ItemMeta, Status } from '@wb/shared';
+import type { ItemMeta, Question, Status } from '@wb/shared';
 import { itemHref } from '@/lib/api';
 import { formatClock } from '@/lib/attention';
 import { useT } from '@/lib/i18n';
@@ -10,6 +10,7 @@ import { altKey } from '@/lib/keys';
 import { Button, IconButton, clsx } from './ui';
 import { StatusControl } from './StatusControl';
 import { LessonOptions } from './QuickMenus';
+import { ExerciseQuestions } from './Questions';
 import { plainTitle } from '@/components/Title';
 import { Title } from './Title';
 
@@ -34,6 +35,7 @@ export function ExerciseBar({
   onMakeCard,
   layoutSwitch = false,
   lessonOptions = false,
+  questions,
 }: {
   status: Status;
   onStatus: (s: Status) => void;
@@ -56,6 +58,8 @@ export function ExerciseBar({
   layoutSwitch?: boolean;
   /** A lesson: its own options (highlights, sections in the outline) sit beside the card. */
   lessonOptions?: boolean;
+  /** An exercise: the questions asked on it, with a line to add one. */
+  questions?: { item: string; list: Question[] } | undefined;
 }) {
   const t = useT();
   const label = finished ? t.timerFinished : paused ? t.timerPaused : t.timeOnExercise;
@@ -93,6 +97,7 @@ export function ExerciseBar({
           </button>
         </>
       ) : null}
+      {questions ? <ExerciseQuestions item={questions.item} questions={questions.list} /> : null}
       {lessonOptions ? <LessonOptions /> : null}
       <div className="ml-auto flex items-center gap-2">
         {layoutSwitch ? <LayoutSwitch /> : null}

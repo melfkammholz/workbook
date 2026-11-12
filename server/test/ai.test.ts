@@ -20,6 +20,7 @@ const input: PromptInput = {
   answer: 'sort = id',
   language: 'haskell',
   tests: [{ name: 'sortiert', status: 'fail', message: 'falsifiable\n[2,1]' }],
+  questions: ['Warum der Basisfall?'],
   lang: 'de',
 };
 
@@ -29,14 +30,16 @@ describe('buildPrompt', () => {
     expect(de).toContain('Antworte auf Deutsch');
     expect(de).toContain('Mergesort\n\nSortiere die Liste.');
     expect(de).toContain('<answer language="haskell">\nsort = id\n</answer>');
+    expect(de).toContain('<questions>\n- Warum der Basisfall?\n</questions>');
     expect(de).toContain('fail: sortiert\n  falsifiable\n  [2,1]');
-    expect(de).not.toMatch(/\{(title|task|language|answer|tests)\}/);
+    expect(de).not.toMatch(/\{(title|task|language|answer|tests|questions)\}/);
     expect(buildPrompt('', { ...input, lang: 'en' })).toContain('Reply in English');
   });
 
   it('says so when no tests ran, and labels a text answer', () => {
     const text = buildPrompt('', { ...input, tests: null, language: null, lang: 'en' });
     expect(text).toContain('No test run yet.');
+    expect(buildPrompt('', { ...input, questions: [], lang: 'en' })).toContain('No open questions.');
     expect(text).toContain('<answer language="text">');
   });
 

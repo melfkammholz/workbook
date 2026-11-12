@@ -8,10 +8,13 @@ export interface PromptInput {
   /** Language of a code answer; null for text. */
   language: string | null;
   tests: Pick<CheckResult, 'name' | 'status' | 'message'>[] | null;
+  /** The student's open questions on this exercise, as they wrote them. */
+  questions: string[];
   /** Language of the default template. */
   lang: 'de' | 'en';
 }
 
+const NO_QUESTIONS = { en: 'No open questions.', de: 'Keine offenen Fragen.' };
 const NO_TESTS = { en: 'No test run yet.', de: 'Noch kein Testlauf.' };
 
 function testLines(i: PromptInput): string {
@@ -25,7 +28,7 @@ function testLines(i: PromptInput): string {
  * are left alone: the braces may be part of the student's own wording.
  */
 export function buildPrompt(template: string, i: PromptInput): string {
-  const values: Record<string, string> = { title: i.title, task: i.task, language: i.language ?? 'text', answer: i.answer, tests: testLines(i) };
+  const values: Record<string, string> = { title: i.title, task: i.task, language: i.language ?? 'text', answer: i.answer, tests: testLines(i), questions: i.questions.length ? i.questions.map((q) => `- ${q.replaceAll('\n', '\n  ')}`).join('\n') : NO_QUESTIONS[i.lang] };
   const source = template.trim() ? template : DEFAULT_PROMPT_TEMPLATE[i.lang];
-  return source.replace(/\{(title|task|language|answer|tests)\}/g, (_, name: string) => values[name]!);
+  return source.replace(/\{(title|task|language|answer|tests|questions)\}/g, (_, name: string) => values[name]!);
 }

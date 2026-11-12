@@ -8,8 +8,9 @@ import { ConfidenceOverview } from '@/components/ConfidenceOverview';
 import { Prose } from '@/components/Prose';
 import { RenderedText } from '@/components/RenderedText';
 import { Button, Chip, Empty, Spinner, StatusMark, clsx } from '@/components/ui';
-import { FLAGS, cellFor, formatDuration, urgency, type Cell, type Flag } from '@/lib/attention';
-import { isExercise, keys, saveOpenQuestion, useOutline, useReviewData, useSettings } from '@/lib/api';
+import { FLAGS, cellFor, formatDuration, questionsOn, urgency, type Cell, type Flag } from '@/lib/attention';
+import { QuestionInput, QuestionList } from '@/components/Questions';
+import { isExercise, keys, useOutline, useReviewData, useSettings } from '@/lib/api';
 import { useCourseCards } from '@/lib/flashcards';
 import { BackLink } from '@/lib/history';
 import { useLang, useT } from '@/lib/i18n';
@@ -161,7 +162,7 @@ function Entry({ ex, cell, data }: { ex: Exercise; cell: Cell; data: ReviewData 
         <StatusMark status={cell.progress?.status ?? 'todo'} size={16} className="mt-0.5 shrink-0" />
         <span className="min-w-0 flex-1">
           <span className="block font-medium"><Title text={ex.title} /></span>
-          {cell.question ? <span className="mt-0.5 line-clamp-2 block text-[13.5px] text-ink-2">{cell.question.content}</span> : null}
+          {cell.questions[0]?.text ? <span className="mt-0.5 line-clamp-2 block text-[13.5px] text-ink-2">{cell.questions[0].text}</span> : null}
           <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {due ? <Chip tone="danger">{t.dueNow}</Chip> : null}
             {cell.flags.map((f) => (
@@ -191,8 +192,14 @@ function EntryBody({ ex, cell, data }: { ex: Exercise; cell: Cell; data: ReviewD
   const note = data.notes[ex.id];
   return (
     <>
-      <QuestionBlock id={ex.id} question={cell.question?.content ?? ''} />
-      {reflection?.comment && reflection.comment !== cell.question?.content ? (
+      <section className="rounded-md border border-review/40 bg-review-soft p-3">
+        <h3 className="mb-2 text-xs font-semibold text-review">{t.questionsTitle}</h3>
+        <QuestionInput item={ex.id} />
+        <div className="mt-2">
+          <QuestionList item={ex.id} questions={questionsOn(data.questions, ex.id)} />
+        </div>
+      </section>
+      {reflection?.comment && !questionsOn(data.questions, ex.id).some((q) => q.text === reflection.comment) ? (
         <section className="mt-4">
           <h3 className="mb-1 text-sm font-semibold">{t.comment}</h3>
           <blockquote className="border-l-2 border-accent pl-3 text-[14.5px] text-ink-2">{reflection.comment}</blockquote>
@@ -228,56 +235,6 @@ function EntryBody({ ex, cell, data }: { ex: Exercise; cell: Cell; data: ReviewD
         {t.openExercise} <ArrowRight size={14} />
       </Link>
     </>
-  );
-}
-
-function QuestionBlock({ id, question }: { id: string; question: string }) {
-  const t = useT();
-  const qc = useQueryClient();
-  const [draft, setDraft] = useState<string | null>(null);
-
-  const store = async (content: string) => {
-    await saveOpenQuestion(id, content);
-    setDraft(null);
-    void qc.invalidateQueries({ queryKey: keys.mine });
-    void qc.invalidateQueries({ queryKey: keys.state });
-  };
-
-  if (draft !== null) {
-    return (
-      <div>
-        <textarea autoFocus rows={3} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t.questionPlaceholder} className="w-full resize-y wb-field px-3 py-2 text-sm placeholder:text-ink-3" />
-        <div className="mt-2 flex gap-2">
-          <Button size="sm" variant="primary" onClick={() => void store(draft)}>
-            {t.saveQuestion}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>
-            {t.cancel}
-          </Button>
-        </div>
-      </div>
-    );
-  }
-  if (!question) {
-    return (
-      <Button size="sm" onClick={() => setDraft('')}>
-        {t.addQuestion}
-      </Button>
-    );
-  }
-  return (
-    <section className="rounded-md border border-review/40 bg-review-soft p-3">
-      <h3 className="text-xs font-semibold text-review">{t.yourQuestion}</h3>
-      <p className="mt-1 whitespace-pre-wrap text-[14.5px]">{question}</p>
-      <div className="mt-2 flex gap-2">
-        <Button size="sm" onClick={() => void store('')}>
-          {t.questionResolved}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => setDraft(question)}>
-          <Pencil size={13} /> {t.editQuestion}
-        </Button>
-      </div>
-    </section>
   );
 }
 

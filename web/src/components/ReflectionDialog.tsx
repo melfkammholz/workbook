@@ -22,7 +22,6 @@ export function ReflectionDialog({
   onClose,
   title,
   suggestedHow,
-  initialComment,
   onSubmit,
 }: {
   open: boolean;
@@ -30,7 +29,6 @@ export function ReflectionDialog({
   onClose: () => void;
   title: string;
   suggestedHow: HowSolved[];
-  initialComment: string;
   onSubmit: (input: ReflectionInput) => void;
 }) {
   const t = useT();
@@ -42,7 +40,7 @@ export function ReflectionDialog({
     if (open) {
       setConfidence(null);
       setHow(suggestedHow);
-      setComment(initialComment);
+      setComment('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -117,7 +115,7 @@ export function ReflectionDialog({
         </Button>
         <Button
           variant="primary"
-          disabled={confidence === null && !comment.trim() && comment === initialComment}
+          disabled={confidence === null && !comment.trim()}
           onClick={() => {
             onSubmit({ confidence, how, comment: comment.trim() });
             onClose();

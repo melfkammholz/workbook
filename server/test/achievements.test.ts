@@ -21,7 +21,7 @@ const state = (done: string[] = [], more: Partial<StudentState> = {}): StudentSt
   checklists: {},
   landingSeen: true,
   focus: null,
-  openQuestions: {},
+  questions: [],
   reflections: {},
   stats: {},
   lastOpenedId: null,
@@ -228,11 +228,12 @@ describe('API', () => {
   });
 
   it('celebrates what comes after that once, and keeps it when the work is undone', async () => {
-    await send('PUT', '/api/work/side-effects/question', { content: 'Warum?' });
+    await send('POST', '/api/questions', { item: 'side-effects', text: 'Warum?' });
     expect((await get()).unseen.map((e) => e.key)).toEqual(['a/curious']);
     await send('POST', '/api/achievements/seen');
     expect((await get()).unseen).toEqual([]);
-    await send('PUT', '/api/work/side-effects/question', { content: '' });
+    const [q] = courses.active!.store.listQuestions();
+    await app.inject({ method: 'DELETE', url: `/api/questions/${q!.id}`, headers: host });
     expect((await get()).earned.map((e) => e.key)).toContain('a/curious');
   });
 

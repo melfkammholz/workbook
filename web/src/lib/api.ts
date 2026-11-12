@@ -11,7 +11,7 @@ import type {
   ItemDetail,
   NoteDoc,
   NoteFormat,
-  OpenQuestion,
+  Question,
   Outline,
   RenderedItem,
   ProgressEntry,
@@ -75,7 +75,8 @@ export interface Work {
   progress: ProgressEntry | null;
   stats: Stats;
   reflections: Reflection[];
-  openQuestion: OpenQuestion | null;
+  /** The open questions on this exercise, done ones too, oldest first. */
+  questions: Question[];
 }
 export interface NotePreview {
   html: string;
@@ -373,9 +374,34 @@ export const recordTick = (id: string, seconds: number) => {
 };
 export const postReflection = (id: string, confidence: number, how: HowSolved[], comment: string) =>
   api.post<Reflection>(`/api/work/${encodeURIComponent(id)}/reflection`, { confidence, how, comment });
-export const saveOpenQuestion = (id: string, content: string) => {
-  patchWork(id, (w) => ({ ...w, openQuestion: content.trim() ? { content: content.trim(), updatedAt: Date.now() } : null }));
-  return api.put(`/api/work/${encodeURIComponent(id)}/question`, { content });
+/** What a change to a question touches: the item's cached work, the review page, the dashboard. */
+const questionsChanged = (item: string) => {
+  void queryClient.invalidateQueries({ queryKey: keys.work(item) });
+  void queryClient.invalidateQueries({ queryKey: keys.mine });
+  void queryClient.invalidateQueries({ queryKey: keys.state });
+};
+const saved = (item: string, p: Promise<unknown>) =>
+  p.catch(() => reportSaveFailed()).finally(() => questionsChanged(item));
+
+/** Shown at once, with the id the server will keep. */
+export const addQuestion = (item: string, text: string) => {
+  const t = Date.now();
+  const id = crypto.randomUUID();
+  const q: Question = { id, text, anchor: { kind: 'exercise', course: '', id: item }, course: '', highlightId: null, passId: null, status: 'open', answer: null, createdAt: t, updatedAt: t, doneAt: null };
+  patchWork(item, (w) => ({ ...w, questions: [...w.questions, q] }));
+  return saved(item, api.post('/api/questions', { id, item, text }));
+};
+export const updateQuestion = (item: string, id: string, patch: { text?: string; status?: 'open' | 'done' }) => {
+  const t = Date.now();
+  patchWork(item, (w) => ({
+    ...w,
+    questions: w.questions.map((q) => (q.id !== id ? q : { ...q, ...patch, updatedAt: t, doneAt: patch.status ? (patch.status === 'done' ? t : null) : q.doneAt })),
+  }));
+  return saved(item, api.patch(`/api/questions/${encodeURIComponent(id)}`, patch));
+};
+export const deleteQuestion = (item: string, id: string) => {
+  patchWork(item, (w) => ({ ...w, questions: w.questions.filter((q) => q.id !== id) }));
+  return saved(item, api.delete(`/api/questions/${encodeURIComponent(id)}`));
 };
 export const saveChecklistAnswer = (id: string, question: string, confidence: number | null, note: string) =>
   api.put(`/api/checklists/${encodeURIComponent(id)}/${encodeURIComponent(question)}`, { confidence, note });

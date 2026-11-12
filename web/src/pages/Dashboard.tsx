@@ -6,6 +6,7 @@ import { ProgressLine } from '@/components/ItemRows';
 import { Plant } from '@/components/Plant';
 import { Level, StatusMark, clsx } from '@/components/ui';
 import { indexItems, isExercise, statusOf, threadProgress, useOutline, useSettings, useState_ } from '@/lib/api';
+import { openQuestionsOn } from '@/lib/attention';
 import { useAnnotations } from '@/lib/annotations';
 import { focusExercises } from '@/lib/focus';
 import { useT } from '@/lib/i18n';
@@ -34,7 +35,7 @@ export function Dashboard() {
   const fresh = !all.some((e) => statusOf(state, e.id) !== 'todo') && !last;
   const errors = outline.problems.filter((p) => p.severity === 'error');
   const weakChecklistAnswers = Object.values(state?.checklists ?? {}).flatMap((c) => Object.values(c)).filter((a) => a.confidence !== null && a.confidence <= 2).length;
-  const attention = all.filter((e) => state?.openQuestions[e.id] || statusOf(state, e.id) === 'review' || (state?.reflections[e.id]?.confidence ?? 5) <= 2).length + weakChecklistAnswers;
+  const attention = all.filter((e) => openQuestionsOn(state?.questions ?? [], e.id).length > 0 || statusOf(state, e.id) === 'review' || (state?.reflections[e.id]?.confidence ?? 5) <= 2).length + weakChecklistAnswers;
   const adventures = outline.threads.filter((x) => x.adventure);
   // Sessions, homework and exams have pages of their own; here only the paths through topics.
   const paths = outline.threads.filter((x) => !x.adventure && !x.kind);

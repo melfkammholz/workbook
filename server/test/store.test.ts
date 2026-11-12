@@ -99,13 +99,13 @@ describe('Store', () => {
     store.saveAnswer('x', 'text', 'my answer');
     store.saveNote('x', 'typst', 'my note');
     store.addReflection('x', 2, ['alone'], '');
-    store.saveOpenQuestion('x', 'Warum?');
+    store.addQuestion({ text: 'Warum?', anchor: { kind: 'exercise', course: '', id: 'x' } });
     const data = store.reviewData();
     expect(data.progress.x?.status).toBe('review');
     expect(data.answers.x).toEqual({ text: 'my answer' });
     expect(data.notes.x?.content).toBe('my note');
     expect(data.reflections.map((r) => r.confidence)).toEqual([2]);
-    expect(data.openQuestions.x?.content).toBe('Warum?');
+    expect(data.questions.map((q) => q.text)).toEqual(['Warum?']);
   });
 
   it('always keeps an attempt set aside for trying again, even if nothing changed since the last version', () => {
@@ -127,7 +127,7 @@ describe('Store', () => {
     store.saveAnswer('x', 'text', 'Antwort mit Suchwort', 'check');
     store.saveNote('x', 'typst', 'Notiz');
     store.addReflection('x', 2, ['alone'], '');
-    store.saveOpenQuestion('x', 'Warum?');
+    store.addQuestion({ text: 'Warum?', anchor: { kind: 'exercise', course: '', id: 'x' } });
     store.addActiveSeconds('x', 60);
     store.recordCheckRun('x', 1, 2);
     store.saveChecklistAnswer('q', 'a', 1, 'n');
@@ -138,7 +138,7 @@ describe('Store', () => {
     store.resetWork();
 
     const state = store.getState();
-    expect(state).toMatchObject({ progress: {}, checklists: {}, openQuestions: {}, reflections: {}, stats: {}, lastOpenedId: null, landingSeen: false, focus: null });
+    expect(state).toMatchObject({ progress: {}, checklists: {}, questions: [{ text: 'Warum?' }], reflections: {}, stats: {}, lastOpenedId: null, landingSeen: false, focus: null });
     expect(store.getAnswers('x')).toEqual({});
     expect(store.listVersions('x', 'text')).toEqual([]);
     expect(store.getNote('x')).toBeNull();
@@ -208,14 +208,33 @@ describe('Store', () => {
     expect(store.saveSettings({ theme: 'dark' }).theme).toBe('dark');
   });
 
-  it('keeps one open question per exercise and resolves it when emptied', () => {
-    const { store } = make();
-    store.saveOpenQuestion('a', '  Warum der Basisfall?  ');
-    expect(store.getState().openQuestions.a?.content).toBe('Warum der Basisfall?');
-    store.saveOpenQuestion('a', 'Anders gefragt');
-    expect(store.getState().openQuestions.a?.content).toBe('Anders gefragt');
-    store.saveOpenQuestion('a', '   ');
-    expect(store.getState().openQuestions.a).toBeUndefined();
+  it('keeps questions as a list: edited, done, reopened, deleted, passes after a pause', () => {
+    let now = 1_000_000;
+    const store = new Store(':memory:', () => now);
+    const anchor = { kind: 'exercise', course: '', id: 'a' } as const;
+    const q1 = store.addQuestion({ text: '  Warum der Basisfall?  ', anchor });
+    now += 60_000;
+    const q2 = store.addQuestion({ text: 'Und der Schritt?', anchor });
+    now += 31 * 60_000;
+    const q3 = store.addQuestion({ text: 'Neue Sitzung', anchor });
+    expect(q1.text).toBe('Warum der Basisfall?');
+    expect(q2.passId).toBe(q1.passId);
+    expect(q3.passId).not.toBe(q1.passId);
+    expect(store.getState().questions.map((q) => q.text)).toEqual(['Warum der Basisfall?', 'Und der Schritt?', 'Neue Sitzung']);
+    expect(store.updateQuestion(q1.id, { text: 'Anders gefragt', status: 'done' })).toMatchObject({ text: 'Anders gefragt', status: 'done', doneAt: now });
+    expect(store.updateQuestion(q1.id, { status: 'open' })).toMatchObject({ status: 'open', doneAt: null });
+    expect(store.listQuestions({ exercise: 'zzz' })).toEqual([]);
+    expect(store.deleteQuestion(q2.id)).toBe(true);
+    expect(store.deleteQuestion(q2.id)).toBe(false);
+    expect(store.getState().questions).toHaveLength(2);
+    store.close();
+  });
+
+  it('keeps questions when the work of a course is reset', () => {
+    const store = new Store(':memory:').forCourse('a');
+    store.addQuestion({ text: 'Warum?', anchor: { kind: 'exercise', course: 'a', id: 'x' } });
+    store.resetWork();
+    expect(store.getState().questions.map((q) => q.text)).toEqual(['Warum?']);
   });
 });
 
@@ -304,8 +323,10 @@ describe('one database for all courses', () => {
     c.saveNote('x', 'typst', 'n');
     c.addReflection('x', 3, [], '');
     c.listReflections('x');
-    c.saveOpenQuestion('x', 'q');
-    c.saveOpenQuestion('x', '');
+    const q = c.addQuestion({ text: 'q', anchor: { kind: 'exercise', course: 'a', id: 'x' } });
+    c.listQuestions({ course: 'a', exercise: 'x' });
+    c.updateQuestion(q.id, { status: 'done' });
+    c.deleteQuestion(q.id);
     c.saveChecklistAnswer('l', 'q', 3, '');
     c.saveChecklistAnswer('l', 'q', null, '');
     c.listChecklistRatings();
@@ -326,7 +347,7 @@ describe('one database for all courses', () => {
     c.reviewData();
     c.resetWork();
 
-    const tables = ['progress', 'answers', 'answer_versions', 'notes', 'reflections', 'stats', 'check_history', 'open_questions', 'checklist_answers', 'checklist_ratings', 'achievements', 'annotations', 'settings'];
+    const tables = ['progress', 'answers', 'answer_versions', 'notes', 'reflections', 'stats', 'check_history', 'questions', 'checklist_answers', 'checklist_ratings', 'achievements', 'annotations', 'settings'];
     const scans: string[] = [];
     const plans = new Map<string, string[]>();
     for (const sql of store.preparedSql) {
@@ -353,6 +374,7 @@ describe('importing per-course databases of earlier versions', () => {
       INSERT INTO answer_versions (exercise_id, slot, content, reason, created_at) VALUES ('x', 'text', 'A0', 'run', 1), ('x', 'text', 'A1', 'run', 2);
       INSERT INTO reflections (exercise_id, confidence, how, created_at) VALUES ('x', 2, '[]', 1), ('x', 5, '[]', 2);
       INSERT INTO settings (key, value) VALUES ('landingSeen', 'true');
+      INSERT INTO open_questions (exercise_id, content, updated_at) VALUES ('x', 'Warum?', 1);
       INSERT INTO search (exercise_id, source, content) VALUES ('x', 'answer', 'Apfel');
     `);
     oldDatabase(oldB, 9, `
@@ -373,6 +395,8 @@ describe('importing per-course databases of earlier versions', () => {
     expect(a.getState().progress.x?.status).toBe('done');
     expect(a.getState().landingSeen).toBe(true);
     expect(a.getState().reflections.x?.confidence).toBe(5);
+    expect(a.getState().questions).toMatchObject([{ text: 'Warum?', course: 'a', anchor: { kind: 'exercise', course: 'a', id: 'x' } }]);
+    expect(b.getState().questions).toEqual([]);
     expect(a.listVersions('x', 'text').map((v) => v.content)).toEqual(['A1', 'A0']);
     expect(a.search('Apfel')).toHaveLength(1);
     expect(b.getState().progress.x?.status).toBe('in_progress');
@@ -414,6 +438,20 @@ describe('migration 16', () => {
     store.saveSettings({ pdfPageMarks: [{ id: 'm2', name: 'Unklar!' }] });
     expect(store.getSettings().highlightLabels).toHaveLength(2);
     expect(store.getSettings().pdfPageMarks).toEqual([{ id: 'm2', name: 'Unklar!' }]);
+    store.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('migration 17', () => {
+  it('turns each open question into a question anchored to its exercise', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-m17-'));
+    const file = path.join(dir, 'workbook.db');
+    oldDatabase(file, 16, `INSERT INTO open_questions (course, exercise_id, content, updated_at) VALUES ('c1', 'e1', 'Warum?', 5), ('c2', 'e1', 'Wie?', 6)`);
+    const store = new Store(file);
+    expect(store.forCourse('c1').getState().questions).toMatchObject([{ text: 'Warum?', status: 'open', course: 'c1', anchor: { kind: 'exercise', course: 'c1', id: 'e1' }, createdAt: 5, passId: null }]);
+    expect(store.listQuestions().map((q) => q.text)).toEqual(['Warum?', 'Wie?']);
+    expect(store.sql.get("SELECT name FROM sqlite_master WHERE name = 'open_questions'")).toBeUndefined();
     store.close();
     fs.rmSync(dir, { recursive: true, force: true });
   });

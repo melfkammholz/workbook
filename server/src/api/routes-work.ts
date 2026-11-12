@@ -16,7 +16,6 @@ const bodies = {
   status: z.object({ status }),
   tick: z.object({ seconds: z.number().min(0).max(3600) }),
   hints: z.object({ count: z.number().int().min(0).max(100) }),
-  question: z.object({ content: z.string().max(2000) }),
   checklistAnswer: z.object({ confidence: z.number().int().min(1).max(5).nullable(), note: z.string().max(4000).default('') }),
   check: z.object({ files: z.record(z.string(), z.string().max(500_000)) }),
   reflection: z.object({
@@ -84,7 +83,7 @@ export function workRoutes(app: FastifyInstance, d: Deps): void {
       progress: d.store.getProgress(id),
       stats: d.store.getStats(id),
       reflections: d.store.listReflections(id),
-      openQuestion: d.store.getState().openQuestions[id] ?? null,
+      questions: d.store.listQuestions({ course: d.store.course, exercise: id }),
     };
   });
 
@@ -114,14 +113,6 @@ export function workRoutes(app: FastifyInstance, d: Deps): void {
     if (!b) return;
     if (!exists(req.params.id)) return reply.code(404).send({ error: 'unknown item' });
     return d.store.setStatus(req.params.id, b.status);
-  });
-
-  app.put<{ Params: { id: string } }>('/api/work/:id/question', async (req, reply) => {
-    const b = parse(bodies.question, req.body, reply);
-    if (!b) return;
-    if (!exists(req.params.id)) return reply.code(404).send({ error: 'unknown item' });
-    d.store.saveOpenQuestion(req.params.id, b.content);
-    return { ok: true };
   });
 
   app.post<{ Params: { id: string } }>('/api/work/:id/open', async (req, reply) => {

@@ -92,7 +92,7 @@ export function qualifiesFor(input: AchievementInput): Map<string, AchievementEv
     const s = stats(e.id);
     return s && s.checkPasses > 0 && s.checkRuns - s.checkPasses >= PERSISTENT_RUNS;
   })) add('persistent');
-  if (Object.keys(state.openQuestions).length > 0) add('curious');
+  if (state.questions.length > 0) add('curious');
   if (reflections.some((r) => r.confidence <= LOW) || checklistRatings.some((r) => r.confidence <= LOW)) add('honest');
   if (exercises.some((e) => status(e.id) === 'done' && (state.progress[e.id]?.reviewCount ?? 0) > 0)) add('back-again');
   if (Object.values(state.checklists).reduce((n, c) => n + Object.keys(c).length, 0) >= CHECKLIST_ANSWERS) add('self-aware');
