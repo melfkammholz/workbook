@@ -225,7 +225,7 @@ which publishes a tag named after the branch, such as `main`, and leaves `latest
 | `shared/` | Types shared by the server and the web app |
 | `server/src/content` | Loading and checking a course, Typst rendering, the preprocessor for starter and solution in one file, search |
 | `server/src/runners` | Warm `ghci` and `swipl` sessions, the test runners, the session pool |
-| `server/src/courses` | Adding, downloading and updating courses, one copy and one database per course |
+| `server/src/courses` | Adding, downloading and updating courses, one copy per course; all work in one database |
 | `server/src/db` | SQLite with migrations: progress, answers and their history, notes, self-evaluations, statistics |
 | `server/src/api` | HTTP and WebSocket routes, and the guards against requests from other sites |
 | `server/src/ai` | The prompt students copy into their own chat |

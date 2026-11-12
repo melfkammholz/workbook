@@ -6,6 +6,7 @@ import type { Config } from '../config.js';
 import { loadContent, type Content } from '../content/loader.js';
 import { ContentService } from '../content/service.js';
 import { TypstRenderer } from '../content/typst.js';
+import { MOUNTED_COURSE } from '../db/migrations.js';
 import { Store } from '../db/store.js';
 import { Flashcards } from '../flashcards/service.js';
 import * as git from './git.js';
@@ -21,6 +22,11 @@ interface CourseRecord {
   id: string;
   url: string;
   title: string;
+  /**
+   * The `course` its work is stored under: the course's own id (`workbook.yml` `id`, or its title as a slug), with a
+   * suffix when an earlier course already has it. Set once and kept, so the rows never have to move.
+   */
+  key?: string;
 }
 
 /** What a flashcard's `from:` points at. */
@@ -45,7 +51,9 @@ export interface OpenCourse {
   renderer: TypstRenderer;
 }
 
-const MOUNTED = 'mounted';
+const MOUNTED = MOUNTED_COURSE;
+/** What the mounted folder was called before it was a course like the others. */
+const OLD_MOUNTED = 'mounted';
 const COURSES_KEY = 'courses';
 const ACTIVE_KEY = 'activeCourse';
 
@@ -77,9 +85,9 @@ interface Options {
 }
 
 /**
- * The courses of this student. Each has its own copy and its own database, because
- * exercise ids of two courses may clash. Settings and the list of courses live in
- * the main database, which also holds the work done in a mounted folder.
+ * The courses of this student. Each has its own copy; all work is in one database, kept apart
+ * by course because exercise ids of two courses may clash. A mounted folder is the course
+ * `content`. Settings and the list of courses are the database's global values.
  */
 export class CourseManager {
   /** Settings and the list of courses. */
@@ -95,8 +103,10 @@ export class CourseManager {
   constructor(private readonly o: Options) {
     this.global = new Store(path.join(o.config.dataDir, 'workbook.db'));
     this.hasMount = isCourse(o.config.contentDir);
+    this.importLegacy();
     const known = this.ids();
-    const saved = this.global.getValue<string | null>(ACTIVE_KEY, null);
+    const stored = this.global.getValue<string | null>(ACTIVE_KEY, null);
+    const saved = stored === OLD_MOUNTED ? MOUNTED : stored;
     this.activeId = saved && known.includes(saved) ? saved : (known[0] ?? null);
     this.flashcards = new Flashcards(this.global, () => this.decksRenderer(), {
       find: (ref) => {
@@ -163,7 +173,8 @@ export class CourseManager {
     fs.mkdirSync(home, { recursive: true });
     fs.renameSync(tmp, this.repo(id));
 
-    this.saveRecords([...this.records(), { id, url, title: loadContent(this.repo(id)).outline.title }]);
+    const { outline } = loadContent(this.repo(id));
+    this.saveRecords([...this.records(), { id, url, title: outline.title, key: this.freeKey(outline.id) }]);
     this.updates.set(id, 'current');
     this.setActive(id);
     return this.list();
@@ -226,13 +237,13 @@ export class CourseManager {
   async remove(id: string): Promise<CoursesResponse> {
     if (id === MOUNTED) throw new CourseError('mounted');
     if (!this.records().some((r) => r.id === id)) throw new CourseError('unknown-course');
+    this.global.forCourse(this.key(id)).resetWork();
     this.saveRecords(this.records().filter((r) => r.id !== id));
     if (this.activeId === id) {
       const [next] = this.ids();
       if (next) this.setActive(next);
       else this.clearActive();
     }
-    this.open.get(id)?.store.close();
     this.open.delete(id);
     this.updates.delete(id);
     fs.rmSync(this.home(id), { recursive: true, force: true });
@@ -277,8 +288,9 @@ export class CourseManager {
     for (const id of this.ids()) {
       const open = this.openCourse(id);
       if (open.content.current.outline.id !== course) continue;
+      // Two courses may share an id; the annotation's own id is unique.
       const a = open.store.getAnnotation(annotationId);
-      if (!a) return null;
+      if (!a) continue;
       return { id: a.id, quote: a.quote, courseTitle: open.content.current.outline.title, href: id === this.activeId ? `#${targetHref(a.target)}` : null };
     }
     return null;
@@ -297,9 +309,49 @@ export class CourseManager {
   }
 
   close(): void {
-    for (const c of this.open.values()) if (c.store !== this.global) c.store.close();
     this.open.clear();
     this.global.close();
+  }
+
+  /** A key for a new course's work that no other course has. */
+  private freeKey(base: string, records = this.records()): string {
+    const taken = new Set([MOUNTED, ...records.map((r) => r.key).filter((k): k is string => !!k)]);
+    let key = base;
+    for (let n = 2; taken.has(key); n++) key = `${base}-${n}`;
+    return key;
+  }
+
+  /** The `course` a course's work is stored under. */
+  private key(id: string): string {
+    if (id === MOUNTED) return MOUNTED;
+    const records = this.records();
+    const record = records.find((r) => r.id === id);
+    if (!record) throw new CourseError('unknown-course');
+    if (record.key) return record.key;
+    record.key = this.freeKey(loadContent(this.repo(id)).outline.id, records);
+    this.saveRecords(records);
+    return record.key;
+  }
+
+  /**
+   * Once: the work in the per-course database files of earlier versions moves into the one database. The mounted
+   * folder's work was in the main file already and is moved by its migration. A file that cannot be imported
+   * stays as it is; the old files are renamed, never deleted.
+   */
+  private importLegacy(): void {
+    if (this.global.getValue<boolean>('importedLegacy', false)) return;
+    for (const { id } of this.records()) {
+      const file = path.join(this.home(id), 'workbook.db');
+      if (!fs.existsSync(file)) continue;
+      try {
+        this.global.forCourse(this.key(id)).importLegacy(file);
+        fs.rmSync(`${file}-shm`, { force: true });
+        for (const p of ['-wal', '']) if (fs.existsSync(file + p)) fs.renameSync(file + p, `${file}.imported${p}`);
+      } catch (e) {
+        console.error(`Could not import the work in ${file}; it stays where it is.`, e);
+      }
+    }
+    this.global.setValue('importedLegacy', true);
   }
 
   private ids(): string[] {
@@ -347,7 +399,7 @@ export class CourseManager {
       renderer.language = c.outline.language;
       this.o.onLoad?.(c.outline.title, c);
     });
-    const store = mounted ? this.global : new Store(path.join(dataDir, 'workbook.db'));
+    const store = this.global.forCourse(this.key(id));
     const course = { store, content, renderer };
     this.open.set(id, course);
     return course;

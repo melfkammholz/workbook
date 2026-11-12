@@ -9,6 +9,8 @@ import { makeDeps } from '../src/api/deps.js';
 import { loadConfig } from '../src/config.js';
 import { CourseError, CourseManager, normalizeUrl } from '../src/courses/manager.js';
 import { SessionPool } from '../src/runners/pool.js';
+import { DatabaseSync } from 'node:sqlite';
+import { MIGRATIONS } from '../src/db/migrations.js';
 import { git, publish, startGitServer } from './git-server.js';
 import { EXAMPLE_CONTENT, HASKELL_LIB, PROLOG_LIB, hasBinary } from './helpers.js';
 
@@ -187,17 +189,17 @@ describe('a mounted folder', () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-mount-'));
     const config = loadConfig({ CONTENT_DIR: EXAMPLE_CONTENT, DATA_DIR: dataDir } as NodeJS.ProcessEnv);
     const courses = new CourseManager({ config, typstAssets: path.resolve(import.meta.dirname, '../assets/typst') });
-    expect(courses.list()).toEqual({ activeId: 'mounted', courses: [{ id: 'mounted', title: 'Deklarative Programmierung', source: 'mounted', url: null, update: 'unknown' }] });
-    expect(courses.active!.store).toBe(courses.global);
-    await expect(courses.remove('mounted')).rejects.toThrow('mounted');
-    await expect(courses.update('mounted')).rejects.toThrow('mounted');
-    // A mounted folder shares its database with the settings, which have to survive this.
+    expect(courses.list()).toEqual({ activeId: 'content', courses: [{ id: 'content', title: 'Deklarative Programmierung', source: 'mounted', url: null, update: 'unknown' }] });
+    expect(courses.active!.store.course).toBe('content');
+    await expect(courses.remove('content')).rejects.toThrow('mounted');
+    await expect(courses.update('content')).rejects.toThrow('mounted');
+    // Its work shares the database with the settings, which have to survive this.
     courses.global.saveSettings({ displayName: 'Ada' });
     courses.active!.store.saveNote('x', 'typst', 'weg');
-    courses.reset('mounted');
+    courses.reset('content');
     expect(courses.active!.store.getNote('x')).toBeNull();
     expect(courses.global.getSettings().displayName).toBe('Ada');
-    expect(courses.list().activeId).toBe('mounted');
+    expect(courses.list().activeId).toBe('content');
     courses.close();
   });
 
@@ -206,6 +208,73 @@ describe('a mounted folder', () => {
     const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-empty-'));
     const courses = new CourseManager({ config: loadConfig({ CONTENT_DIR: empty, DATA_DIR: dataDir } as NodeJS.ProcessEnv), typstAssets: '' });
     expect(courses.list()).toEqual({ courses: [], activeId: null });
+    courses.close();
+  });
+});
+
+describe('a data folder of an earlier version', () => {
+  /** A database as version 9 of the schema left it. */
+  const oldDatabase = (file: string, sql: string) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const db = new DatabaseSync(file);
+    for (const step of MIGRATIONS.slice(0, 9)) typeof step === 'string' ? db.exec(step) : step(db);
+    db.exec(`PRAGMA user_version = 9; ${sql}`);
+    db.close();
+  };
+
+  it("moves every course's work into the one database, once", () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-legacy-'));
+    const records = [
+      { id: 'c-one', url: 'https://example.org/one', title: 'One' },
+      { id: 'c-two', url: 'https://example.org/two', title: 'Two' },
+      { id: 'c-broken', url: 'https://example.org/broken', title: 'Broken' },
+    ];
+    // The main file: settings, the course list, and the work in a mounted folder.
+    oldDatabase(path.join(dataDir, 'workbook.db'), `
+      INSERT INTO settings (key, value) VALUES ('courses', '${JSON.stringify(records)}'), ('activeCourse', '"mounted"'), ('settings', '{"displayName":"Ada"}'), ('landingSeen', 'true');
+      INSERT INTO notes (exercise_id, format, content, updated_at) VALUES ('m', 'typst', 'mounted note', 1);
+    `);
+    // Both repositories are the same course, so the second one's work goes under a suffix.
+    for (const [id, status] of [['c-one', 'done'], ['c-two', 'review']] as const) {
+      fs.cpSync(EXAMPLE_CONTENT, path.join(dataDir, 'courses', id, 'repo'), { recursive: true });
+      oldDatabase(path.join(dataDir, 'courses', id, 'workbook.db'), `
+        INSERT INTO progress (exercise_id, status, updated_at) VALUES ('x', '${status}', 1);
+        INSERT INTO annotations (id, target, part, quote, prefix, suffix, color, created_at, updated_at) VALUES ('${id}-mark', 'x', 'task', 'Satz', '', '', 'yellow', 1, 1);
+      `);
+    }
+    fs.cpSync(EXAMPLE_CONTENT, path.join(dataDir, 'courses', 'c-broken', 'repo'), { recursive: true });
+    fs.writeFileSync(path.join(dataDir, 'courses', 'c-broken', 'workbook.db'), 'not a database, but long enough to look like a file');
+
+    const open = () => new CourseManager({ config: loadConfig({ CONTENT_DIR: EXAMPLE_CONTENT, DATA_DIR: dataDir } as NodeJS.ProcessEnv), typstAssets: path.resolve(import.meta.dirname, '../assets/typst') });
+    let courses = open();
+    const store = (id: string) => {
+      courses.activate(id);
+      return courses.active!.store;
+    };
+    expect(courses.list().activeId).toBe('content');
+    expect(courses.global.getSettings().displayName).toBe('Ada');
+    expect(store('content').getNote('m')?.content).toBe('mounted note');
+    expect(store('content').getState().landingSeen).toBe(true);
+    expect(store('c-one').getState().progress.x?.status).toBe('done');
+    expect(store('c-two').getState().progress.x?.status).toBe('review');
+    expect(store('c-one').course).toBe('deklarative-programmierung');
+    expect(store('c-two').course).toBe('deklarative-programmierung-2');
+    expect(store('c-two').getAnnotation('c-two-mark')).not.toBeNull();
+    expect(store('c-two').getAnnotation('c-one-mark')).toBeNull();
+    expect(courses.findHighlight('deklarative-programmierung/c-one-mark')?.quote).toBe('Satz');
+    expect(store('c-broken').getState().progress).toEqual({});
+
+    for (const id of ['c-one', 'c-two']) {
+      expect(fs.existsSync(path.join(dataDir, 'courses', id, 'workbook.db'))).toBe(false);
+      expect(fs.existsSync(path.join(dataDir, 'courses', id, 'workbook.db.imported'))).toBe(true);
+    }
+    expect(fs.readFileSync(path.join(dataDir, 'courses', 'c-broken', 'workbook.db'), 'utf8')).toContain('not a database');
+
+    // Once only: work done since stays as it is.
+    store('c-one').setStatus('x', 'todo');
+    courses.close();
+    courses = open();
+    expect(store('c-one').getState().progress.x?.status).toBe('todo');
     courses.close();
   });
 });

@@ -188,7 +188,8 @@ describe('Store', () => {
     old.close();
 
     const store = new Store(file);
-    expect(store.getNote('x')?.content).toBe('kept');
+    // The work in the main file was the mounted folder's, which is now the course `content`.
+    expect(store.forCourse('content').getNote('x')?.content).toBe('kept');
     expect(store.getValue('aiKey', 'gone')).toBe('gone');
     const settings = store.getSettings() as unknown as Record<string, unknown>;
     expect(settings.displayName).toBe('Ada');
@@ -240,4 +241,159 @@ describe('migration 7', () => {
       store.close();
     });
   }
+});
+
+/** A database file as an earlier version left it: migrations up to `version` only. */
+function oldDatabase(file: string, version: number, sql = ''): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const db = new DatabaseSync(file);
+  for (const step of MIGRATIONS.slice(0, version)) {
+    if (typeof step === 'string') db.exec(step);
+    else step(db);
+  }
+  db.exec(`PRAGMA user_version = ${version}; ${sql}`);
+  db.close();
+}
+
+describe('one database for all courses', () => {
+  it('keeps the work of two courses apart', () => {
+    const { store } = make();
+    const a = store.forCourse('a');
+    const b = store.forCourse('b');
+    a.setStatus('x', 'done');
+    a.saveAnswer('x', 'text', 'Antwort in a', 'run');
+    a.saveNote('x', 'typst', 'Notiz in a');
+    a.addReflection('x', 4, [], '');
+    a.recordCheckRun('x', 1, 1);
+    a.markLandingSeen();
+    const mark = a.addAnnotation({ target: 'x', part: 'task', quote: 'Satz', prefix: '', suffix: '', color: 'yellow' });
+    expect(b.getState().progress).toEqual({});
+    expect(b.getAnswers('x')).toEqual({});
+    expect(b.getNote('x')).toBeNull();
+    expect(b.getState().landingSeen).toBe(false);
+    expect(b.getAnnotation(mark.id)).toBeNull();
+    expect(b.updateAnnotation(mark.id, { color: 'green' })).toBeNull();
+    expect(b.search('Notiz')).toEqual([]);
+    expect(a.search('Notiz')).toHaveLength(1);
+    b.resetWork();
+    expect(a.getState().progress.x?.status).toBe('done');
+    a.resetWork();
+    expect(a.getState().progress).toEqual({});
+    expect(a.listAnnotations()).toEqual([]);
+  });
+
+  it('keeps the settings when a course or course "" is reset', () => {
+    const { store } = make();
+    store.saveSettings({ displayName: 'Ada' });
+    store.setValue('courses', [1]);
+    store.forCourse('a').resetWork();
+    store.resetWork();
+    expect(store.getSettings().displayName).toBe('Ada');
+    expect(store.getValue('courses', [])).toEqual([1]);
+    // Settings are the same from every view.
+    expect(store.forCourse('a').getSettings().displayName).toBe('Ada');
+  });
+
+  it('answers every course-scoped query from an index', () => {
+    const { store } = make();
+    const c = store.forCourse('c');
+    c.recordOpen('x');
+    c.setStatus('x', 'review');
+    c.saveAnswer('x', 'text', 'a', 'run');
+    c.listVersions('x', 'text');
+    c.saveNote('x', 'typst', 'n');
+    c.addReflection('x', 3, [], '');
+    c.listReflections('x');
+    c.saveOpenQuestion('x', 'q');
+    c.saveOpenQuestion('x', '');
+    c.saveChecklistAnswer('l', 'q', 3, '');
+    c.saveChecklistAnswer('l', 'q', null, '');
+    c.listChecklistRatings();
+    c.syncAchievements(new Map([['k', { kind: 'first-done' } as never]]));
+    c.listAchievements();
+    c.markAchievementsSeen();
+    const mark = c.addAnnotation({ target: 'x', part: 'task', quote: 'q', prefix: '', suffix: '', color: 'yellow' });
+    c.updateAnnotation(mark.id, { comment: 'c' });
+    c.deleteAnnotation(mark.id);
+    c.resolvedMarkCount();
+    c.noteCount();
+    c.addActiveSeconds('x', 5);
+    c.resetActiveTime('x');
+    c.recordHints('x', 1);
+    c.recordSolutionViewed('x');
+    c.recordCheckRun('x', 1, 2);
+    c.getState();
+    c.reviewData();
+    c.resetWork();
+
+    const tables = ['progress', 'answers', 'answer_versions', 'notes', 'reflections', 'stats', 'check_history', 'open_questions', 'checklist_answers', 'checklist_ratings', 'achievements', 'annotations', 'settings'];
+    const scans: string[] = [];
+    const plans = new Map<string, string[]>();
+    for (const sql of store.preparedSql) {
+      if (!/^\s*(SELECT|INSERT|UPDATE|DELETE)/i.test(sql)) continue;
+      const plan = (store.sql.all(`EXPLAIN QUERY PLAN ${sql}`) as { detail: string }[]).map((r) => r.detail);
+      plans.set(sql, plan);
+      for (const d of plan) if (tables.some((t) => new RegExp(`^SCAN ${t}\\b`).test(d))) scans.push(`${d} in: ${sql}`);
+    }
+    expect(scans).toEqual([]);
+    const latest = [...plans].find(([sql]) => sql.includes('GROUP BY exercise_id'))![1];
+    expect(latest.join('\n')).toMatch(/COVERING INDEX reflections_lookup/);
+  });
+});
+
+describe('importing per-course databases of earlier versions', () => {
+  it('copies their work into the one database, under their course', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-import-'));
+    const oldA = path.join(dir, 'a.db');
+    const oldB = path.join(dir, 'b.db');
+    // An old version of the schema: no annotations yet.
+    oldDatabase(oldA, 7, `
+      INSERT INTO progress (exercise_id, status, updated_at) VALUES ('x', 'done', 1);
+      INSERT INTO answers (exercise_id, slot, content, updated_at) VALUES ('x', 'text', 'A', 1);
+      INSERT INTO answer_versions (exercise_id, slot, content, reason, created_at) VALUES ('x', 'text', 'A0', 'run', 1), ('x', 'text', 'A1', 'run', 2);
+      INSERT INTO reflections (exercise_id, confidence, how, created_at) VALUES ('x', 2, '[]', 1), ('x', 5, '[]', 2);
+      INSERT INTO settings (key, value) VALUES ('landingSeen', 'true');
+      INSERT INTO search (exercise_id, source, content) VALUES ('x', 'answer', 'Apfel');
+    `);
+    oldDatabase(oldB, 9, `
+      INSERT INTO progress (exercise_id, status, updated_at) VALUES ('x', 'in_progress', 1);
+      INSERT INTO reflections (exercise_id, confidence, how, created_at) VALUES ('x', 1, '[]', 1);
+      INSERT INTO annotations (id, target, part, quote, prefix, suffix, color, created_at, updated_at, label) VALUES ('m1', 'x', 'task', 'Satz', '', '', 'yellow', 1, 1, 'l');
+    `);
+    const bytes = fs.readFileSync(oldA);
+
+    const store = new Store(path.join(dir, 'workbook.db'));
+    store.forCourse('b').addReflection('y', 3, [], ''); // ids of the new database are taken already
+    expect(store.forCourse('a').importLegacy(oldA)).toBe(true);
+    expect(store.forCourse('b').importLegacy(oldB)).toBe(true);
+    expect(store.forCourse('a').importLegacy(oldA)).toBe(false);
+
+    const a = store.forCourse('a');
+    const b = store.forCourse('b');
+    expect(a.getState().progress.x?.status).toBe('done');
+    expect(a.getState().landingSeen).toBe(true);
+    expect(a.getState().reflections.x?.confidence).toBe(5);
+    expect(a.listVersions('x', 'text').map((v) => v.content)).toEqual(['A1', 'A0']);
+    expect(a.search('Apfel')).toHaveLength(1);
+    expect(b.getState().progress.x?.status).toBe('in_progress');
+    expect(b.getState().reflections.x?.confidence).toBe(1);
+    expect(b.getAnnotation('m1')).toMatchObject({ quote: 'Satz', label: 'l' });
+    expect(a.getAnnotation('m1')).toBeNull();
+    expect(b.getState().landingSeen).toBe(false);
+    // The old file is left as it was.
+    expect(fs.readFileSync(oldA).equals(bytes)).toBe(true);
+    expect(fs.readdirSync(dir).filter((f) => f.includes('importing'))).toEqual([]);
+    store.close();
+  });
+
+  it('imports nothing from a file that is not a database', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-import-'));
+    const bad = path.join(dir, 'bad.db');
+    fs.writeFileSync(bad, 'not a database at all, just some text that is long enough');
+    const store = new Store(path.join(dir, 'workbook.db'));
+    expect(() => store.forCourse('a').importLegacy(bad)).toThrow();
+    expect(fs.readFileSync(bad, 'utf8')).toContain('not a database');
+    expect(store.forCourse('a').getState().progress).toEqual({});
+    store.close();
+  });
 });

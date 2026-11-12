@@ -202,4 +202,125 @@ export const MIGRATIONS: Migration[] = [
   /* 9: a highlight may carry one of the student's own labels */ `
   ALTER TABLE annotations ADD COLUMN label TEXT;
   `,
+  /*
+   * 10: one database for all courses. Every course-bound table gets `course` as the first column of its key and
+   * indexes, so every scoped query is an index lookup. Rows already here are the mounted folder's work, which is
+   * now the course `content`. Settings get a course too: '' for what belongs to the student, not to a course.
+   */
+  (db) => {
+    const tables: [string, string, string[]][] = [
+      [
+        'progress',
+        `exercise_id TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('todo','in_progress','done','review')),
+         updated_at INTEGER NOT NULL, review_due_at INTEGER, review_count INTEGER NOT NULL DEFAULT 0,
+         PRIMARY KEY (course, exercise_id)`,
+        [],
+      ],
+      ['answers', 'exercise_id TEXT NOT NULL, slot TEXT NOT NULL, content TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (course, exercise_id, slot)', []],
+      [
+        'answer_versions',
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, exercise_id TEXT NOT NULL, slot TEXT NOT NULL, content TEXT NOT NULL, reason TEXT NOT NULL, created_at INTEGER NOT NULL',
+        ['CREATE INDEX answer_versions_lookup ON answer_versions (course, exercise_id, slot, id)'],
+      ],
+      ['notes', "exercise_id TEXT NOT NULL, format TEXT NOT NULL CHECK (format IN ('typst','markdown')), content TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (course, exercise_id)", []],
+      [
+        'reflections',
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, exercise_id TEXT NOT NULL, confidence INTEGER NOT NULL CHECK (confidence BETWEEN 1 AND 5), how TEXT NOT NULL, comment TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL",
+        ['CREATE INDEX reflections_lookup ON reflections (course, exercise_id, id)'],
+      ],
+      [
+        'stats',
+        `exercise_id TEXT NOT NULL, active_seconds INTEGER NOT NULL DEFAULT 0, check_runs INTEGER NOT NULL DEFAULT 0,
+         check_passes INTEGER NOT NULL DEFAULT 0, hints_revealed INTEGER NOT NULL DEFAULT 0, solution_viewed_at INTEGER,
+         first_opened_at INTEGER, last_opened_at INTEGER, PRIMARY KEY (course, exercise_id)`,
+        [],
+      ],
+      [
+        'check_history',
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, exercise_id TEXT NOT NULL, at INTEGER NOT NULL, passed INTEGER NOT NULL, total INTEGER NOT NULL',
+        ['CREATE INDEX check_history_lookup ON check_history (course, exercise_id, id)'],
+      ],
+      ['open_questions', 'exercise_id TEXT NOT NULL, content TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (course, exercise_id)', []],
+      [
+        'checklist_answers',
+        `checklist_id TEXT NOT NULL, question_id TEXT NOT NULL, confidence INTEGER CHECK (confidence IS NULL OR confidence BETWEEN 1 AND 5),
+         note TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL, PRIMARY KEY (course, checklist_id, question_id)`,
+        [],
+      ],
+      [
+        'checklist_ratings',
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, checklist_id TEXT NOT NULL, question_id TEXT NOT NULL, confidence INTEGER NOT NULL, created_at INTEGER NOT NULL',
+        ['CREATE INDEX checklist_ratings_lookup ON checklist_ratings (course, id)'],
+      ],
+      ['achievements', 'key TEXT NOT NULL, earned_at INTEGER NOT NULL, seen INTEGER NOT NULL DEFAULT 0, event TEXT NOT NULL, PRIMARY KEY (course, key)', []],
+      [
+        'annotations',
+        `id TEXT PRIMARY KEY, target TEXT NOT NULL, part TEXT NOT NULL, quote TEXT NOT NULL, prefix TEXT NOT NULL, suffix TEXT NOT NULL,
+         color TEXT NOT NULL, comment TEXT NOT NULL DEFAULT '', review TEXT CHECK (review IS NULL OR review IN ('open','resolved')),
+         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, label TEXT`,
+        ['CREATE INDEX annotations_target ON annotations (course, target)'],
+      ],
+      ['settings', 'key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (course, key)', []],
+    ];
+    const settingsCourse = `CASE WHEN key IN (${GLOBAL_KEYS.map((k) => `'${k}'`).join(',')}) THEN '' ELSE '${MOUNTED_COURSE}' END`;
+    for (const [table, columns, indexes] of tables) {
+      const old = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name).join(', ');
+      db.exec(`ALTER TABLE ${table} RENAME TO ${table}_old`);
+      db.exec(`CREATE TABLE ${table} (course TEXT NOT NULL, ${columns})`);
+      db.exec(`INSERT INTO ${table} (course, ${old}) SELECT ${table === 'settings' ? settingsCourse : `'${MOUNTED_COURSE}'`}, ${old} FROM ${table}_old ORDER BY rowid`);
+      db.exec(`DROP TABLE ${table}_old`);
+      for (const index of indexes) db.exec(index);
+    }
+    db.exec(`
+      CREATE VIRTUAL TABLE search_new USING fts5(
+        course UNINDEXED, exercise_id UNINDEXED, source UNINDEXED, content,
+        tokenize = 'unicode61 remove_diacritics 2'
+      );
+      INSERT INTO search_new (course, exercise_id, source, content) SELECT '${MOUNTED_COURSE}', exercise_id, source, content FROM search;
+      DROP TABLE search;
+      ALTER TABLE search_new RENAME TO search;
+    `);
+  },
 ];
+
+/** The course a mounted `/content` folder is. */
+export const MOUNTED_COURSE = 'content';
+
+/** Settings rows that belong to the student, not to a course (stored with course ''). */
+export const GLOBAL_KEYS = ['settings', 'courses', 'activeCourse', 'importedLegacy'];
+
+/** Tables whose rows belong to one course, all with `course` as their first column. */
+export const COURSE_TABLES = [
+  'progress',
+  'answers',
+  'answer_versions',
+  'notes',
+  'reflections',
+  'stats',
+  'check_history',
+  'open_questions',
+  'checklist_answers',
+  'checklist_ratings',
+  'achievements',
+  'annotations',
+  'settings',
+  'search',
+];
+
+/** Brings a database up to the current schema. */
+export function migrate(db: DatabaseSync): void {
+  const current = Number((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version);
+  for (let v = current; v < MIGRATIONS.length; v++) {
+    db.exec('BEGIN');
+    try {
+      const step = MIGRATIONS[v]!;
+      if (typeof step === 'string') db.exec(step);
+      else step(db);
+      db.exec(`PRAGMA user_version = ${v + 1}`);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+}
