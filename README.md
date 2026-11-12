@@ -184,7 +184,25 @@ The GHC tests need `QuickCheck` in a package environment, for example
 `cabal install --lib --package-env ./ghc-env QuickCheck` and then `GHC_ENVIRONMENT=$PWD/ghc-env`.
 `server/test/fixtures/course` is the small course the tests run on.
 
-To run your own build in Docker, add `build: .` to the service in `compose.override.yaml` and start it with
+### Developing in Docker
+
+The image has every tool, so you can skip installing them: `compose.dev.yaml` runs the image without the app
+(`toolchain` in the Dockerfile) and mounts your checkout into it. A code change needs no image build:
+
+```sh
+npm install
+npm run watch                                  # rebuilds server/dist and web/dist on every save
+docker compose -f compose.dev.yaml up -d       # http://localhost:8090, with its own data volume
+```
+
+The server restarts by itself when its build changes; after a web change, reload the page. The course is the tests'
+small course unless you set `COURSE_DIR` (for example in `.env`). Build the image again (`up -d --build`) only when the
+Dockerfile changes. Building needs BuildKit, which comes with Docker's `buildx` plugin.
+
+For a throwaway server with empty data, for tests and screenshots, use `scripts/test-server.sh` (options at the top of
+the file; `stop` stops it), and `npm run shot -- item/<id> --theme light,dark --width 1440,400` for screenshots.
+
+To run your own full image instead, add `build: .` to the service in `compose.override.yaml` and start it with
 `docker compose up -d --build`.
 
 ### Publishing the image

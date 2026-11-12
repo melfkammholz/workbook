@@ -4,3 +4,5 @@ dist
 
 # Each author's own course folder, see the README
 compose.override.yaml
+.env
+.data-test-*.pid

@@ -1,0 +1,28 @@
+# Development: the toolchain image with this checkout mounted, so code changes need no image rebuild.
+#
+#   npm run watch                                  # rebuilds server/dist and web/dist on every save
+#   docker compose -f compose.dev.yaml up -d       # http://localhost:8090
+#
+# The server restarts by itself when server/dist changes; for web changes, reload the page. Rebuild the image
+# (`up -d --build`) only when the Dockerfile changes. Its own volume, so unfinished code never touches your real
+# workbook on :8080. COURSE_DIR (default: the tests' small course) is mounted as /content, e.g.
+# `COURSE_DIR=../workbook-deklprog docker compose -f compose.dev.yaml up -d`, or put it into `.env`.
+name: workbook-dev
+services:
+  workbook:
+    build:
+      context: .
+      target: toolchain
+    image: workbook-toolchain
+    ports:
+      - "127.0.0.1:8090:8080"
+    volumes:
+      - .:/app:ro
+      - ${COURSE_DIR:-./server/test/fixtures/course}:/content:ro
+      - workbook-dev-data:/data
+    command: ["node", "--watch-path=server/dist", "--disable-warning=ExperimentalWarning", "server/dist/index.js"]
+    mem_limit: 2g
+    pids_limit: 1024
+
+volumes:
+  workbook-dev-data:

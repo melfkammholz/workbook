@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -p . && vite build",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "watch": "vite build --watch"
   },
   "devDependencies": {
     "@codemirror/autocomplete": "^6.20.4",

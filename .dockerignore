@@ -1,0 +1,14 @@
+# The build stage installs and builds everything itself; host builds and data only slow down sending the context.
+**/node_modules
+**/dist
+.data
+.git
+.github
+.claude
+notes
+docs
+scripts
+CLAUDE.md
+TODO.md
+compose*.yaml
+*.png

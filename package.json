@@ -3,15 +3,27 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "workspaces": ["shared", "server", "web"],
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
   "scripts": {
     "dev:server": "npm run dev -w server",
     "dev:web": "npm run dev -w web",
     "build": "npm run build -w web && npm run build -w server",
+    "watch": "npm run watch -w server & npm run watch -w web & wait",
+    "test-server": "scripts/test-server.sh",
+    "shot": "node scripts/shot.mjs",
     "start": "node server/dist/index.js",
     "test": "npm run test -w server",
     "typecheck": "npm run typecheck -w shared -w server -w web",
     "lint:content": "node server/dist/cli.js lint"
   },
-  "engines": { "node": ">=22.13" }
+  "engines": {
+    "node": ">=22.13"
+  },
+  "devDependencies": {
+    "playwright": "^1.65.0"
+  }
 }
