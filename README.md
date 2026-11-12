@@ -39,10 +39,22 @@ workbook is a git repository that you add in the app.
   page lists them all, and a chapter's checklist shows what is still open in it. Optional, like flashcards.
 * **Flashcards you write yourself.** Decks of cards in your own words, reviewed with spaced repetition (FSRS). A card
   can be made right from an exercise, and decks belong to you, not to a workbook. See [Flashcards](#flashcards).
+* **Open questions.** Write down what you do not understand yet, on an exercise, in the text or in a PDF, and tick it off
+  when it is cleared up. One page lists all of them, with search and filters. "Come back to" on a highlight or a page
+  is an empty question.
+* **Materials and library.** Upload scripts, slides and other files, sort them into types and series, and see them per
+  workbook or in one library. The PDF viewer has a table of contents, highlights, notes per page or slide, and questions.
+  A new version of a file keeps your highlights and notes where they belong, and lists what it could not place.
+  Optional, in the settings.
+* **One search.** Finds your notes, answers, highlights, questions and the text of your materials, across workbooks.
 * **Adventures.** These are longer stories that lead through several exercises, some with code that grows from one
   exercise to the next.
 * **Feedback from your own AI chat.** You can copy a prompt with the task, your answer and the test results into the
   chat you already use. Hints and solutions are never part of it.
+* **An assistant that reads along.** Optional: Claude Code can read your open questions, search your text and read your
+  materials through a local connection, and run your saved code's tests. It cannot change anything. It only suggests
+  types, labels, answers, cards and notes, and you accept or reject each one in the assistant inbox. See
+  [Assistant](#assistant).
 * **Optional extras.** If you turn them on, there are achievements, animal friends, a plant per chapter and small
   celebrations. They reward work done, never speed.
 
@@ -83,8 +95,12 @@ Open <http://localhost:8080> and paste the address of your workbook into the wel
 * **App updates:** `docker compose pull && docker compose up -d`.
 * **More workbooks:** the arrows next to the workbook title switch between workbooks and add more. Each workbook keeps its own
   answers, notes and progress.
-* **Your work** lives only in the Docker volume `workbook-data`, on your computer. There is no other copy, and nobody
-  else can see it. `docker compose down -v` deletes it, and so does resetting a workbook in the workbooks dialog.
+* **Your work** lives only in the Docker volume `workbook-data`, on your computer, in one database next to your
+  uploaded files. Nobody else can see it. `docker compose down -v` deletes it, and so does "Delete all my data" for a
+  workbook in the workbooks dialog. Removing a workbook only hides it, and adding it again brings your work back.
+* **Backups:** once a day, on the first start, the app keeps a snapshot of your data (the last 7 days and 4 weeks). The
+  settings list them and restore one. A snapshot lives in the same volume, so it does not protect against deleting
+  the volume.
 
 A workbook runs its tests on your computer, inside the container. So only add workbooks from people you trust. Workbooks
 added by address must be public repositories.
@@ -107,6 +123,15 @@ This is optional: turn on *Prompts for an AI chat* in the settings. The *AI revi
 Paste it into the AI chat you already use, such as Claude or ChatGPT. The workbook needs no account or key for this,
 and sends nothing itself. The prompt never contains hints, author notes or the reference solution. You can change it in
 the same tab, using the placeholders `{title}`, `{task}`, `{language}`, `{answer}`, `{tests}` and `{questions}` (the open questions on the exercise).
+
+### Assistant
+
+Optional: turn on *Let Claude Code read your questions* in the settings and run the command shown there once in a
+terminal. The connection (MCP) is local and protected by a token; *New token* makes the old command stop working.
+The assistant can read open questions, search, read pages and materials, read your saved code and run its tests, and keep
+notes of its own that you can see and delete. Two switches decide whether it may see solutions and author notes, and
+your progress. It never writes into your work: its suggestions wait in the assistant inbox until you accept, edit or
+reject them, and an accepted one can be undone.
 
 ### Flashcards
 
@@ -238,16 +263,17 @@ which publishes a tag named after the branch, such as `main`, and leaves `latest
 | `shared/` | Types shared by the server and the web app |
 | `server/src/content` | Loading and checking a workbook, Typst rendering, the preprocessor for starter and solution in one file, search |
 | `server/src/runners` | Warm `ghci` and `swipl` sessions, the test runners, the session pool |
-| `server/src/workbooks` | Adding, downloading and updating workbooks, one copy per workbook; all work in one database |
-| `server/src/db` | SQLite with migrations: progress, answers and their history, notes, self-evaluations, statistics |
-| `server/src/api` | HTTP and WebSocket routes, and the guards against requests from other sites |
+| `server/src/courses` | Adding, downloading and updating workbooks (public repositories, the mounted `/workbooks` folder, `/content`), one copy per workbook, search |
+| `server/src/resources`, `flashcards` | Materials and the library, flashcards with FSRS |
+| `server/src/db` | SQLite with migrations: one database for progress, answers and their history, notes, self-evaluations, questions, highlights, cards |
+| `server/src/api` | HTTP and WebSocket routes, the assistant's MCP endpoint, and the guards against requests from other sites |
 | `server/src/ai` | The prompt students copy into their own chat |
-| `server/src/achievements.ts`, `suggest.ts` | Achievements, and what to do next |
+| `server/src/achievements.ts`, `suggest.ts`, `snapshots.ts` | Achievements, what to do next, daily backups |
 | `server/assets` | The Typst prelude, the `Workbook.Check` Haskell test library, the Prolog driver and test library |
 | `web/src` | The React app. All interface texts are in `lib/i18n.ts` |
 
 Environment variables: `PORT`, `HOST`, `CONTENT_DIR`, `DATA_DIR`, `WEB_DIR`, `TYPST_BIN`, `TYPST_PACKAGE_CACHE_PATH`,
-`GHCI_BIN`, `RUNGHC_BIN`, `SWIPL_BIN`, `SLDCHECK_BIN`, `MAX_SESSIONS`, `SESSION_IDLE_MS`, `ALLOWED_HOSTS`.
+`WORKBOOKS_DIR`, `GHCI_BIN`, `RUNGHC_BIN`, `SWIPL_BIN`, `PYTHON_BIN`, `SLDCHECK_BIN`, `MAX_SESSIONS`, `SESSION_IDLE_MS`, `ALLOWED_HOSTS`.
 
 ### Security
 
