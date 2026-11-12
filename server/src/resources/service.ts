@@ -170,6 +170,10 @@ export class Resources {
     return toResource(row);
   }
 
+  has(id: string): boolean {
+    return this.sql.get('SELECT 1 FROM resources WHERE id = ?', id) !== undefined;
+  }
+
   /** The path of a stored file, or null if the hash is not a hash or the file is gone. */
   filePath(sha256: string): string | null {
     if (!/^[0-9a-f]{64}$/.test(sha256)) return null;

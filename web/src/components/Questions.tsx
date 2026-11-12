@@ -201,8 +201,9 @@ export function QuestionRow({ item, q, extra }: { item: string | null; q: Questi
           <div className="min-w-0 flex-1">
             <p className={clsx('whitespace-pre-wrap break-words text-[14px] leading-snug', done && 'text-ink-3 line-through')}>{q.text}</p>
             {extra}
-            {q.kind || q.labels.length ? (
+            {q.kind || q.labels.length || q.who ? (
               <p className="mt-0.5 flex flex-wrap gap-x-2 text-[12.5px] text-ink-3">
+                {q.who ? <span title={t.inboxFromAssistant}>{t.assistantMark}</span> : null}
                 {q.kind ? <span>{t.questionKinds[q.kind]}</span> : null}
                 {q.labels.flatMap((l) => (labelNames.has(l) ? [<span key={l}>#{labelNames.get(l)}</span>] : []))}
               </p>

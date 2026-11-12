@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { QUESTION_KINDS, locateQuote, type Question, type QuestionKind, type TextQuote } from '@wb/shared';
+import { QUESTION_KINDS, locateQuote, quoteAt, type Anchor, type CardKind, type Question, type QuestionKind, type TextQuote } from '@wb/shared';
 import { hasTests, sharedOwner } from '../content/loader.js';
 import { plainText } from '../content/search.js';
 import { runChecks } from '../runners/checks.js';
@@ -73,6 +73,22 @@ const TOOLS = [
       required: ['question'],
     },
   },
+  { name: 'list_decks', description: "The titles of the student's flashcard decks. Put a card into one of these by title before inventing a new deck.", inputSchema: { type: 'object', properties: {} } },
+  {
+    name: 'propose_card',
+    description: `Propose ONE flashcard; it waits in the student's inbox and changes nothing until accepted (they can edit it and pick the deck). front and back are Typst text (code in backticks); one idea per card, ground it in the text. kind "cloze" needs only front with gaps written {{like this}}. deck is a title: an existing deck's (see list_decks) or a new one. Point at where it comes from with resource + page (+ quote) or item (+ course), so the card links back to it. Never re-propose what was rejected: read list_proposals first.`,
+    inputSchema: { type: 'object', properties: { front: { type: 'string' }, back: { type: 'string' }, kind: { type: 'string', enum: ['basic', 'both', 'cloze'], description: 'Default basic; both = also asked backwards' }, deck: { type: 'string' }, resource: { type: 'string', description: 'Material id' }, page: { type: 'integer', description: 'Page of the material, 1-based' }, quote: { type: 'string', description: 'Words of that page, copied exactly' }, item: { type: 'string', description: 'Or a workbook item id' }, course: { type: 'string', description: 'Workbook id, if the item id is not unique' }, reason: { type: 'string' } }, required: ['front', 'deck'] },
+  },
+  {
+    name: 'propose_highlight',
+    description: `Propose marking a passage of a material with a note; it waits in the inbox and, once accepted, becomes a note on that page quoting the passage. quote must be words of that page, copied exactly (read_page first).`,
+    inputSchema: { type: 'object', properties: { resource: { type: 'string' }, page: { type: 'integer', description: '1-based' }, quote: { type: 'string' }, note: { type: 'string' }, reason: { type: 'string' } }, required: ['resource', 'page', 'quote'] },
+  },
+  {
+    name: 'propose_question',
+    description: `Propose a NEW question the student might ask ("you might ask: ..."), about a place in a material (resource + page + quote) or a workbook item (item + course). It waits in the inbox, marked as yours, and becomes an open question if accepted. Do not answer it yourself here; for answers use propose on an existing question.`,
+    inputSchema: { type: 'object', properties: { text: { type: 'string' }, resource: { type: 'string', description: 'Material id' }, page: { type: 'integer', description: 'Page of the material, 1-based' }, quote: { type: 'string', description: 'Words of that page, copied exactly' }, item: { type: 'string', description: 'Or a workbook item id' }, course: { type: 'string', description: 'Workbook id, if the item id is not unique' }, reason: { type: 'string' } }, required: ['text'] },
+  },
   { name: 'list_proposals', description: 'Your proposals: waiting, applied, rejected (with what the student told you) and expired.', inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['pending', 'applied', 'rejected', 'expired', 'undone'] } } } },
   {
     name: 'write_digest',
@@ -102,10 +118,10 @@ const PROMPTS = [
   },
   {
     name: 'draft-flashcards',
-    description: 'Draft flashcards from a material or from the questions the student asked, saved as a digest for them to read.',
+    description: 'Propose flashcards from a material or from the questions the student asked; they decide in their inbox.',
     arguments: [{ name: 'resource', description: 'Material id; default: the open questions', required: false }],
     text: (a: Json) =>
-      `Draft flashcards for the student${str(a.resource) ? ` from the material ${str(a.resource)} (read it with read_page, page by page)` : ' from their open questions (list_questions, get_context)'}. One idea per card, a clear front, a short back, and say which page or question it comes from. Cards you cannot ground in the text are left out. You cannot create cards yourself: save the draft with write_digest, titled "Flashcard draft", so the student can read it in settings and copy what they want.`,
+      `Propose flashcards for the student${str(a.resource) ? ` from the material ${str(a.resource)} (read it with read_page, page by page)` : ' from their open questions (list_questions, get_context)'}. First call list_proposals (do not repeat what was rejected) and list_decks (use an existing deck's title where the topic fits). Then call propose_card once per card: one idea per card, a clear front, a short back, and where it comes from (resource + page + an exact quote, or item). Cards you cannot ground in the text are left out. You cannot create cards yourself: the student accepts, edits or rejects each one in their inbox. Finish with a short list of what you proposed.`,
   },
   {
     name: 'review-exercise',
@@ -134,6 +150,42 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
   app.post('/api/bridge/token', async () => newToken());
   app.get('/api/bridge/digests', async () => g().listDigests());
   app.delete<{ Params: { id: string } }>('/api/bridge/digests/:id', async (req, reply) => (g().deleteDigest(req.params.id) ? { ok: true } : reply.code(404).send({ error: 'unknown digest' })));
+
+  const filed = (r: { id: string } | { error: string }) => {
+    if ('error' in r) throw new ToolError(r.error);
+    return { filed: 1, note: 'waiting in the inbox until the student decides' };
+  };
+
+  /** A place the assistant names (page of a material with an exact quote, or a workbook item) as an anchor; throws if it is not there. */
+  const anchorOf = (a: Json): Anchor => {
+    const resource = str(a.resource);
+    if (resource) {
+      const page = int(a.page);
+      if (!page || page < 1) throw new ToolError('page is required (1-based)');
+      let res;
+      try {
+        res = d.courses.resources.get(resource);
+      } catch {
+        throw new ToolError('unknown material');
+      }
+      const fp = g().sql.get('SELECT fingerprint FROM pdf_pages WHERE resource = ? AND page_index = ? AND unplaced = 0', resource, page - 1);
+      const base = { kind: 'page' as const, resource, version: res.file.sha256, pageIndex: page - 1, fingerprint: (fp?.fingerprint as string | undefined) ?? '' };
+      const quote = str(a.quote);
+      if (!quote) return base;
+      const text = g().resourcePageText(resource, page - 1);
+      if (text === null) throw new ToolError(`the text of page ${page} is not available (not read yet?); try again in a minute`);
+      const at = locateQuote(text, { quote, prefix: '', suffix: '' });
+      const q = at ? quoteAt(text, at.start, at.end) : null;
+      if (!q) throw new ToolError(`the quote is not on page ${page}: copy words of the page exactly (read_page)`);
+      return { ...base, ...q };
+    }
+    const item = str(a.item);
+    if (!item) throw new ToolError('say where: resource + page, or item');
+    const found = findItem(item, str(a.course));
+    if (!found) throw new ToolError(`unknown item "${item}"`);
+    const course = found.s.content.outline.id;
+    return found.s.content.exercise(item) ? { kind: 'exercise', course, id: item } : { kind: 'item', course, id: item };
+  };
 
   const where = (q: Question): string => {
     const a = q.anchor;
@@ -366,12 +418,39 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         if ('error' in r) throw new ToolError(r.error);
         return { filed: r.ids.length, note: 'waiting in the inbox until the student decides' };
       }
+      case 'list_decks':
+        return d.courses.flashcards.deckTitles();
+      case 'propose_card': {
+        const front = str(a.front);
+        const deck = str(a.deck);
+        if (!front || !deck) throw new ToolError('front and deck are required');
+        const kind = (str(a.kind) ?? 'basic') as CardKind;
+        if (!['basic', 'both', 'cloze'].includes(kind)) throw new ToolError('kind must be basic, both or cloze');
+        const back = str(a.back) ?? '';
+        if (kind !== 'cloze' && !back) throw new ToolError('back is required (except for cloze)');
+        const anchor = a.resource || a.item ? anchorOf(a) : null;
+        return filed(g().proposeCreate('assistant', 'card', { deck: { title: deck }, cardKind: kind, front, back, anchor }, str(a.reason)));
+      }
+      case 'propose_highlight': {
+        const resource = str(a.resource);
+        const page = int(a.page);
+        const quote = str(a.quote);
+        if (!resource || !page || !quote) throw new ToolError('resource, page and quote are required');
+        const an = anchorOf(a);
+        if (an.kind !== 'page' || !an.quote) throw new ToolError('quote is required');
+        return filed(g().proposeCreate('assistant', 'highlight', { resource, pageIndex: page - 1, quote: an.quote, note: str(a.note) ?? '' }, str(a.reason)));
+      }
+      case 'propose_question': {
+        const text = str(a.text);
+        if (!text) throw new ToolError('text is required');
+        return filed(g().proposeCreate('assistant', 'question', { text, anchor: anchorOf(a) }, str(a.reason)));
+      }
       case 'list_proposals': {
         const status = str(a.status);
         return g()
           .listChanges({ limit: 100 })
           .filter((c) => !status || c.status === status)
-          .map((c) => ({ question: c.ref.id, field: c.field, before: c.before, after: c.after, status: c.status, reason: c.reason, studentSaid: c.feedback }));
+          .map((c) => ({ ...(c.field === 'create' ? { creates: c.ref.kind } : { question: c.ref.id }), field: c.field, before: c.field === 'create' ? undefined : c.before, after: c.after, status: c.status, reason: c.reason, studentSaid: c.feedback }));
       }
       case 'write_digest': {
         const title = str(a.title);
@@ -398,7 +477,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
           protocolVersion: asked && PROTOCOLS.includes(asked) ? asked : PROTOCOLS[0],
           capabilities: { tools: {}, prompts: {} },
           serverInfo: { name: 'workbook', version: '1' },
-          instructions: "The student's workbook: their open questions, their own text and the text of their materials. You cannot change anything yourself: propose changes (type, labels, answers) and the student decides in their inbox. Read list_proposals first so you do not repeat a rejected one. For exercises you can read the student's saved work and run their tests, but you never propose changes to their code. You may also keep your own digests.",
+          instructions: "The student's workbook: their open questions, their own text and the text of their materials. You cannot change anything yourself: propose changes (type, labels, answers) or new things (cards, page notes, questions) and the student decides in their inbox. Read list_proposals first so you do not repeat a rejected one. For exercises you can read the student's saved work and run their tests, but you never propose changes to their code. You may also keep your own digests.",
         });
       }
       case 'ping':

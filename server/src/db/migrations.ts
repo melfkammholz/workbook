@@ -636,6 +636,12 @@ export const MIGRATIONS: Migration[] = [
   ALTER TABLE changes ADD COLUMN batch_id TEXT;
   CREATE INDEX changes_batch ON changes (batch_id);
   `,
+  /*
+   * 24: proposals that make something (a card, a note on a page, a question). A question made from the assistant's
+   * proposal says so in `who`. The `changes` table needs nothing new: `field = 'create'`, payload in `after`.
+   */ `
+  ALTER TABLE questions ADD COLUMN who TEXT;
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

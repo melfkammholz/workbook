@@ -1,14 +1,14 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { targetHref, type CardHighlight, type CourseErrorCode, type CourseInfo, type CoursesResponse, type CourseUpdate } from '@wb/shared';
+import { targetHref, type CardHighlight, type CardPayload, type Created, type CreatePayload, type HighlightPayload, type CourseErrorCode, type CourseInfo, type CoursesResponse, type CourseUpdate } from '@wb/shared';
 import type { Config } from '../config.js';
 import { loadContent, type Content } from '../content/loader.js';
 import { ContentService } from '../content/service.js';
 import { TypstRenderer } from '../content/typst.js';
 import { MOUNTED_COURSE } from '../db/migrations.js';
 import { Store } from '../db/store.js';
-import { Flashcards } from '../flashcards/service.js';
+import { FlashcardError, Flashcards } from '../flashcards/service.js';
 import { Resources } from '../resources/service.js';
 import { Snapshots } from '../snapshots.js';
 import * as git from './git.js';
@@ -134,6 +134,63 @@ export class CourseManager {
         return ui !== 'auto' ? ui : (this.active?.content.current.outline.language ?? 'en');
       },
     });
+    this.global.useCreators({
+      create: (kind, payload) => this.createFromProposal(kind, payload),
+      remove: (kind, made) => this.removeProposed(kind, made),
+      gone: (kind, payload) => {
+        if (kind === 'card') {
+          const deck = (payload as CardPayload).deck;
+          return 'id' in deck && !this.flashcards.has(deck.id);
+        }
+        return !this.resources.has((payload as HighlightPayload).resource);
+      },
+    });
+  }
+
+  /** Accepting an assistant's proposal that makes a card (maybe in a new deck) or a note on a PDF page. Throws with a message for the student. */
+  private createFromProposal(kind: 'card' | 'highlight', payload: CreatePayload): Created {
+    if (kind === 'card') {
+      const c = payload as CardPayload;
+      let deckId: string;
+      let madeDeck: string | undefined;
+      if ('id' in c.deck) {
+        if (!this.flashcards.has(c.deck.id)) throw new Error('that deck is gone');
+        deckId = c.deck.id;
+      } else {
+        const title = c.deck.title.trim();
+        const same = this.flashcards.deckByTitle(title);
+        deckId = same ? same.id : (madeDeck = this.flashcards.create(title).id);
+      }
+      try {
+        const saved = this.flashcards.addCard(deckId, c.cardKind, c.front, c.back, null, null, [], null, c.anchor);
+        return { id: saved.cardId, deck: madeDeck ? deckId : undefined } as Created;
+      } catch (e) {
+        if (madeDeck) this.flashcards.remove(madeDeck);
+        throw e instanceof FlashcardError ? new Error('the card has unbalanced brackets') : e;
+      }
+    }
+    const h = payload as HighlightPayload;
+    const res = this.resources.get(h.resource);
+    const prev = this.resources.listPages(h.resource).find((p) => p.pageIndex === h.pageIndex);
+    const text = `„${h.quote.trim()}“${h.note.trim() ? `\n${h.note.trim()}` : ''}`;
+    const item = this.resources.savePage(h.resource, h.pageIndex, {
+      version: res.file.sha256,
+      fingerprint: prev?.fingerprint ?? '',
+      note: prev?.note ? `${prev.note}\n\n${text}` : text,
+    });
+    return { id: item.id, note: prev?.note ?? '' };
+  }
+
+  private removeProposed(kind: 'card' | 'highlight', made: Created): void {
+    if (kind === 'card') {
+      const d = this.flashcards.deckOf(made.id);
+      if (!d) return;
+      this.flashcards.deleteCard(d.id, made.id);
+      if (made.deck === d.id && d.cards === 1) this.flashcards.remove(d.id);
+      return;
+    }
+    const page = this.resources.getPage(made.id);
+    if (page) this.resources.savePage(page.resource, page.pageIndex, { version: page.version, fingerprint: page.fingerprint, note: made.note ?? '' });
   }
 
   /** The student's courses by the id courses are referred to by (`workbook.yml`'s `id`), for decks and materials. */

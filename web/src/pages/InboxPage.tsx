@@ -120,11 +120,12 @@ export function InboxPage() {
             ) : null}
             <ul className="mt-4 space-y-4">
               {byGroup.map((group) => {
-                const q = question(group[0]!.ref.id);
+                const making = group[0]!.field === 'create';
+                const q = making ? undefined : question(group[0]!.ref.id);
                 return (
                   <li key={group[0]!.group} className="rounded-lg border border-line bg-surface p-3">
                     <div className="flex items-start gap-2">
-                      <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[14px] font-medium leading-snug">{q?.text || (q && quoteOf(q)) || t.inboxNoText}</p>
+                      <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[14px] font-medium leading-snug">{making ? t.inboxCreate[group[0]!.ref.kind] : q?.text || (q && quoteOf(q)) || t.inboxNoText}</p>
                       {group.length > 1 ? (
                         <Button size="sm" variant="ghost" onClick={() => void acceptMany(group.map((c) => c.id))}>
                           {t.inboxAcceptGroup}
@@ -140,7 +141,7 @@ export function InboxPage() {
                             <div className="flex items-start gap-2">
                               <input type="checkbox" checked={marked.has(c.id)} onChange={() => toggle(c.id)} aria-label={t.inboxMark} className="mt-1 shrink-0" />
                               <div className="min-w-0 flex-1 text-[13.5px]">
-                                <span className="font-medium text-ink-2">{fieldName(c)}: </span>
+                                {c.field === 'create' ? null : <span className="font-medium text-ink-2">{fieldName(c)}: </span>}
                                 {editing ? (
                                   editor(c)
                                 ) : (

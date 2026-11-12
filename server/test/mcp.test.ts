@@ -29,6 +29,7 @@ afterAll(async () => {
   courses.close();
 });
 
+const g = () => courses.global;
 const rpc = (method: string, params?: object, headers: Record<string, string> = {}, id: number | null = 1) =>
   app.inject({ method: 'POST', url: '/mcp', headers: { authorization: `Bearer ${token}`, ...headers }, payload: { jsonrpc: '2.0', ...(id !== null ? { id } : {}), method, ...(params ? { params } : {}) } });
 const tool = async (name: string, args: object = {}) => {
@@ -65,7 +66,7 @@ describe('assistant bridge', () => {
     expect(init.capabilities.tools).toBeDefined();
     expect((await rpc('notifications/initialized', undefined, {}, null)).statusCode).toBe(202);
     const names = (await rpc('tools/list')).json().result.tools.map((x: { name: string }) => x.name);
-    expect([...names].sort()).toEqual(['get_context', 'get_exercise_work', 'get_progress', 'list_digests', 'list_labels', 'list_proposals', 'list_questions', 'propose', 'read_page', 'run_tests', 'search', 'write_digest']);
+    expect([...names].sort()).toEqual(['get_context', 'get_exercise_work', 'get_progress', 'list_decks', 'list_digests', 'list_labels', 'list_proposals', 'list_questions', 'propose', 'propose_card', 'propose_highlight', 'propose_question', 'read_page', 'run_tests', 'search', 'write_digest']);
     expect((await rpc('nope')).json().error.code).toBe(-32601);
   });
 
@@ -259,6 +260,74 @@ describe('assistant bridge', () => {
     expect(got.messages[0].content.text).toContain('x1');
     expect((await rpc('prompts/get', { name: 'review-exercise' })).json().error.code).toBe(-32602);
     expect((await rpc('prompts/get', { name: 'nope' })).json().error.code).toBe(-32602);
+  });
+
+  it('proposes new cards, page notes and questions; accepting makes them, undo removes them', async () => {
+    const ex = courses.active!.content.current.all().find((i) => i.meta.type === 'exercise')!;
+    const outline = courses.active!.content.current.outline.id;
+    const decide = (id: string, what: string, payload = {}) => app.inject({ method: 'POST', url: `/api/changes/${id}/${what}`, payload });
+    const pending = async () => ((await app.inject({ method: 'GET', url: '/api/changes' })).json() as { id: string; field: string; status: string; ref: { kind: string; id: string }; after: any; before: any }[]).filter((c) => c.status === 'pending' && c.field === 'create');
+
+    // the earlier tests left the inbox full
+    for (const c of (await app.inject({ method: 'GET', url: '/api/changes' })).json() as { id: string; status: string }[]) if (c.status === 'pending') await decide(c.id, 'reject');
+    expect((await tool('propose_card', { front: 'x', deck: 'D', item: 'no-such-item' })).error).toBe(true);
+    expect((await tool('propose_card', { front: 'x', deck: 'D', item: ex.meta.id })).error).toBe(true); // no back
+    expect((await tool('propose_question', { text: 'Warum?' })).error).toBe(true); // no place
+    expect((await tool('propose_highlight', { resource: 'nope', page: 1, quote: 'q' })).error).toBe(true);
+
+    // nothing exists until the student accepts
+    await tool('propose_card', { front: 'Was ist `foldr`?', back: 'Eine Faltung von rechts.', deck: 'Neuer Stapel', item: ex.meta.id, reason: 'Kernbegriff' });
+    await tool('propose_question', { text: 'Warum von rechts?', item: ex.meta.id });
+    expect(JSON.parse((await tool('list_decks')).text)).not.toContain('Neuer Stapel');
+    const [card, question] = await pending();
+    expect(card!.ref).toEqual({ kind: 'card', id: '' });
+    expect(card!.after).toMatchObject({ deck: { title: 'Neuer Stapel' }, cardKind: 'basic', anchor: { kind: 'exercise', course: outline, id: ex.meta.id } });
+
+    // card: made in a new deck, with its anchor; undo takes the card and the deck it made away
+    const accepted = (await decide(card!.id, 'accept', { after: { ...card!.after, front: 'Was macht `foldr`?' } })).json();
+    expect(accepted).toMatchObject({ status: 'applied', ref: { kind: 'card' } });
+    expect(accepted.ref.id).toBeTruthy();
+    expect(accepted.before.id).toBe(accepted.ref.id);
+    expect(JSON.parse((await tool('list_decks')).text)).toContain('Neuer Stapel');
+    const deck = courses.flashcards.get(courses.flashcards.deckByTitle('Neuer Stapel')!.id);
+    expect(deck.cards).toHaveLength(1);
+    expect(deck.source).toContain('Was macht `foldr`?');
+    expect(deck.cards[0]!.anchor).toMatchObject({ kind: 'exercise', id: ex.meta.id });
+    expect((await decide(card!.id, 'undo')).json().status).toBe('undone');
+    expect(courses.flashcards.deckByTitle('Neuer Stapel')).toBeNull();
+
+    // question: marked as the assistant's, outside the student's passes; undo deletes it
+    const q = (await decide(question!.id, 'accept')).json();
+    const made = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.ref.id);
+    expect(made).toMatchObject({ text: 'Warum von rechts?', who: 'assistant', status: 'open', passId: null });
+    await decide(question!.id, 'undo');
+    expect((await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.ref.id)).toBeUndefined();
+
+    // a card for an existing deck, then the deck goes: the proposal is out of date
+    const deckDoc = courses.flashcards.create('Alt');
+    await tool('propose_card', { front: 'A', back: 'B', deck: 'Alt' });
+    const [stale] = await pending();
+    await decide(stale!.id, 'accept', { after: { ...stale!.after, deck: { id: deckDoc.id } } }).then((r) => expect(r.json().status).toBe('applied'));
+    await decide(stale!.id, 'undo');
+    expect(courses.flashcards.get(deckDoc.id).cards).toHaveLength(0); // the deck was there before: it stays
+    await tool('propose_card', { front: 'A2', back: 'B2', deck: 'Alt' });
+    const [gone] = await pending();
+    courses.flashcards.remove(deckDoc.id);
+    const bad = await decide(gone!.id, 'accept', { after: { ...gone!.after, deck: { id: deckDoc.id } } });
+    expect(bad.statusCode).toBe(409);
+    await decide(gone!.id, 'reject');
+
+    // a note on a page of a material, added below what is there
+    const body = Buffer.from('%PDF-1.4 notes');
+    const res = (await app.inject({ method: 'POST', url: `/api/resources/upload?${new URLSearchParams({ filename: 's.pdf', title: 'S', type: 'notes' })}`, headers: { 'content-type': 'application/octet-stream' }, payload: body })).json() as { id: string };
+    const filed = g().proposeCreate('assistant', 'highlight', { resource: res.id, pageIndex: 2, quote: 'wichtig', note: 'merken' });
+    expect('id' in filed).toBe(true);
+    const [note] = await pending();
+    const done = (await decide(note!.id, 'accept')).json();
+    expect(done.status).toBe('applied');
+    expect(courses.resources.listPages(res.id)[0]).toMatchObject({ pageIndex: 2, note: '„wichtig“\nmerken' });
+    await decide(note!.id, 'undo');
+    expect(courses.resources.listPages(res.id)[0]!.note).toBe('');
   });
 
   it('is off again when the student turns it off', async () => {

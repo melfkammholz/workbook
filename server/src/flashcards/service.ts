@@ -146,6 +146,26 @@ export class Flashcards {
     return d;
   }
 
+  deckTitles(): string[] {
+    return this.decks().map((d) => d.title);
+  }
+
+  has(id: string): boolean {
+    return this.decks().some((d) => d.id === id);
+  }
+
+  /** The deck of this title (any case), if the student has one. */
+  deckByTitle(title: string): { id: string } | null {
+    const t = title.trim().toLowerCase();
+    return this.decks().find((d) => d.title.trim().toLowerCase() === t) ?? null;
+  }
+
+  /** The deck a card is in, and how many cards it has. */
+  deckOf(cardId: string): { id: string; cards: number } | null {
+    const d = this.decks().find((x) => scanCards(x.source).some((c) => c.id === cardId));
+    return d ? { id: d.id, cards: scanCards(d.source).length } : null;
+  }
+
   private cardsOf(source: string): DeckCard[] {
     return scanCards(source).map((c) => {
       const f = fieldsOf(source, c);

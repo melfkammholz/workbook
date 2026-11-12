@@ -20,6 +20,13 @@ import {
   type Anchor,
   type Change,
   type ChangeField,
+  type ChangeRefKind,
+  type ChangeValue,
+  type CardPayload,
+  type HighlightPayload,
+  type CreatePayload,
+  type Created,
+  type QuestionPayload,
   type ChangeStatus,
   type QuestionKind,
   QUESTION_KINDS,
@@ -61,8 +68,22 @@ export interface SearchHit {
 /** Course of the rows that belong to the student rather than to a course. */
 const GLOBAL = '';
 
+/**
+ * What accepting a proposal that makes something needs from outside the database: the decks and the uploaded files
+ * have services of their own. Set once by whoever owns them (`Store.useCreators`).
+ */
+export interface ChangeCreators {
+  /** Makes a card or a page note; throws `Error` with a message for the student if it cannot. */
+  create(kind: 'card' | 'highlight', payload: CreatePayload): Created;
+  /** Takes away what `create` made. */
+  remove(kind: 'card' | 'highlight', made: Created): void;
+  /** True if what the payload points at (deck, material) is gone. */
+  gone(kind: 'card' | 'highlight', payload: CreatePayload): boolean;
+}
+
 /** The one SQLite file, shared by every view of it. */
 class Db {
+  creators: ChangeCreators | null = null;
   readonly raw: DatabaseSync;
   private readonly statements = new Map<string, StatementSync>();
   private readonly optimizer: NodeJS.Timeout;
@@ -139,6 +160,11 @@ export class Store {
   constructor(file: string | Db, private readonly now: () => number = Date.now, readonly course: string = GLOBAL) {
     this.owner = typeof file === 'string';
     this.db = typeof file === 'string' ? new Db(file) : file;
+  }
+
+  /** Tells the inbox how to make cards and page notes (see `ChangeCreators`). */
+  useCreators(c: ChangeCreators): void {
+    this.db.creators = c;
   }
 
   /** The work of one course. Settings and other global values stay shared with this store. */
@@ -434,14 +460,15 @@ export class Store {
   }
 
   /** `continuePass`: the capture joins the last pass although the pause was long (the student said so). */
-  addQuestion(q: { id?: string | undefined; text: string; anchor: Anchor; highlightId?: string | null; continuePass?: boolean }): Question {
+  addQuestion(q: { id?: string | undefined; text: string; anchor: Anchor; highlightId?: string | null; continuePass?: boolean; who?: string }): Question {
     const t = this.now();
     const id = q.id ?? `q-${randomUUID()}`;
     const course = 'course' in q.anchor ? q.anchor.course : '';
     this.tx(() => {
       this.run(
-        `INSERT INTO questions (id, text, anchor, course, highlight_id, pass_id, status, created_at, updated_at) VALUES (?,?,?,?,?,?,'open',?,?)`,
-        id, q.text.trim().slice(0, MAX_QUESTION), JSON.stringify(q.anchor), course, q.highlightId ?? null, this.currentPass(t, q.continuePass), t, t,
+        `INSERT INTO questions (id, text, anchor, course, highlight_id, pass_id, status, who, created_at, updated_at) VALUES (?,?,?,?,?,?,'open',?,?,?)`,
+        // The assistant's questions belong to no sitting of the student's.
+        id, q.text.trim().slice(0, MAX_QUESTION), JSON.stringify(q.anchor), course, q.highlightId ?? null, q.who ? null : this.currentPass(t, q.continuePass), q.who ?? null, t, t,
       );
     });
     return this.getQuestion(id)!;
@@ -572,7 +599,40 @@ export class Store {
     return { ids };
   }
 
+  /**
+   * The assistant proposes making something: a card, a note on a PDF page, a question. It waits in the inbox as a
+   * `create` change whose `after` is the payload. Returns the id of the change, or why not.
+   */
+  proposeCreateInner(who: string, kind: ChangeRefKind, payload: CreatePayload, reason = ''): { id: string } | { error: string } {
+    if (Number(this.get("SELECT COUNT(*) AS n FROM changes WHERE status = 'pending'")!.n) >= MAX_PENDING_CHANGES) return { error: 'inbox full: the student has to go through what is waiting first' };
+    const err = this.checkCreate(kind, payload);
+    if (err) return { error: err };
+    const id = `ch-${randomUUID()}`;
+    this.run(
+      `INSERT INTO changes (id, who, ref_kind, ref_id, field, before, after, base_version, group_id, status, reason, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?,?)`,
+      id, who, kind, '', 'create', null, JSON.stringify(payload), 0, `g-${randomUUID()}`, reason.slice(0, 500), this.now(),
+    );
+    return { id };
+  }
+
+  private checkCreate(kind: ChangeRefKind, p: CreatePayload): string | null {
+    const text = (v: unknown, max: number) => typeof v === 'string' && v.trim().length > 0 && v.length <= max;
+    if (kind === 'question') return text((p as QuestionPayload).text, MAX_QUESTION) && (p as QuestionPayload).anchor ? null : 'a question needs text and a place';
+    if (kind === 'card') {
+      const c = p as CardPayload;
+      if (!text(c.front, 4000) || !text(c.back, 4000) && c.cardKind !== 'cloze') return 'a card needs a front and a back';
+      return 'id' in c.deck || ('title' in c.deck && text(c.deck.title, 120)) ? null : 'a card needs a deck';
+    }
+    const h = p as HighlightPayload;
+    return text(h.quote, 2000) && typeof h.note === 'string' && Number.isInteger(h.pageIndex) && h.pageIndex >= 0 && text(h.resource, 100) ? null : 'a page note needs a material, a page and a quote';
+  }
+
   // Each of these tells the open tabs that the inbox changed.
+  proposeCreate(...a: Parameters<Store['proposeCreateInner']>): ReturnType<Store['proposeCreateInner']> {
+    const r = this.proposeCreateInner(...a);
+    announceChanges();
+    return r;
+  }
   propose(...a: Parameters<Store['proposeInner']>): ReturnType<Store['proposeInner']> {
     const r = this.proposeInner(...a);
     announceChanges();
@@ -616,12 +676,16 @@ export class Store {
 
   private expireStale(): void {
     const t = this.now();
-    this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE status = 'pending' AND ref_kind = 'question' AND NOT EXISTS (SELECT 1 FROM questions q WHERE q.id = changes.ref_id)", t);
+    this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE status = 'pending' AND ref_kind = 'question' AND field <> 'create' AND NOT EXISTS (SELECT 1 FROM questions q WHERE q.id = changes.ref_id)", t);
+    // A creation only goes stale when what it points at (the deck, the material) is gone.
+    for (const r of this.all("SELECT id, ref_kind, after FROM changes WHERE status = 'pending' AND field = 'create' AND ref_kind <> 'question'")) {
+      if (this.db.creators?.gone(r.ref_kind as 'card' | 'highlight', JSON.parse(r.after as string) as CreatePayload)) this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE id = ?", t, r.id as string);
+    }
     this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE status = 'pending' AND field IN ('answer','text') AND EXISTS (SELECT 1 FROM questions q WHERE q.id = changes.ref_id AND q.updated_at <> changes.base_version)", t);
   }
 
   /** Applies a proposal (`after` replaces the proposed value, for accept after editing) or turns it down. */
-  decideChangeInner(id: string, decision: 'accept' | 'reject', opts: { feedback?: string; after?: string | string[] | null } = {}): Change | { error: string } {
+  decideChangeInner(id: string, decision: 'accept' | 'reject', opts: { feedback?: string; after?: ChangeValue } = {}): Change | { error: string } {
     this.expireStale();
     const r = this.get('SELECT * FROM changes WHERE id = ?', id);
     if (!r) return { error: 'unknown change' };
@@ -634,7 +698,7 @@ export class Store {
       const after = opts.after === undefined ? c.after : opts.after;
       try {
         this.tx(() => {
-          const err = this.applyField(c.ref.id, c.field, after);
+          const err = this.applyChange(c, after);
           if (err) throw new ChangeError(err);
           this.run("UPDATE changes SET status = 'applied', after = ?, feedback = ?, decided_at = ? WHERE id = ?", JSON.stringify(after), feedback, t, id);
         });
@@ -654,7 +718,7 @@ export class Store {
     if (c.status !== 'applied') return { error: `is ${c.status}, not applied` };
     try {
       this.tx(() => {
-        const err = this.applyField(c.ref.id, c.field, c.before, true);
+        const err = this.applyChange(c, c.before, true);
         if (err) throw new ChangeError(err);
         this.run("UPDATE changes SET status = 'undone', decided_at = ? WHERE id = ?", this.now(), id);
       });
@@ -678,7 +742,7 @@ export class Store {
           if (!r) throw new ChangeError('unknown change');
           const c = rowToChange(r);
           if (c.status !== 'pending') throw new ChangeError(`already ${c.status}`);
-          const err = this.applyField(c.ref.id, c.field, c.after);
+          const err = this.applyChange(c, c.after);
           if (err) throw new ChangeError(err);
           this.run("UPDATE changes SET status = 'applied', batch_id = ?, decided_at = ? WHERE id = ?", batch, this.now(), id);
         }
@@ -698,7 +762,7 @@ export class Store {
       this.tx(() => {
         for (const r of rows) {
           const c = rowToChange(r);
-          const err = this.applyField(c.ref.id, c.field, c.before, true);
+          const err = this.applyChange(c, c.before, true);
           if (err) throw new ChangeError(err);
           this.run("UPDATE changes SET status = 'undone', decided_at = ? WHERE id = ?", this.now(), c.id);
         }
@@ -708,6 +772,37 @@ export class Store {
       throw e;
     }
     return rows.map((r) => rowToChange(this.get('SELECT * FROM changes WHERE id = ?', r.id as string)!));
+  }
+
+  /** Applies one change (or, with `undo`, takes it back): a field of a question, or a creation. */
+  private applyChange(c: Change, value: ChangeValue, undo = false): string | null {
+    if (c.field !== 'create') return this.applyField(c.ref.id, c.field, value as string | string[] | null, undo);
+    const kind = c.ref.kind;
+    if (undo) {
+      const made = c.before as Created | null;
+      if (!made?.id) return null;
+      if (kind === 'question') this.deleteQuestion(made.id);
+      else this.db.creators?.remove(kind, made);
+      this.run("UPDATE changes SET ref_id = '' WHERE id = ?", c.id);
+      return null;
+    }
+    const payload = value as CreatePayload;
+    const bad = this.checkCreate(kind, payload);
+    if (bad) return bad;
+    let made: Created;
+    if (kind === 'question') {
+      const q = payload as QuestionPayload;
+      made = { id: this.addQuestion({ text: q.text, anchor: q.anchor, who: c.who }).id };
+    } else {
+      if (!this.db.creators) return 'cannot be made here';
+      try {
+        made = this.db.creators.create(kind, payload);
+      } catch (e) {
+        return e instanceof Error ? e.message : 'could not be made';
+      }
+    }
+    this.run('UPDATE changes SET ref_id = ?, before = ? WHERE id = ?', made.id, JSON.stringify(made), c.id);
+    return null;
   }
 
   /** Kind and labels leave `updated_at` alone, so a proposal for the answer is not made stale by another one of the group. */
@@ -1177,11 +1272,11 @@ export class Store {
 class ChangeError extends Error {}
 
 function rowToChange(r: Row): Change {
-  const parse = (v: unknown) => (typeof v === 'string' ? (JSON.parse(v) as string | string[] | null) : null);
+  const parse = (v: unknown) => (typeof v === 'string' ? (JSON.parse(v) as ChangeValue) : null);
   return {
     id: r.id as string,
     who: r.who as string,
-    ref: { kind: 'question', id: r.ref_id as string },
+    ref: { kind: r.ref_kind as ChangeRefKind, id: r.ref_id as string },
     field: r.field as ChangeField,
     before: parse(r.before),
     after: parse(r.after),
@@ -1207,6 +1302,7 @@ function rowToQuestion(r: Row, labels: string[] = []): Question {
     status: r.status as 'open' | 'done',
     answer: (r.answer as string | null) ?? null,
     kind: (r.kind as QuestionKind | null) ?? null,
+    who: (r.who as string | null) ?? null,
     labels,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),

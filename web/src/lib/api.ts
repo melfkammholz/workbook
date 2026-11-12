@@ -12,6 +12,7 @@ import type {
   NoteDoc,
   NoteFormat,
   Change,
+  ChangeValue,
   Question,
   Outline,
   RenderedItem,
@@ -423,7 +424,7 @@ export const askQuestion = (where: QuestionPlace, text: string, continuePass = f
       : where.material
         ? { kind: 'material', resource: where.material }
         : { kind: 'none' };
-  const q: Question = { id, text, anchor, course: '', highlightId: null, passId: null, unplaced: false, status: 'open', answer: null, kind: null, labels: [], createdAt: t, updatedAt: t, doneAt: null };
+  const q: Question = { id, text, anchor, course: '', highlightId: null, passId: null, unplaced: false, status: 'open', answer: null, kind: null, who: null, labels: [], createdAt: t, updatedAt: t, doneAt: null };
   const item = where.item ?? null;
   if (item) patchWork(item, (w) => ({ ...w, questions: [...w.questions, q] }));
   patchQuestions((qs) => [...qs, q]);
@@ -452,7 +453,7 @@ export const usePendingProposals = () => {
   const data = useChanges(!!(settings?.showAi && settings.assistantBridge)).data;
   return useMemo(() => {
     const out = new Map<string, Change[]>();
-    for (const c of data ?? []) if (c.status === 'pending' && c.ref.kind === 'question') (out.get(c.ref.id) ?? out.set(c.ref.id, []).get(c.ref.id)!).push(c);
+    for (const c of data ?? []) if (c.status === 'pending' && c.ref.kind === 'question' && c.field !== 'create') (out.get(c.ref.id) ?? out.set(c.ref.id, []).get(c.ref.id)!).push(c);
     return out;
   }, [data]);
 };
@@ -469,17 +470,19 @@ export const useChangesStream = (enabled: boolean) => {
   }, [enabled]);
 };
 /** Accepts (maybe with an edited value), rejects or undoes one proposal; the questions and labels may have changed. */
-export const decideChange = async (id: string, decision: 'accept' | 'reject' | 'undo', body: { feedback?: string; after?: string | string[] | null } = {}) => {
+export const decideChange = async (id: string, decision: 'accept' | 'reject' | 'undo', body: { feedback?: string; after?: ChangeValue } = {}) => {
   try {
     await api.post(`/api/changes/${encodeURIComponent(id)}/${decision}`, body);
   } finally {
-    void queryClient.invalidateQueries({ queryKey: changesKey });
-    void queryClient.invalidateQueries({ queryKey: questionsKey });
-    void queryClient.invalidateQueries({ queryKey: keys.settings });
-    void queryClient.invalidateQueries({ queryKey: ['work'] });
+    changesSettled();
   }
 };
+/** Accepting or undoing a creation touches decks and materials too. */
+const madeSomething = () => {
+  for (const key of ['flashcards', 'resources', 'pdf-pages', 'pdf-annotations']) void queryClient.invalidateQueries({ queryKey: [key] });
+};
 const changesSettled = () => {
+  madeSomething();
   void queryClient.invalidateQueries({ queryKey: changesKey });
   void queryClient.invalidateQueries({ queryKey: questionsKey });
   void queryClient.invalidateQueries({ queryKey: keys.settings });

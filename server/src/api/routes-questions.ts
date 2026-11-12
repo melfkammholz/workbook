@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { MAX_QUESTION, MAX_QUOTE, SNIPPET_LENGTH, type Anchor } from '@wb/shared';
+import { MAX_QUESTION, MAX_QUOTE, SNIPPET_LENGTH, type Anchor, type ChangeValue } from '@wb/shared';
 import { changesBus } from '../db/changes-bus.js';
 import type { Deps } from './deps.js';
 
@@ -110,14 +110,14 @@ export function questionRoutes(app: FastifyInstance, d: Deps): void {
     return 'error' in out ? reply.code(409).send(out) : out;
   });
   app.post<{ Params: { id: string; decision: string } }>('/api/changes/:id/:decision', async (req, reply) => {
-    const r = z.object({ feedback: z.string().max(500).optional(), after: z.union([z.string().max(8000), z.array(z.string().max(60)).max(12), z.null()]).optional() }).safeParse(req.body ?? {});
+    const r = z.object({ feedback: z.string().max(500).optional(), after: z.union([z.string().max(8000), z.array(z.string().max(60)).max(12), z.null(), z.record(z.string(), z.unknown())]).optional() }).safeParse(req.body ?? {});
     if (!r.success) return fail(reply, r.error);
     const { decision, id } = req.params;
     const out =
       decision === 'undo'
         ? d.store.undoChange(id)
         : decision === 'accept' || decision === 'reject'
-          ? d.store.decideChange(id, decision, { ...(r.data.feedback !== undefined ? { feedback: r.data.feedback } : {}), ...(r.data.after !== undefined ? { after: r.data.after } : {}) })
+          ? d.store.decideChange(id, decision, { ...(r.data.feedback !== undefined ? { feedback: r.data.feedback } : {}), ...(r.data.after !== undefined ? { after: r.data.after as ChangeValue } : {}) })
           : null;
     if (!out) return reply.code(404).send({ error: 'unknown decision' });
     return 'error' in out ? reply.code(409).send(out) : out;
