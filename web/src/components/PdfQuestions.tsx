@@ -1,7 +1,11 @@
 import { X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { SNIPPET_LENGTH, normalizeQuote, type Question, type Resource, type TextQuote } from '@wb/shared';
+import { MAX_QUOTE, SNIPPET_LENGTH, normalizeQuote, type PageRect, type Question, type Resource, type TextQuote } from '@wb/shared';
 import { askQuestion, useQuestions } from '@/lib/api';
+import { addPdfHighlight, usePdfAnnotationsOn } from '@/lib/pdfAnnotations';
+import { setAsked } from '@/lib/pdfAsked';
+import { useQueryClient } from '@tanstack/react-query';
+import { lastColor } from './AnnotationLayer';
 import { useT } from '@/lib/i18n';
 import { FoldSection } from './FoldSection';
 import { readSelection } from './PdfHighlights';
@@ -39,21 +43,26 @@ export function snippetOf(text: string, quote: string | null): string {
  * selection, so the passage is kept (until the next click on the pages) and painted by the highlight API meanwhile.
  */
 function useSelectedPassage(scroller: RefObject<HTMLElement | null>) {
-  const [sel, setSel] = useState<{ page: number; quote: TextQuote } | null>(null);
+  const [sel, setSel] = useState<{ page: number; quote: TextQuote; rects: PageRect[] } | null>(null);
   const range = useRef<Range | null>(null);
-  const keep = (next: { page: number; quote: TextQuote; range: Range } | null) => {
+  const keep = (next: { page: number; quote: TextQuote; rects: PageRect[]; range: Range } | null, paint = true) => {
     range.current = next?.range ?? null;
-    setSel(next && { page: next.page, quote: next.quote });
-    paintKept(next?.range ?? null);
+    setSel(next && { page: next.page, quote: next.quote, rects: next.rects });
+    if (paint) paintKept(next?.range ?? null);
   };
   useEffect(() => {
     const onChange = () => {
       const s = getSelection();
       const box = scroller.current;
-      if (!s || s.isCollapsed || !s.rangeCount || !box?.contains(s.getRangeAt(0).commonAncestorContainer)) return;
+      if (!s || s.isCollapsed || !s.rangeCount || !box?.contains(s.getRangeAt(0).commonAncestorContainer)) {
+        // The native selection is gone (the line took the focus): the kept passage stands in for it.
+        paintKept(range.current);
+        return;
+      }
       const r = s.getRangeAt(0);
       const read = readSelection(r);
-      if (read && read !== 'crossed') keep({ page: read.page, quote: read.quote, range: r.cloneRange() });
+      paintKept(null); // the real selection is painted by the browser; never both
+      if (read && read !== 'crossed') keep({ page: read.page, quote: read.quote, rects: read.rects, range: r.cloneRange() }, false);
     };
     const onDown = (e: MouseEvent) => {
       if (scroller.current?.contains(e.target as Node)) keep(null);
@@ -70,15 +79,9 @@ function useSelectedPassage(scroller: RefObject<HTMLElement | null>) {
   return [sel, () => keep(null)] as const;
 }
 
-/** Paints the kept passage like a selection, so it does not seem to vanish when the question line takes the focus. */
+/** Paints the kept passage exactly like the browser's selection (see `::highlight(wb-q-sel)`), so it seems to stay selected. */
 function paintKept(r: Range | null): void {
   if (typeof CSS === 'undefined' || !('highlights' in CSS)) return;
-  if (!document.getElementById('wb-q-sel-style')) {
-    const el = document.createElement('style');
-    el.id = 'wb-q-sel-style';
-    el.textContent = '::highlight(wb-q-sel){background-color:Highlight;color:HighlightText;}';
-    document.head.appendChild(el);
-  }
   if (r) CSS.highlights.set('wb-q-sel', new Highlight(r));
   else CSS.highlights.delete('wb-q-sel');
 }
@@ -90,10 +93,26 @@ function paintKept(r: Range | null): void {
 export function PdfQuestionBar({ resource, current, pageInfo, scroller }: { resource: Resource; current: number; pageInfo: PageInfo; scroller: RefObject<HTMLElement | null> }) {
   const t = useT();
   const [sel, clearSel] = useSelectedPassage(scroller);
-  const short = sel ? (sel.quote.quote.length > 28 ? `${sel.quote.quote.slice(0, 28)}…` : sel.quote.quote) : '';
+  const qc = useQueryClient();
+  const canHighlight = usePdfAnnotationsOn() && resource.stale === 0;
+  const questions = usePdfQuestions(resource);
+  useEffect(() => {
+    const byPage = new Map<number, TextQuote[]>();
+    for (const q of questions) {
+      if (q.status !== 'open' || q.anchor.kind !== 'page' || !q.anchor.quote) continue;
+      const list = byPage.get(q.anchor.pageIndex) ?? byPage.set(q.anchor.pageIndex, []).get(q.anchor.pageIndex)!;
+      list.push({ quote: q.anchor.quote, prefix: q.anchor.prefix ?? '', suffix: q.anchor.suffix ?? '' });
+    }
+    setAsked(byPage);
+    return () => setAsked(new Map());
+  }, [questions]);
   const save = (text: string, o: { continuePass: boolean; tags: string[] }) => {
-    const use = o.tags.includes('s') ? sel : null;
+    const use = o.tags.includes('s') || o.tags.includes('h') ? sel : null;
     const n = use ? use.page + 1 : current;
+    // `!h`: the passage also becomes a highlight, a record of its own that is not tied to the question.
+    if (use && o.tags.includes('h') && canHighlight && use.quote.quote.length <= MAX_QUOTE) {
+      addPdfHighlight(qc, resource.id, { version: resource.file.sha256, pageIndex: use.page, rects: use.rects, ...use.quote, color: lastColor() });
+    }
     if (use) clearSel();
     if (!use && !o.tags.includes('p')) return void askQuestion({ material: resource.id }, text, o.continuePass);
     void pageInfo(n).then((info) =>
@@ -105,15 +124,16 @@ export function PdfQuestionBar({ resource, current, pageInfo, scroller }: { reso
     );
   };
   return (
-    <div className="shrink-0 bg-sunk px-3 pb-3 pt-1">
+    <div className="shrink-0 bg-sunk px-3 pb-2 pt-1">
       <QuestionCard className="mx-auto max-w-2xl">
         <CaptureField
           attr="data-pdf-question"
           placeholder={t.pdfQuestionPlaceholder}
           onSave={save}
           tags={[
-            { key: 'p', hint: t.tagPage(current), available: true },
-            { key: 's', hint: sel ? t.tagSelection(short) : t.tagSelectionNone, available: !!sel },
+            { key: 'p', hint: '', available: true },
+            { key: 's', hint: '', available: !!sel },
+            { key: 'h', hint: '', available: !!sel && canHighlight },
           ]}
         />
       </QuestionCard>

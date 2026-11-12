@@ -23,38 +23,63 @@ function useOpenPlace(location: string): { item: string | null; title: string | 
 }
 
 /**
- * `q` anywhere opens the same card as under a PDF, floating at the bottom, to write a question into; it is tied to the
- * exercise, lesson or chapter that is open, else to nothing. In a PDF the pinned card takes the key instead. Enter
- * saves and keeps it open, Escape closes it.
+ * `q` anywhere opens the same card as under a PDF, floating at the bottom of the content, to write a question into; it
+ * is tied to the exercise, lesson or chapter that is open (named in the placeholder), else to nothing. In a PDF the
+ * pinned card takes the key instead. Enter saves and keeps it open; Escape or leaving it empty fades it out.
  */
 export function QuestionPopup() {
   const t = useT();
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const area = useContentArea(open);
   const place = useOpenPlace(location);
+  const close = () => setLeaving(true);
   usePageKeys({
     q: () => {
       if (location.startsWith('/resources/')) document.querySelector<HTMLTextAreaElement>('[data-pdf-question]')?.focus();
-      else setOpen(true);
+      else {
+        setLeaving(false);
+        setOpen(true);
+      }
     },
   });
-  useEffect(() => setOpen(false), [location]);
   useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    addEventListener('keydown', onKey);
-    return () => removeEventListener('keydown', onKey);
-  }, [open]);
+    setOpen(false);
+    setLeaving(false);
+  }, [location]);
   if (!open) return null;
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
-      <QuestionCard
-        context={place.title ? t.questionAbout(place.title) : t.questionAboutNothing}
-        onClose={() => setOpen(false)}
-        className="pointer-events-auto w-full max-w-xl"
-      >
-        <CaptureField autoFocus onCancel={() => setOpen(false)} onSave={(text, o) => void askQuestion(place.item ? { item: place.item } : {}, text, o.continuePass)} />
+    <div
+      className={`pointer-events-none fixed bottom-5 z-50 flex justify-center px-4 ${leaving ? 'wb-pop-out' : 'wb-pop-in'}`}
+      style={{ left: area.left, width: area.width }}
+      onAnimationEnd={() => leaving && setOpen(false)}
+    >
+      <QuestionCard className="pointer-events-auto w-full max-w-xl">
+        <CaptureField
+          autoFocus
+          placeholder={place.title ? t.questionAbout(place.title) : t.questionAboutNothing}
+          onCancel={close}
+          onBlurEmpty={close}
+          onSave={(text, o) => void askQuestion(place.item ? { item: place.item } : {}, text, o.continuePass)}
+        />
       </QuestionCard>
     </div>
   );
+}
+
+/** The span of the page's main area, so the card is centered on the content rather than on the whole window. */
+function useContentArea(active: boolean) {
+  const [area, setArea] = useState({ left: 0, width: innerWidth });
+  useEffect(() => {
+    if (!active) return;
+    const measure = () => {
+      const r = document.querySelector('main')?.getBoundingClientRect();
+      setArea(r && r.width > 0 ? { left: r.left, width: r.width } : { left: 0, width: innerWidth });
+    };
+    measure();
+    addEventListener('resize', measure);
+    return () => removeEventListener('resize', measure);
+  }, [active]);
+  return area;
 }

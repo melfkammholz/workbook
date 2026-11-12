@@ -57,7 +57,7 @@ export function parseTags(raw: string, known: readonly string[]): { text: string
 export function QuestionCard({ context, onClose, className, children }: { context?: string | null; onClose?: () => void; className?: string; children: React.ReactNode }) {
   const t = useT();
   return (
-    <div className={clsx('rounded-xl border border-line-strong bg-sheet p-2.5 shadow-[var(--shadow)]', className)}>
+    <div className={clsx('rounded-lg border border-line-strong bg-sheet p-1.5 shadow-[var(--shadow)]', className)}>
       {context || onClose ? (
         <div className="mb-1.5 flex items-center gap-2 px-1 text-[12px] text-ink-3">
           <span className="min-w-0 flex-1 truncate">{context}</span>
@@ -86,6 +86,7 @@ export function CaptureField({
   placeholder,
   tags = [],
   onCancel,
+  onBlurEmpty,
 }: {
   onSave: (text: string, o: { continuePass: boolean; tags: string[] }) => void;
   autoFocus?: boolean;
@@ -95,6 +96,8 @@ export function CaptureField({
   placeholder?: string;
   tags?: QuestionTag[];
   onCancel?: () => void;
+  /** The line lost the focus with nothing written in it. */
+  onBlurEmpty?: () => void;
 }) {
   const t = useT();
   const [text, setText] = useState('');
@@ -103,7 +106,6 @@ export function CaptureField({
   const all = useQuestions().data;
   const last = all?.reduce((m, q) => Math.max(m, q.createdAt), 0) ?? 0;
   const newPass = last > 0 && Date.now() - last >= PASS_GAP_MS;
-  const typed = parseTags(text, tags.filter((x) => x.available).map((x) => x.key)).tags;
   const save = () => {
     const parsed = parseTags(text, tags.filter((x) => x.available).map((x) => x.key));
     if (!parsed.text) return;
@@ -126,24 +128,16 @@ export function CaptureField({
         placeholder={placeholder ?? t.questionPlaceholder}
         {...(attr ? { [attr]: '' } : {})}
         onChange={(e) => setText(e.target.value)}
+        onBlur={() => !text.trim() && onBlurEmpty?.()}
         onKeyDown={(e) => submitKey(e, save, onCancel)}
-        className="block w-full resize-none wb-field px-3 py-2 text-sm placeholder:text-ink-3"
+        className="block w-full resize-none wb-field px-2.5 py-1.5 text-sm placeholder:text-ink-3"
       />
-      {tags.length || newPass ? (
-        <p className="mt-1 flex flex-wrap gap-x-3 px-1 text-[12px] text-ink-3">
-          {tags.map((x) => (
-            <span key={x.key} className={clsx(!x.available && 'opacity-60', typed.includes(x.key) && 'font-medium text-accent')}>
-              {x.hint}
-            </span>
-          ))}
-          {newPass ? (
-            <span>
-              {carryOn ? t.questionContinuing : t.questionNewPass} ·{' '}
-              <button type="button" onClick={() => setCarryOn(!carryOn)} className="underline hover:text-ink">
-                {carryOn ? t.questionStartNewPass : t.questionContinuePass}
-              </button>
-            </span>
-          ) : null}
+      {newPass ? (
+        <p className="mt-1 px-1 text-[12px] text-ink-3">
+          {carryOn ? t.questionContinuing : t.questionNewPass} ·{' '}
+          <button type="button" onClick={() => setCarryOn(!carryOn)} className="underline hover:text-ink">
+            {carryOn ? t.questionStartNewPass : t.questionContinuePass}
+          </button>
         </p>
       ) : null}
     </div>

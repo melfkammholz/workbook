@@ -209,11 +209,21 @@ body {
   .wb-field:focus, .wb-field:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
   .wb-field:disabled { opacity: 0.6; }
   .wb-field-sunk { background: var(--sunk); }
-  .wb-check { width: 1rem; height: 1rem; accent-color: var(--accent); cursor: pointer; }
+  .wb-check { appearance: none; width: 1rem; height: 1rem; border: 1.5px solid var(--line-strong); border-radius: 4px; background: var(--sheet); cursor: pointer; display: inline-grid; place-content: center; transition: background-color 0.12s, border-color 0.12s; }
+  .wb-check:hover { border-color: var(--accent); }
+  .wb-check:checked { background: var(--accent); border-color: var(--accent); }
+  .wb-check:checked::after { content: ''; width: 4px; height: 8px; border: solid var(--accent-ink); border-width: 0 2px 2px 0; transform: translateY(-1px) rotate(45deg); }
   .wb-check:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .wb-range { accent-color: var(--accent); cursor: pointer; }
 }
 ::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+::highlight(wb-q-sel) { background-color: color-mix(in srgb, var(--accent) 28%, transparent); }
+/* The passage of an open question in a PDF: underlined, not highlighted. */
+::highlight(wb-q-mark) { text-decoration: underline dotted var(--accent) 2px; text-underline-offset: 2px; }
+@keyframes wb-pop-in { from { opacity: 0; transform: translateY(8px); } }
+@keyframes wb-pop-out { to { opacity: 0; transform: translateY(8px); } }
+.wb-pop-in { animation: wb-pop-in 0.16s ease-out; }
+.wb-pop-out { animation: wb-pop-out 0.14s ease-in forwards; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

@@ -4,6 +4,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type C
 import type { PdfAnnotation } from '@wb/shared';
 import { loadPdfjs } from '@/lib/pdf';
 import { markStyle } from '@/lib/pdfAnnotations';
+import { paintAsked, useAsked } from '@/lib/pdfAsked';
 
 export type PdfLayout = 'notes' | 'slides';
 /** The highlights of a PDF by page (0-based), and the open one. */
@@ -76,6 +77,9 @@ const PageView = memo(function PageView({ doc, n, fit, guess, near, hidden, cach
   const canvasHost = useRef<HTMLDivElement>(null);
   const textHost = useRef<HTMLDivElement>(null);
   const drawn = useRef<number | null>(null);
+  /** Counts the times the text of the page was drawn; the marks of questions are laid on it again each time. */
+  const [textDrawn, setTextDrawn] = useState(0);
+  const asked = useAsked(n - 1);
   const b = base ?? guess;
   const scale = scaleFor(fit, b);
   const cssW = Math.floor(b.w * scale);
@@ -101,6 +105,7 @@ const PageView = memo(function PageView({ doc, n, fit, guess, near, hidden, cach
         canvasHost.current?.replaceChildren();
         textHost.current?.replaceChildren();
         drawn.current = null;
+        paintAsked(n - 1, null, []);
       }),
     [cache, n],
   );
@@ -135,6 +140,7 @@ const PageView = memo(function PageView({ doc, n, fit, guess, near, hidden, cach
         canvasHost.current?.replaceChildren(canvas);
         textHost.current?.replaceChildren(layer);
         drawn.current = scale;
+        setTextDrawn((k) => k + 1);
         cache.drawn(n);
       } catch {
         /* cancelled because the page scrolled away or the size changed */
@@ -147,11 +153,16 @@ const PageView = memo(function PageView({ doc, n, fit, guess, near, hidden, cach
     };
   }, [near, page, base, scale, cssW, cssH, cache, n]);
 
+  useEffect(() => {
+    paintAsked(n - 1, textHost.current?.querySelector<HTMLElement>('.textLayer') ?? null, asked);
+    return () => paintAsked(n - 1, null, []);
+  }, [n, asked, textDrawn]);
+
   return (
     <div
       data-page={n}
       hidden={hidden}
-      className="wb-pdf-page relative shrink-0 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.25)]"
+      className="wb-pdf-page relative shrink-0 overflow-hidden bg-white shadow-[0_1px_4px_rgba(0,0,0,0.25)]"
       style={{ width: cssW, height: cssH, '--total-scale-factor': scale } as CSSProperties}
     >
       <div ref={canvasHost} className="absolute inset-0" />
@@ -201,6 +212,14 @@ function lastAtOrAbove(list: HTMLCollection, y: number): number {
   return lo;
 }
 
+/** After a new zoom the page is wider than the view: keep it centered, so both margins are cut equally. */
+function useCenterOnZoom(sc: RefObject<HTMLDivElement | null>, zoom: number, ready: boolean) {
+  useLayoutEffect(() => {
+    const el = sc.current;
+    if (el && ready) el.scrollLeft = Math.max(0, (el.scrollWidth - el.clientWidth) / 2);
+  }, [sc, zoom, ready]);
+}
+
 interface ViewProps {
   doc: PDFDocumentProxy;
   count: number;
@@ -219,6 +238,7 @@ export function NotesView({ doc, count, guess, zoom, current, onCurrent, scrolle
   const [range, setRange] = useState<[number, number]>([Math.max(1, current - 1), current + 1]);
   const started = useRef(false);
   const ready = size.w > 0;
+  useCenterOnZoom(scroller, zoom, ready);
   const fit: Fit = { kind: 'width', width: Math.max(100, size.w - PAD * 2), zoom };
 
   const measure = useCallback(() => {
@@ -284,6 +304,7 @@ export function NotesView({ doc, count, guess, zoom, current, onCurrent, scrolle
 export function SlidesView({ doc, count, guess, zoom, current, area, marks }: Omit<ViewProps, 'onCurrent'> & { area: RefObject<HTMLDivElement | null> }) {
   const cache = useRef(new PageCache()).current;
   const size = useSize(area);
+  useCenterOnZoom(area, zoom, size.w > 0);
   const fit: Fit = { kind: 'box', width: Math.max(100, size.w - PAD * 2), height: Math.max(100, size.h - PAD * 2), zoom };
   cache.near.clear();
   cache.near.add(current);

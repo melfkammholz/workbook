@@ -83,7 +83,6 @@ export function OutlinePanel({ outline, state, currentId: openId, filters, patch
       ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-6">
-        {filtering ? null : <KindLinks outline={outline} state={state} currentId={openId} group={group} onNavigate={onNavigate} />}
         {outline.parts.map((part, i) => {
           const chapters = byPart.get(part.id)!;
           return <PartBlock key={part.id} number={i + 1} outline={outline} part={part} chapters={chapters} state={state} currentId={holds(chapters.flatMap((v) => v.chapter.items))} filtering={filtering} onNavigate={onNavigate} />;
@@ -93,6 +92,7 @@ export function OutlinePanel({ outline, state, currentId: openId, filters, patch
           .map(({ chapter, items }) => (
             <ChapterBlock key={chapter.id} outline={outline} chapter={chapter} items={items} state={state} currentId={holds(chapter.items)} forceOpen={filtering} onNavigate={onNavigate} />
           ))}
+        {filtering ? null : <KindLinks outline={outline} state={state} currentId={openId} group={group} onNavigate={onNavigate} />}
         {shown === 0 && filtering ? (
           <p className="px-4 py-8 text-center text-sm text-ink-2">{t.noExerciseFits}</p>
         ) : null}
@@ -103,7 +103,7 @@ export function OutlinePanel({ outline, state, currentId: openId, filters, patch
 
 /**
  * The course's work besides its chapters: sessions, homework, old exams. A building block of its own, so it
- * comes first, and looks like one: a band like the parts, its kinds like chapters.
+ * comes last, and looks like one: a band like the parts, its kinds like chapters.
  */
 function KindLinks({ outline, state, currentId, group, onNavigate }: { outline: OutlineT; state: StudentState | undefined; currentId: string | null; group: string | null; onNavigate?: (() => void) | undefined }) {
   const t = useT();
