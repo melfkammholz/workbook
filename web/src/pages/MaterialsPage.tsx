@@ -1,6 +1,6 @@
 import type { Resource, ResourceSeries, ResourceType } from '@wb/shared';
 import { Download, FileText, Pencil, Plus, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { Link } from 'wouter';
 import { NewVersionButton } from '@/components/NewVersionButton';
 import { DeleteDialog, EditDialog, UploadDialog } from '@/components/ResourceDialogs';
@@ -36,6 +36,9 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
   const t = useT();
   const list = useResources(course);
   const [uploading, setUploading] = useState(false);
+  const [dropped, setDropped] = useState<File[] | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const depth = useRef(0);
   const [editing, setEditing] = useState<Resource | null>(null);
   const [deleting, setDeleting] = useState<Resource | null>(null);
   const data = list.data;
@@ -124,9 +127,36 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
     return rows;
   };
 
+  const hasFiles = (e: DragEvent<HTMLElement>) => [...e.dataTransfer.types].includes('Files');
+  const drop = (e: DragEvent<HTMLElement>) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    depth.current = 0;
+    setDragging(false);
+    // Folders are ignored; only plain files are taken.
+    const items = [...e.dataTransfer.items];
+    const files = [...e.dataTransfer.files].filter((_, i) => !items[i]?.webkitGetAsEntry?.()?.isDirectory);
+    if (!files.length) return;
+    setDropped(files);
+    setUploading(true);
+  };
   const empty = sections.every((s) => s.items.length === 0);
   return (
-    <div className="h-full overflow-y-auto">
+    <div
+      className={`h-full overflow-y-auto ${dragging ? 'outline outline-2 -outline-offset-4 outline-accent' : ''}`}
+      onDragEnter={(e) => {
+        if (!hasFiles(e)) return;
+        depth.current++;
+        setDragging(true);
+      }}
+      onDragOver={(e) => hasFiles(e) && e.preventDefault()}
+      onDragLeave={(e) => {
+        if (!hasFiles(e)) return;
+        depth.current = Math.max(0, depth.current - 1);
+        if (!depth.current) setDragging(false);
+      }}
+      onDrop={drop}
+    >
       <div className="settle wb-page mx-auto max-w-3xl px-6 pb-12 pt-8 sm:px-8">
         <BackLink fallback="/" label={t.back} className="mb-3">
           {t.back}
@@ -158,7 +188,15 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
             ))
         )}
       </div>
-      <UploadDialog open={uploading} onClose={() => setUploading(false)} courses={data.courses} series={data.series} course={activeCourse} />
+      <UploadDialog open={uploading} onClose={() => {
+          setUploading(false);
+          setDropped(null);
+        }}
+        courses={data.courses}
+        series={data.series}
+        course={activeCourse}
+        initial={dropped}
+      />
       <EditDialog resource={editing} onClose={() => setEditing(null)} courses={data.courses} series={data.series} />
       <DeleteDialog resource={deleting} onClose={() => setDeleting(null)} />
     </div>

@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { RESOURCE_TYPES, type Resource, type ResourceFields, type ResourceSeries, type ResourcesResponse } from '@wb/shared';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useT } from '@/lib/i18n';
 import { isPdf, pdfMetadata } from '@/lib/pdf';
 import { MAX_FILE_BYTES, deleteResource, formatSize, naturalCompare, refreshResources, titleFromFilename, updateResource, uploadResource } from '@/lib/resources';
@@ -76,7 +76,7 @@ function Details({ fields, set, courses, series, many }: { fields: ResourceField
 const blank = (course: string | null): ResourceFields => ({ title: '', type: 'notes', author: '', date: '', courses: course ? [course] : [], series: null });
 
 /** Choose files, say what they are, upload them one after the other. */
-export function UploadDialog({ open, onClose, courses, series, course }: { open: boolean; onClose: () => void; courses: Course[]; series: ResourceSeries[]; course: string | null }) {
+export function UploadDialog({ open, onClose, courses, series, course, initial }: { open: boolean; onClose: () => void; courses: Course[]; series: ResourceSeries[]; course: string | null; initial?: File[] | null }) {
   const t = useT();
   const qc = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
@@ -96,7 +96,7 @@ export function UploadDialog({ open, onClose, courses, series, course }: { open:
     reset();
     onClose();
   };
-  const choose = (list: FileList | null) => {
+  const choose = (list: FileList | File[] | null) => {
     if (!list?.length) return;
     const picked = [...list].sort((a, b) => naturalCompare(a.name, b.name)).map((file) => ({ file, title: titleFromFilename(file.name) }));
     setFiles(picked);
@@ -114,6 +114,11 @@ export function UploadDialog({ open, onClose, courses, series, course }: { open:
       );
     }
   };
+  // Files dropped onto the page arrive here already chosen.
+  useEffect(() => {
+    if (open && initial?.length) choose(initial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initial]);
   const submit = async () => {
     const ok = files.filter((f) => f.file.size <= MAX_FILE_BYTES);
     if (!ok.length || progress !== null || ok.some((f) => !f.title.trim()) || (fields.newSeries !== undefined && !fields.newSeries.trim())) return;
