@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { chapterOf, embeddedKeys, mergeToc, pageFingerprint, pageQuote, rectsTop, slideGroups, slideOfPage, type EmbeddedTocEntry, type PdfAnnotation, type PdfPageItem, type Resource, type TocEntry } from '@wb/shared';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { ChevronLeft, ChevronRight, Maximize, PanelRight, PanelRightClose, ZoomIn, ZoomOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Maximize, PanelLeft, PanelLeftClose, PanelRight, PanelRightClose, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FoldSection } from '@/components/FoldSection';
 import { MakeCardDialog } from '@/components/MakeCardDialog';
@@ -24,6 +24,61 @@ import { fileUrl, formatSize, resourceKeys, useResources } from '@/lib/resources
 const ZOOM_STEP = 1.25;
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 5;
+const COL_MIN = 220;
+const COL_MAX = 560;
+const COL_DEFAULT = 320;
+
+/** A side column's width, kept per side in this browser. */
+function useColumnWidth(side: 'left' | 'right'): [number, (w: number) => void] {
+  const key = `wb-pdf-width-${side}`;
+  const [w, setW] = useState(() => {
+    const n = Number(stored(key));
+    return Number.isFinite(n) && n >= COL_MIN && n <= COL_MAX ? n : COL_DEFAULT;
+  });
+  const set = (v: number) => {
+    const c = Math.min(COL_MAX, Math.max(COL_MIN, Math.round(v)));
+    setW(c);
+    store(key, String(c));
+  };
+  return [w, set];
+}
+
+/** The drag handle between the page area and a column: pointer drag, arrow keys when focused, double click resets. */
+function ColumnHandle({ side, width, onWidth, label }: { side: 'left' | 'right'; width: number; onWidth: (w: number) => void; label: string }) {
+  const sign = side === 'right' ? -1 : 1;
+  const drag = useRef<{ x: number; w: number } | null>(null);
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={label}
+      aria-valuenow={width}
+      aria-valuemin={COL_MIN}
+      aria-valuemax={COL_MAX}
+      tabIndex={0}
+      data-pdf-handle={side}
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        drag.current = { x: e.clientX, w: width };
+      }}
+      onPointerMove={(e) => {
+        if (drag.current) onWidth(drag.current.w + sign * (drag.current.x - e.clientX) * -1);
+      }}
+      onPointerUp={() => (drag.current = null)}
+      onPointerCancel={() => (drag.current = null)}
+      onDoubleClick={() => onWidth(COL_DEFAULT)}
+      onKeyDown={(e) => {
+        const d = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+        if (!d) return;
+        e.preventDefault();
+        onWidth(width + sign * d * (e.shiftKey ? 48 : 16));
+      }}
+      className="group relative z-10 w-2 shrink-0 cursor-col-resize touch-none outline-none"
+    >
+      <span className="absolute inset-y-2 left-1/2 w-0.5 -translate-x-1/2 rounded bg-transparent group-hover:bg-line-strong group-focus-visible:bg-accent" />
+    </div>
+  );
+}
 
 function stored(key: string): string | null {
   try {
@@ -92,6 +147,9 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
     return s === 'notes' || s === 'slides' ? s : resource.type === 'slides' ? 'slides' : 'notes';
   });
   const [column, setColumn] = useState(() => stored('wb-pdf-column') !== '0');
+  const [tocOpen, setTocOpen] = useState(() => stored('wb-pdf-toc') !== '0');
+  const [leftW, setLeftW] = useColumnWidth('left');
+  const [rightW, setRightW] = useColumnWidth('right');
   const [initial] = useState(() => readView(resource.id));
   const [zooms, setZooms] = useState<Record<PdfLayout, number>>(() => ({ notes: num(initial.zoom?.notes, 1, ZOOM_MIN, ZOOM_MAX), slides: num(initial.zoom?.slides, 1, ZOOM_MIN, ZOOM_MAX) }));
   const zoom = zooms[layout];
@@ -302,6 +360,12 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
       return !c;
     });
   };
+  const toggleToc = () => {
+    setTocOpen((c) => {
+      store('wb-pdf-toc', c ? '0' : '1');
+      return !c;
+    });
+  };
   const screen = (dir: 1 | -1) => scroller.current?.scrollBy({ top: dir * scroller.current.clientHeight * 0.9 });
 
   const chapterKey = useRef<() => void>(() => undefined);
@@ -319,6 +383,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
           '-': () => zoomBy(1 / ZOOM_STEP),
           '0': () => setZoom(1),
           ']': toggleColumn,
+          '[': toggleToc,
           t: () => chapterKey.current(),
         }
       : {},
@@ -448,41 +513,54 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
           <IconButton label={t.pdfFit} onClick={() => setZoom(1)}>
             <Maximize size={16} />
           </IconButton>
+          <IconButton label={tocOpen ? t.pdfHideToc : t.pdfShowToc} onClick={toggleToc}>
+            {tocOpen ? <PanelLeftClose size={18} /> : <PanelLeft size={18} />}
+          </IconButton>
           <IconButton label={column ? t.pdfHideColumn : t.pdfShowColumn} onClick={toggleColumn}>
             {column ? <PanelRightClose size={18} /> : <PanelRight size={18} />}
           </IconButton>
         </div>
       </div>
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 bg-sunk">
+        {tocOpen ? (
+          <>
+            <aside data-pdf-column="toc" style={{ width: leftW }} className="my-2 ml-2 shrink-0 overflow-y-auto rounded-xl border border-line bg-sheet p-4 text-sm shadow-sm">
+              <h2 className="font-semibold">{resource.title}</h2>
+              {resource.author ? <p className="text-ink-2">{resource.author}</p> : null}
+              <p className="mt-1 text-[13px] text-ink-2">
+                {resource.file.filename} · {formatSize(resource.file.size)}
+              </p>
+              {doc && toc ? <PdfToc entries={toc} current={current} currentKey={chapter?.key ?? null} labelOf={labelOf} onGo={goto} actions={tocActions} hasOutline={!!outline?.length} /> : null}
+            </aside>
+            <ColumnHandle side="left" width={leftW} onWidth={setLeftW} label={t.pdfResizeToc} />
+          </>
+        ) : null}
         <div ref={scroller} className="min-w-0 flex-1 overflow-auto bg-sunk">
           {view}
         </div>
         {marks && doc ? <PdfHighlightLayer resource={resource} scroller={scroller} list={highlights ?? []} editing={editing} setEditing={setEditing} /> : null}
         {column ? (
-          <aside data-pdf-column className="w-80 shrink-0 overflow-y-auto border-l border-line bg-sheet p-4 text-sm">
-            <h2 className="font-semibold">{resource.title}</h2>
-            {resource.author ? <p className="text-ink-2">{resource.author}</p> : null}
-            {chapter ? <p className="mt-3 font-medium">{chapter.title}</p> : null}
-            {doc ? <p className={chapter ? 'text-ink-2' : 'mt-3 font-medium'}>{t.pdfPageInfo(current, count, labelOf(current))}</p> : null}
-            <p className="mt-3 text-[13px] text-ink-2">
-              {resource.file.filename} · {formatSize(resource.file.size)}
-            </p>
-            {doc && toc ? <PdfToc entries={toc} current={current} currentKey={chapter?.key ?? null} labelOf={labelOf} onGo={goto} actions={tocActions} hasOutline={!!outline?.length} /> : null}
-            {marksOn && doc && pages ? (
-              <>
-                <PdfPageNotes
-                  key={`${layout}-${notePage}`}
-                  heading={`${layout === 'slides' ? t.pdfSlideNotesTitle : t.pdfPageNotesTitle}: ${labelOf(notePage)}`}
-                  item={itemOf(notePage)}
-                  save={(patch) => void savePage(notePage, patch)}
-                  copyRef={() => refTo(notePage)}
-                  onCard={cards ? () => void refTo(notePage).then(setPageCard) : undefined}
-                />
-                <PagesWithNotes items={pages} marks={settings?.pdfPageMarks ?? []} current={notePage} labelOf={labelOf} onGo={goto} chapterAt={chapterAt} />
-              </>
-            ) : null}
-            {marks && doc ? <AllHighlights resource={resource.id} list={highlights ?? []} current={current} labelOf={labelOf} chapterAt={chapterAt} editing={editing?.id ?? null} onJump={(a) => jumpTo(a, true)} /> : null}
-          </aside>
+          <>
+            <ColumnHandle side="right" width={rightW} onWidth={setRightW} label={t.pdfResizeColumn} />
+            <aside data-pdf-column="notes" style={{ width: rightW }} className="my-2 mr-2 shrink-0 overflow-y-auto rounded-xl border border-line bg-sheet p-4 text-sm shadow-sm">
+              {chapter ? <p className="font-medium">{chapter.title}</p> : null}
+              {doc ? <p className={chapter ? 'text-ink-2' : 'font-medium'}>{t.pdfPageInfo(current, count, labelOf(current))}</p> : null}
+              {marks && doc ? <AllHighlights resource={resource.id} list={highlights ?? []} current={current} labelOf={labelOf} chapterAt={chapterAt} editing={editing?.id ?? null} onJump={(a) => jumpTo(a, true)} /> : null}
+              {marksOn && doc && pages ? (
+                <>
+                  <PagesWithNotes items={pages} marks={settings?.pdfPageMarks ?? []} current={notePage} labelOf={labelOf} onGo={goto} chapterAt={chapterAt} />
+                  <PdfPageNotes
+                    key={`${layout}-${notePage}`}
+                    heading={`${layout === 'slides' ? t.pdfSlideNotesTitle : t.pdfPageNotesTitle}: ${labelOf(notePage)}`}
+                    item={itemOf(notePage)}
+                    save={(patch) => void savePage(notePage, patch)}
+                    copyRef={() => refTo(notePage)}
+                    onCard={cards ? () => void refTo(notePage).then(setPageCard) : undefined}
+                  />
+                </>
+              ) : null}
+            </aside>
+          </>
         ) : null}
       </div>
       {pageCard ? <MakeCardDialog open onClose={() => setPageCard(null)} exerciseId={null} initial={{ back: pageCard }} /> : null}

@@ -110,12 +110,12 @@ export function QuizCardFields({ value, onChange, autoFocus }: { value: string; 
   if (raw) {
     // Written by hand in a way the form does not know: the text stays editable as it is.
     return (
-      <label className="block">
+      <div className="block">
         <span className="text-sm font-medium">{t.quizText}</span>
         <Box rows={9}>
           <CodeEditor value={value} onChange={onChange} language="typst" variant="notes" wrap lineNumbers={false} label={t.quizText} tabMovesFocus />
         </Box>
-      </label>
+      </div>
     );
   }
 
@@ -125,12 +125,12 @@ export function QuizCardFields({ value, onChange, autoFocus }: { value: string; 
 
   return (
     <div className="space-y-4">
-      <label className="block">
+      <div className="block">
         <span className="text-sm font-medium">{t.quizQuestion}</span>
         <Box rows={2.5} focus={autoFocus}>
           {editor(fields.question, (question) => setFields((f) => ({ ...f, question })), t.quizQuestion, undefined, 'notes')}
         </Box>
-      </label>
+      </div>
       <fieldset>
         <legend className="mb-1 text-sm font-medium">{t.quizAnswers}</legend>
         {/* One list, as the answers will look on the card: a circle marks the right one. */}

@@ -131,7 +131,7 @@ export function CardForm({
   };
 
   const field = (label: string, value: string, set: (v: string) => void, rows: number, focus: boolean) => (
-    <label className="block">
+    <div className="block">
       <span className="text-sm font-medium">{label}</span>
       <div
         className="mt-1 overflow-hidden rounded-md border border-line-strong bg-sheet focus-within:border-accent"
@@ -145,7 +145,7 @@ export function CardForm({
       >
         <CodeEditor value={value} onChange={set} language="typst" variant="notes" wrap lineNumbers={false} label={label} tabMovesFocus />
       </div>
-    </label>
+    </div>
   );
 
   /** Where the preview goes: it belongs to the preview, so the card kinds keep the whole width. */
