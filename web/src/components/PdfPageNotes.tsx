@@ -299,12 +299,15 @@ export function PagesWithNotes({
   current,
   labelOf,
   onGo,
+  chapterAt,
 }: {
   items: PdfPageItem[];
   marks: PdfPageMark[];
   current: number;
   labelOf: (n: number) => string;
   onGo: (page: number) => void;
+  /** The title of the chapter a page (1-based) is in, if the file has contents. */
+  chapterAt?: ((page: number) => string | null) | undefined;
 }) {
   const t = useT();
   const [filter, setFilter] = useState<string | null>(null);
@@ -350,12 +353,15 @@ export function PagesWithNotes({
         </div>
       ) : null}
       <ul className="space-y-0.5">
-        {shown.map((p) => {
+        {shown.map((p, i) => {
           const n = p.pageIndex + 1;
+          const ch = chapterAt?.(n) ?? null;
+          const heading = ch && ch !== (i > 0 ? (chapterAt?.(shown[i - 1]!.pageIndex + 1) ?? null) : null);
           const first = p.note.trim().split("\n")[0] ?? "";
           const tags = p.marks.map((id) => name.get(id)).filter(Boolean);
           return (
             <li key={p.id}>
+              {heading ? <h4 className="mb-0.5 mt-1.5 truncate px-1.5 text-[12px] font-semibold text-ink-2">{ch}</h4> : null}
               <button
                 type="button"
                 onClick={() => onGo(n)}

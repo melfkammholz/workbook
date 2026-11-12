@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { MAX_PAGE_MARKS, MAX_PAGE_NOTE, MAX_QUOTE, MAX_RECTS, QUOTE_CONTEXT, RESOURCE_TYPES, isAnnotationColor } from '@wb/shared';
+import { MAX_PAGE_MARKS, MAX_PAGE_NOTE, MAX_QUOTE, MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_RECTS, QUOTE_CONTEXT, RESOURCE_TYPES, isAnnotationColor } from '@wb/shared';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { mimeOf, ResourceError } from '../resources/service.js';
@@ -59,6 +59,17 @@ const pageItem = z.object({
   note: z.string().max(MAX_PAGE_NOTE).optional(),
   marks: z.array(z.string().min(1).max(100)).max(MAX_PAGE_MARKS).optional(),
   review: review.optional(),
+});
+
+const tocItem = z.object({
+  id: z.string().uuid().optional(),
+  version: z.string().regex(/^[0-9a-f]{64}$/),
+  fingerprint: z.string().min(1).max(400),
+  pageIndex: z.number().int().min(0).max(1_000_000),
+  title: z.string().max(MAX_TOC_TITLE).optional(),
+  level: z.number().int().min(0).max(MAX_TOC_LEVEL).nullable().optional(),
+  hidden: z.boolean().optional(),
+  embeddedKey: z.string().min(1).max(400).nullable().optional(),
 });
 
 /**
@@ -151,6 +162,28 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
       return fail(e, reply);
     }
   });
+
+  // The table of contents: the student's own entries and changes to the embedded outline (the outline itself is read in the browser).
+  app.get<{ Params: { id: string } }>('/api/resources/:id/toc', async (req, reply) => {
+    try {
+      r().get(req.params.id);
+      return r().listToc(req.params.id);
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+  app.put<{ Params: { id: string } }>('/api/resources/:id/toc', async (req, reply) => {
+    const b = parse(tocItem, req.body, reply);
+    if (!b) return;
+    try {
+      return r().saveToc(req.params.id, b);
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+  app.delete<{ Params: { id: string; tid: string } }>('/api/resources/:id/toc/:tid', async (req, reply) =>
+    r().deleteToc(req.params.id, req.params.tid) ? { ok: true } : reply.code(404).send({ error: 'unknown entry' }),
+  );
 
   app.delete<{ Params: { id: string } }>('/api/resources/:id', async (req, reply) => {
     try {

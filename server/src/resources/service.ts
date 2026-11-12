@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
+import type { AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
+import { MAX_TOC_LEVEL, MAX_TOC_TITLE } from '@wb/shared';
 import type { Store } from '../db/store.js';
 
 export class ResourceError extends Error {
@@ -48,6 +49,22 @@ function toResource(r: Row): Resource {
     lastPage: r.last_page === null ? null : Number(r.last_page),
     courses: r.courses ? (r.courses as string).split('\x1f').sort() : [],
     file: { sha256: r.sha256 as string, filename: r.filename as string, mime: r.mime as string, size: Number(r.size), uploadedAt: Number(r.uploaded_at) },
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+  };
+}
+
+function toToc(r: Row): TocEdit {
+  return {
+    id: r.id as string,
+    resource: r.resource as string,
+    version: r.version as string,
+    pageIndex: Number(r.page_index),
+    fingerprint: r.fingerprint as string,
+    title: r.title as string,
+    level: r.level === null ? null : Number(r.level),
+    hidden: Number(r.hidden) === 1,
+    embeddedKey: (r.embedded_key as string | null) ?? null,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
   };
@@ -279,6 +296,54 @@ export class Resources {
       }
     });
     return n;
+  }
+
+  // ───────────────────────── table of contents ─────────────────────────
+
+  /** The student's entries and changes to the embedded outline, of one resource. */
+  listToc(resource: string): TocEdit[] {
+    return this.sql.all('SELECT * FROM pdf_toc WHERE resource = ? ORDER BY page_index, created_at, id', resource).map(toToc);
+  }
+
+  /**
+   * Makes an entry or changes it. An embedded entry's change is found by its key, an own entry by `id`; what is given
+   * replaces what was there.
+   */
+  saveToc(resource: string, f: TocEditFields): TocEdit {
+    this.get(resource);
+    const t = this.now();
+    const title = (f.title ?? '').trim().slice(0, MAX_TOC_TITLE);
+    const level = f.level === undefined || f.level === null ? null : Math.min(MAX_TOC_LEVEL, Math.max(0, Math.round(f.level)));
+    const prev =
+      f.embeddedKey != null
+        ? this.sql.get('SELECT * FROM pdf_toc WHERE resource = ? AND embedded_key = ?', resource, f.embeddedKey)
+        : f.id
+          ? this.sql.get('SELECT * FROM pdf_toc WHERE resource = ? AND id = ? AND embedded_key IS NULL', resource, f.id)
+          : undefined;
+    if (!prev) {
+      const id = f.id ?? crypto.randomUUID();
+      this.sql.run(
+        'INSERT INTO pdf_toc (id, resource, version, page_index, fingerprint, title, level, hidden, embedded_key, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        id, resource, f.version, f.pageIndex, f.fingerprint, title, level, f.hidden ? 1 : 0, f.embeddedKey ?? null, t, t,
+      );
+      return toToc(this.sql.get('SELECT * FROM pdf_toc WHERE id = ?', id)!);
+    }
+    const cur = toToc(prev);
+    this.sql.run(
+      'UPDATE pdf_toc SET title = ?, level = ?, hidden = ?, updated_at = ? WHERE id = ?',
+      f.title === undefined ? cur.title : title,
+      f.level === undefined ? cur.level : level,
+      f.hidden === undefined ? (cur.hidden ? 1 : 0) : f.hidden ? 1 : 0,
+      t,
+      cur.id,
+    );
+    return toToc(this.sql.get('SELECT * FROM pdf_toc WHERE id = ?', cur.id)!);
+  }
+
+  deleteToc(resource: string, id: string): boolean {
+    if (!this.sql.get('SELECT id FROM pdf_toc WHERE resource = ? AND id = ?', resource, id)) return false;
+    this.sql.run('DELETE FROM pdf_toc WHERE id = ?', id);
+    return true;
   }
 
   /** Starts over: every resource and every file. Snapshots keep their own copies. */

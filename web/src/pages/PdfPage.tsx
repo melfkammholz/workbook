@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { pageFingerprint, pageQuote, rectsTop, slideGroups, slideOfPage, type PdfAnnotation, type PdfPageItem, type Resource } from '@wb/shared';
+import { chapterOf, embeddedKeys, mergeToc, pageFingerprint, pageQuote, rectsTop, slideGroups, slideOfPage, type EmbeddedTocEntry, type PdfAnnotation, type PdfPageItem, type Resource, type TocEntry } from '@wb/shared';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { ChevronLeft, ChevronRight, Maximize, PanelRight, PanelRightClose, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -7,6 +7,7 @@ import { FoldSection } from '@/components/FoldSection';
 import { MakeCardDialog } from '@/components/MakeCardDialog';
 import { CopyRefButton, PdfHighlightLayer, type Editing } from '@/components/PdfHighlights';
 import { PagesWithNotes, PdfPageNotes } from '@/components/PdfPageNotes';
+import { PdfToc, type TocActions } from '@/components/PdfToc';
 import { NotesView, SlidesView, type Marks, type PdfLayout, type Size } from '@/components/PdfViewer';
 import { IconButton, Segmented, Spinner, Empty } from '@/components/ui';
 import { api, useSettings } from '@/lib/api';
@@ -17,6 +18,7 @@ import { openPdf } from '@/lib/pdf';
 import { swatchProps } from '@/lib/annotations';
 import { usePdfAnnotations, usePdfAnnotationsOn } from '@/lib/pdfAnnotations';
 import { pdfPageRefText, savePdfPage, usePdfPages, type PagePatch } from '@/lib/pdfPages';
+import { deleteTocEdit, readOutline, saveTocEdit, usePdfToc } from '@/lib/pdfToc';
 import { fileUrl, formatSize, resourceKeys, useResources } from '@/lib/resources';
 
 const ZOOM_STEP = 1.25;
@@ -108,6 +110,8 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
     for (const a of highlights) (byPage.get(a.pageIndex) ?? byPage.set(a.pageIndex, []).get(a.pageIndex)!).push(a);
     return { byPage, active: editing?.id ?? null, flash };
   }, [marksOn, highlights, editing?.id, flash]);
+  const [outline, setOutline] = useState<EmbeddedTocEntry[] | null | undefined>(undefined);
+  const tocEdits = usePdfToc(resource.id).data;
   const [typed, setTyped] = useState<string | null>(null);
   const pages = usePdfPages(resource.id).data;
   const settings = useSettings().data;
@@ -130,6 +134,8 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
         setLabels(pageLabels && pageLabels.some(Boolean) ? pageLabels : null);
         setCurrent((c) => Math.min(Math.max(1, c), d.numPages));
         setDoc(d);
+        // The outline is read behind the first paint; the contents show when it is there.
+        void readOutline(d).then((o) => live && setOutline(o), () => live && setOutline(null));
       },
       () => live && setFailed(true),
     );
@@ -298,6 +304,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   };
   const screen = (dir: 1 | -1) => scroller.current?.scrollBy({ top: dir * scroller.current.clientHeight * 0.9 });
 
+  const chapterKey = useRef<() => void>(() => undefined);
   usePageKeys(
     doc
       ? {
@@ -312,6 +319,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
           '-': () => zoomBy(1 / ZOOM_STEP),
           '0': () => setZoom(1),
           ']': toggleColumn,
+          t: () => chapterKey.current(),
         }
       : {},
   );
@@ -342,6 +350,31 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   useEffect(() => {
     if (doc && marksOn) void pageInfo(notePage);
   }, [doc, marksOn, notePage, pageInfo]);
+  const toc = useMemo(() => (outline === undefined || !tocEdits ? null : mergeToc(outline, tocEdits)), [outline, tocEdits]);
+  const chapterAt = (n: number) => (toc ? (chapterOf(toc, n - 1)?.title ?? null) : null);
+  const chapter = toc ? chapterOf(toc, current - 1) : null;
+  const tocActions: TocActions = {
+    add: () => {
+      const n = notePage;
+      const key = crypto.randomUUID();
+      void pageInfo(n).then((info) => saveTocEdit(qc, resource.id, { id: key, version: resource.file.sha256, fingerprint: info.fingerprint, pageIndex: n - 1, title: t.pdfPageN(n) }));
+      return `own:${key}`;
+    },
+    rename: (e, title) => void pageInfo(e.pageIndex + 1).then((info) => saveTocEdit(qc, resource.id, e.own ? { id: e.editId!, version: resource.file.sha256, fingerprint: info.fingerprint, pageIndex: e.pageIndex, title } : { embeddedKey: e.key, version: resource.file.sha256, fingerprint: info.fingerprint, pageIndex: e.pageIndex, title })),
+    hide: (e, hidden) => void pageInfo(e.pageIndex + 1).then((info) => saveTocEdit(qc, resource.id, e.own ? { id: e.editId!, version: resource.file.sha256, fingerprint: info.fingerprint, pageIndex: e.pageIndex, hidden } : { embeddedKey: e.key, version: resource.file.sha256, fingerprint: info.fingerprint, pageIndex: e.pageIndex, hidden })),
+    level: (e, level) => void pageInfo(e.pageIndex + 1).then((info) => saveTocEdit(qc, resource.id, e.own ? { id: e.editId!, version: resource.file.sha256, fingerprint: info.fingerprint, pageIndex: e.pageIndex, level } : { embeddedKey: e.key, version: resource.file.sha256, fingerprint: info.fingerprint, pageIndex: e.pageIndex, level })),
+    remove: (e) => e.editId && deleteTocEdit(qc, resource.id, e.editId),
+  };
+  /** The selected text becomes a chapter on the page it is on (the one in view in the slides). */
+  const chapterFromSelection = () => {
+    const sel = window.getSelection();
+    const text = sel?.toString().replace(/\s+/g, ' ').trim().slice(0, 200);
+    if (!text || !sel?.anchorNode || !scroller.current?.contains(sel.anchorNode)) return;
+    const el = sel.anchorNode instanceof Element ? sel.anchorNode : sel.anchorNode.parentElement;
+    const n = Number(el?.closest<HTMLElement>('[data-page]')?.dataset.page) || notePage;
+    void pageInfo(n).then((info) => saveTocEdit(qc, resource.id, { id: crypto.randomUUID(), version: resource.file.sha256, fingerprint: info.fingerprint, pageIndex: n - 1, title: text }));
+  };
+  chapterKey.current = chapterFromSelection;
   const itemOf = (n: number): PdfPageItem | undefined => pages?.find((p) => p.pageIndex === n - 1);
   const savePage = async (n: number, patch: PagePatch): Promise<PdfPageItem> => {
     const info = await pageInfo(n);
@@ -429,10 +462,12 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
           <aside data-pdf-column className="w-80 shrink-0 overflow-y-auto border-l border-line bg-sheet p-4 text-sm">
             <h2 className="font-semibold">{resource.title}</h2>
             {resource.author ? <p className="text-ink-2">{resource.author}</p> : null}
-            {doc ? <p className="mt-3 font-medium">{t.pdfPageInfo(current, count, labelOf(current))}</p> : null}
+            {chapter ? <p className="mt-3 font-medium">{chapter.title}</p> : null}
+            {doc ? <p className={chapter ? 'text-ink-2' : 'mt-3 font-medium'}>{t.pdfPageInfo(current, count, labelOf(current))}</p> : null}
             <p className="mt-3 text-[13px] text-ink-2">
               {resource.file.filename} · {formatSize(resource.file.size)}
             </p>
+            {doc && toc ? <PdfToc entries={toc} current={current} currentKey={chapter?.key ?? null} labelOf={labelOf} onGo={goto} actions={tocActions} hasOutline={!!outline?.length} /> : null}
             {marksOn && doc && pages ? (
               <>
                 <PdfPageNotes
@@ -443,10 +478,10 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
                   copyRef={() => refTo(notePage)}
                   onCard={cards ? () => void refTo(notePage).then(setPageCard) : undefined}
                 />
-                <PagesWithNotes items={pages} marks={settings?.pdfPageMarks ?? []} current={notePage} labelOf={labelOf} onGo={goto} />
+                <PagesWithNotes items={pages} marks={settings?.pdfPageMarks ?? []} current={notePage} labelOf={labelOf} onGo={goto} chapterAt={chapterAt} />
               </>
             ) : null}
-            {marks && doc ? <AllHighlights resource={resource.id} list={highlights ?? []} current={current} labelOf={labelOf} editing={editing?.id ?? null} onJump={(a) => jumpTo(a, true)} /> : null}
+            {marks && doc ? <AllHighlights resource={resource.id} list={highlights ?? []} current={current} labelOf={labelOf} chapterAt={chapterAt} editing={editing?.id ?? null} onJump={(a) => jumpTo(a, true)} /> : null}
           </aside>
         ) : null}
       </div>
@@ -459,7 +494,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
  * Every highlight of the PDF in reading order, grouped by page, with what the student wrote. A click jumps to the
  * highlight (it lands in the middle of the view) and opens it. The page in view is marked.
  */
-function AllHighlights({ resource, list, current, labelOf, editing, onJump }: { resource: string; list: PdfAnnotation[]; current: number; labelOf: (n: number) => string; editing: string | null; onJump: (a: PdfAnnotation) => void }) {
+function AllHighlights({ resource, list, current, labelOf, chapterAt, editing, onJump }: { resource: string; list: PdfAnnotation[]; current: number; labelOf: (n: number) => string; chapterAt: (n: number) => string | null; editing: string | null; onJump: (a: PdfAnnotation) => void }) {
   const t = useT();
   const groups = useMemo(() => {
     const sorted = [...list].sort((a, b) => a.pageIndex - b.pageIndex || rectsTop(a.rects) - rectsTop(b.rects) || a.createdAt - b.createdAt);
@@ -484,8 +519,9 @@ function AllHighlights({ resource, list, current, labelOf, editing, onJump }: { 
   return (
     <FoldSection id="pdf-highlights" title={t.pdfAllHighlights} defaultOpen sectionRef={column} className="mt-5">
       {groups.length === 0 ? <p className="text-[13px] text-ink-3">{t.pdfAllHighlightsNone}</p> : null}
-      {groups.map((g) => (
+      {groups.map((g, i) => (
         <div key={g.page} data-group={g.page} className="mb-2">
+          {chapterAt(g.page) && chapterAt(g.page) !== (i > 0 ? chapterAt(groups[i - 1]!.page) : null) ? <h4 className="mb-0.5 mt-1.5 truncate px-1.5 text-[12px] font-semibold text-ink-2">{chapterAt(g.page)}</h4> : null}
           <h4 className={`mb-0.5 px-1.5 text-[12px] font-medium ${g.page === current ? 'text-accent' : 'text-ink-3'}`}>{labelOf(g.page) !== String(g.page) ? `${t.pdfPageN(g.page)} (${labelOf(g.page)})` : t.pdfPageN(g.page)}</h4>
           <ul className="space-y-0.5">
             {g.items.map((a) => (

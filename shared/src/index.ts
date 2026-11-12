@@ -917,3 +917,4 @@ export * from './cards';
 export * from './sld';
 export * from './pdfAnnotations';
 export * from './pdfPages';
+export * from './pdfToc';

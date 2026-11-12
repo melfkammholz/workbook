@@ -363,6 +363,27 @@ export const MIGRATIONS: Migration[] = [
     UNIQUE (resource, page_index)
   );
   `,
+  /*
+   * 14: the student's table of contents of a PDF, on top of the outline the file has. A row is an entry of their own
+   * (`embedded_key` NULL) or a change to an embedded one (rename, hide, level). `fingerprint` finds the page again in a
+   * new version, like page notes.
+   */ `
+  CREATE TABLE pdf_toc (
+    id           TEXT PRIMARY KEY,
+    resource     TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+    version      TEXT NOT NULL,
+    page_index   INTEGER NOT NULL,
+    fingerprint  TEXT NOT NULL,
+    title        TEXT NOT NULL DEFAULT '',
+    level        INTEGER,
+    hidden       INTEGER NOT NULL DEFAULT 0,
+    embedded_key TEXT,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL
+  );
+  CREATE INDEX pdf_toc_resource ON pdf_toc (resource);
+  CREATE UNIQUE INDEX pdf_toc_embedded ON pdf_toc (resource, embedded_key) WHERE embedded_key IS NOT NULL;
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */
