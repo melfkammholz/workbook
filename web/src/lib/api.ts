@@ -1,5 +1,5 @@
 import { hashKey, keepPreviousData, useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
-import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { afterPaint } from './afterPaint';
 import { queryClient } from './queryClient';
 import { reportSaveFailed } from './saveNotice';
@@ -446,6 +446,28 @@ export const deleteQuestion = (item: string | null, id: string) => {
 /** The assistant inbox: proposals waiting, and what was decided lately. Only asked for while the bridge is on. */
 export const changesKey = ['changes'] as const;
 export const useChanges = (enabled = true) => useQuery({ queryKey: changesKey, queryFn: () => api.get<Change[]>('/api/changes'), staleTime: 20_000, refetchInterval: 60_000, enabled });
+/** Waiting proposals by question, only while the bridge is on. Questions without any are not in the map. */
+export const usePendingProposals = () => {
+  const settings = useSettings().data;
+  const data = useChanges(!!(settings?.showAi && settings.assistantBridge)).data;
+  return useMemo(() => {
+    const out = new Map<string, Change[]>();
+    for (const c of data ?? []) if (c.status === 'pending' && c.ref.kind === 'question') (out.get(c.ref.id) ?? out.set(c.ref.id, []).get(c.ref.id)!).push(c);
+    return out;
+  }, [data]);
+};
+/** One stream per tab: the server says when the inbox changed (the assistant proposed, another tab decided). */
+export const useChangesStream = (enabled: boolean) => {
+  useEffect(() => {
+    if (!enabled || typeof EventSource === 'undefined') return;
+    const es = new EventSource('/api/changes/stream');
+    es.onmessage = () => {
+      void queryClient.invalidateQueries({ queryKey: changesKey });
+      void queryClient.invalidateQueries({ queryKey: questionsKey });
+    };
+    return () => es.close();
+  }, [enabled]);
+};
 /** Accepts (maybe with an edited value), rejects or undoes one proposal; the questions and labels may have changed. */
 export const decideChange = async (id: string, decision: 'accept' | 'reject' | 'undo', body: { feedback?: string; after?: string | string[] | null } = {}) => {
   try {

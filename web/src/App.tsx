@@ -12,7 +12,7 @@ import { SaveNotice } from '@/components/SaveNotice';
 import { SetupDialog } from '@/components/SetupDialog';
 import { Empty, IconButton, Spinner, TipLayer, clsx } from '@/components/ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { AppQueries, checkCourseUpdates, keys, statusOf, useChanges, useCourses, useOutlineQuery, useSettings, useStateQuery, useState_ } from '@/lib/api';
+import { AppQueries, checkCourseUpdates, keys, statusOf, useChanges, useChangesStream, useCourses, useOutlineQuery, useSettings, useStateQuery, useState_ } from '@/lib/api';
 import { useFlashcards } from '@/lib/flashcards';
 import { useFilters } from '@/lib/filters';
 import { focusExercises } from '@/lib/focus';
@@ -206,6 +206,7 @@ function CourseShell() {
   const annotationsOn = !!useSettings().data?.showAnnotations;
   const settingsNow = useSettings().data;
   const inboxOn = !!(settingsNow?.showAi && settingsNow.assistantBridge);
+  useChangesStream(inboxOn);
   const inboxDot = !!useChanges(inboxOn).data?.some((c) => c.status === 'pending');
   const state = useState_().data?.state;
   const { filters, patch, reset } = useFilters();

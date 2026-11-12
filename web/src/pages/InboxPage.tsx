@@ -1,13 +1,12 @@
 import { Check, Pencil, Undo2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { QUESTION_KINDS, type Change, type Question, type QuestionKind } from '@wb/shared';
+import type { Change, Question } from '@wb/shared';
+import { ChangeEditor, ChangeValue, useChangeText, type Value } from '@/components/Proposals';
 import { Button, Empty, Spinner, clsx } from '@/components/ui';
 import { acceptChanges, decideChange, undoBatch, useChanges, useQuestions } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { isTyping } from '@/lib/keys';
-
-type Value = string | string[] | null;
 
 /** The inbox: what the assistant proposed for the student's questions, one line each, quick to go through. */
 export function InboxPage() {
@@ -88,28 +87,8 @@ export function InboxPage() {
     );
   }
   const question = (id: string) => questions.find((q) => q.id === id);
-  const kindName = (k: Value) => (typeof k === 'string' && (QUESTION_KINDS as readonly string[]).includes(k) ? t.questionKinds[k as QuestionKind] : t.inboxNone);
-  const show = (c: Change, v: Value) => (c.field === 'kind' ? kindName(v) : c.field === 'labels' ? (Array.isArray(v) && v.length ? v.join(', ') : t.inboxNone) : typeof v === 'string' ? v : t.inboxNone);
-  const fieldName = (c: Change) => (c.field === 'kind' ? t.inboxFieldKind : c.field === 'labels' ? t.inboxFieldLabels : c.field === 'text' ? t.inboxFieldText : t.inboxFieldAnswer);
-
-  const editor = (c: Change) => {
-    const value = edit?.id === c.id ? edit.value : c.after;
-    const set = (v: Value) => setEdit({ id: c.id, value: v });
-    if (c.field === 'kind')
-      return (
-        <select value={typeof value === 'string' ? value : ''} onChange={(e) => set(e.target.value || null)} aria-label={fieldName(c)} className="wb-field px-2 py-1 text-sm">
-          <option value="">{t.inboxNone}</option>
-          {QUESTION_KINDS.map((k) => (
-            <option key={k} value={k}>
-              {t.questionKinds[k]}
-            </option>
-          ))}
-        </select>
-      );
-    if (c.field === 'labels')
-      return <input value={Array.isArray(value) ? value.join(', ') : ''} onChange={(e) => set(e.target.value.split(',').map((x) => x.trim()).filter(Boolean))} placeholder={t.inboxLabelsHint} aria-label={fieldName(c)} className="wb-field w-full px-2 py-1 text-sm" />;
-    return <textarea rows={4} value={typeof value === 'string' ? value : ''} onChange={(e) => set(e.target.value)} aria-label={fieldName(c)} className="wb-field w-full px-2 py-1 text-sm" />;
-  };
+  const { show, fieldName } = useChangeText();
+  const editor = (c: Change) => <ChangeEditor c={c} value={edit?.id === c.id ? edit.value : c.after} onChange={(v) => setEdit({ id: c.id, value: v })} />;
 
   return (
     <div className="h-full overflow-y-auto">
@@ -164,20 +143,9 @@ export function InboxPage() {
                                 <span className="font-medium text-ink-2">{fieldName(c)}: </span>
                                 {editing ? (
                                   editor(c)
-                                ) : c.field === 'text' ? (
-                                  <>
-                                    <p className="mt-0.5 whitespace-pre-wrap break-words text-ink-3 line-through decoration-ink-3/50">{show(c, c.before)}</p>
-                                    <p className="mt-1 whitespace-pre-wrap break-words">{show(c, c.after)}</p>
-                                  </>
-                                ) : c.field === 'answer' ? (
-                                  <p className="mt-0.5 whitespace-pre-wrap break-words">{show(c, c.after)}</p>
                                 ) : (
-                                  <>
-                                    <span className="text-ink-3">{show(c, c.before)} → </span>
-                                    <span>{show(c, c.after)}</span>
-                                  </>
+                                  <ChangeValue c={c} />
                                 )}
-                                {c.field === 'answer' ? <p className="mt-0.5 text-[12.5px] text-ink-3">{t.inboxAnswerClose}</p> : null}
                                 {c.reason ? <p className="mt-0.5 text-[12.5px] text-ink-3">{c.reason}</p> : null}
                                 <input
                                   value={notes[c.id] ?? ''}

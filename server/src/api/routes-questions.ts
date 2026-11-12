@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { MAX_QUESTION, MAX_QUOTE, SNIPPET_LENGTH, type Anchor } from '@wb/shared';
+import { changesBus } from '../db/changes-bus.js';
 import type { Deps } from './deps.js';
 
 const bodies = {
@@ -83,6 +84,20 @@ export function questionRoutes(app: FastifyInstance, d: Deps): void {
 
   // The assistant inbox: what the assistant proposed, and what was decided.
   app.get('/api/changes', async () => d.store.listChanges());
+  // One stream per tab: a bare event whenever the inbox changed; the client then asks for the list again.
+  app.get('/api/changes/stream', (req, reply) => {
+    reply.hijack();
+    const res = reply.raw;
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
+    res.write('retry: 2000\n\n');
+    const send = () => res.write('data: changes\n\n');
+    const beat = setInterval(() => res.write(': \n\n'), 25_000);
+    changesBus.on('changes', send);
+    req.raw.on('close', () => {
+      clearInterval(beat);
+      changesBus.off('changes', send);
+    });
+  });
   app.get('/api/changes/pending', async () => ({ pending: d.store.hasPendingChanges() }));
   app.post('/api/changes/accept', async (req, reply) => {
     const r = z.object({ ids: z.array(z.string().max(100)).min(1).max(200) }).safeParse(req.body ?? {});

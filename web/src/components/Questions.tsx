@@ -2,8 +2,9 @@ import * as Popover from '@radix-ui/react-popover';
 import { Check, Circle, HelpCircle, Pencil, Trash2, X } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { PASS_GAP_MS, type Question } from '@wb/shared';
-import { askQuestion, deleteQuestion, updateQuestion, useQuestions, useSettings } from '@/lib/api';
+import { askQuestion, deleteQuestion, updateQuestion, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { ProposalMarker } from './Proposals';
 import { Button, IconButton, clsx } from './ui';
 
 /** Grows with its text, up to a few lines: one line to type into, more only when it is needed. */
@@ -154,6 +155,7 @@ export function QuestionRow({ item, q, extra }: { item: string | null; q: Questi
   const [draft, setDraft] = useState<string | null>(null);
   const ref = useAutoGrow(draft ?? '');
   const done = q.status === 'done';
+  const waiting = usePendingProposals().get(q.id);
   const labelNames = new Map((useSettings().data?.highlightLabels ?? []).map((l) => [l.id, l.name]));
   const store = () => {
     const text = (draft ?? '').trim();
@@ -206,6 +208,7 @@ export function QuestionRow({ item, q, extra }: { item: string | null; q: Questi
               </p>
             ) : null}
           </div>
+          {waiting ? <ProposalMarker changes={waiting} /> : null}
           <span className="flex shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
             <IconButton label={t.editQuestion} className="size-6" onClick={() => setDraft(q.text)}>
               <Pencil size={13} />

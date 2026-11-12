@@ -37,6 +37,7 @@ import {
   type StudentState,
   type TextQuote,
 } from '@wb/shared';
+import { announceChanges } from './changes-bus.js';
 import { COURSE_REFERENCE_TABLES, COURSE_TABLES, GLOBAL_KEYS, migrate } from './migrations.js';
 
 const DAY = 86_400_000;
@@ -534,7 +535,7 @@ export class Store {
    * An assistant proposes changes to one question; they wait in the inbox. A pending proposal for the same field is
    * replaced. Returns what was filed, or why not.
    */
-  propose(who: string, questionId: string, p: { kind?: QuestionKind | null; labels?: string[]; answer?: string; text?: string; reason?: string }): { ids: string[] } | { error: string } {
+  proposeInner(who: string, questionId: string, p: { kind?: QuestionKind | null; labels?: string[]; answer?: string; text?: string; reason?: string }): { ids: string[] } | { error: string } {
     const q = this.getQuestion(questionId);
     if (!q) return { error: 'unknown question' };
     const wanted: [ChangeField, string | string[] | null, string | string[] | null][] = [];
@@ -571,6 +572,33 @@ export class Store {
     return { ids };
   }
 
+  // Each of these tells the open tabs that the inbox changed.
+  propose(...a: Parameters<Store['proposeInner']>): ReturnType<Store['proposeInner']> {
+    const r = this.proposeInner(...a);
+    announceChanges();
+    return r;
+  }
+  decideChange(...a: Parameters<Store['decideChangeInner']>): ReturnType<Store['decideChangeInner']> {
+    const r = this.decideChangeInner(...a);
+    announceChanges();
+    return r;
+  }
+  undoChange(...a: Parameters<Store['undoChangeInner']>): ReturnType<Store['undoChangeInner']> {
+    const r = this.undoChangeInner(...a);
+    announceChanges();
+    return r;
+  }
+  acceptBatch(...a: Parameters<Store['acceptBatchInner']>): ReturnType<Store['acceptBatchInner']> {
+    const r = this.acceptBatchInner(...a);
+    announceChanges();
+    return r;
+  }
+  undoBatch(...a: Parameters<Store['undoBatchInner']>): ReturnType<Store['undoBatchInner']> {
+    const r = this.undoBatchInner(...a);
+    announceChanges();
+    return r;
+  }
+
   /** Pending ones first, then the latest decided ones. Proposals that no longer fit (question gone, answer edited) expire. */
   listChanges(opts: { limit?: number } = {}): Change[] {
     this.expireStale();
@@ -593,7 +621,7 @@ export class Store {
   }
 
   /** Applies a proposal (`after` replaces the proposed value, for accept after editing) or turns it down. */
-  decideChange(id: string, decision: 'accept' | 'reject', opts: { feedback?: string; after?: string | string[] | null } = {}): Change | { error: string } {
+  decideChangeInner(id: string, decision: 'accept' | 'reject', opts: { feedback?: string; after?: string | string[] | null } = {}): Change | { error: string } {
     this.expireStale();
     const r = this.get('SELECT * FROM changes WHERE id = ?', id);
     if (!r) return { error: 'unknown change' };
@@ -619,7 +647,7 @@ export class Store {
   }
 
   /** Puts back what an applied change replaced. */
-  undoChange(id: string): Change | { error: string } {
+  undoChangeInner(id: string): Change | { error: string } {
     const r = this.get('SELECT * FROM changes WHERE id = ?', id);
     if (!r) return { error: 'unknown change' };
     const c = rowToChange(r);
@@ -638,7 +666,7 @@ export class Store {
   }
 
   /** Accepts several proposals as one batch (one undo). All or none: if one cannot be applied, nothing changes. */
-  acceptBatch(ids: string[]): { batch: string; changes: Change[] } | { error: string } {
+  acceptBatchInner(ids: string[]): { batch: string; changes: Change[] } | { error: string } {
     this.expireStale();
     const unique = [...new Set(ids)];
     if (!unique.length) return { error: 'nothing to accept' };
@@ -663,7 +691,7 @@ export class Store {
   }
 
   /** Undoes every applied change of a batch, newest first. All or none. */
-  undoBatch(batch: string): Change[] | { error: string } {
+  undoBatchInner(batch: string): Change[] | { error: string } {
     const rows = this.all("SELECT * FROM changes WHERE batch_id = ? AND status = 'applied' ORDER BY decided_at DESC, rowid DESC", batch);
     if (!rows.length) return { error: 'nothing to undo in this batch' };
     try {

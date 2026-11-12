@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/api/app.js';
 import { makeDeps } from '../src/api/deps.js';
 import { plainText } from '../src/content/search.js';
+import { changesBus } from '../src/db/changes-bus.js';
 import { loadConfig } from '../src/config.js';
 import { CourseManager } from '../src/courses/manager.js';
 import { SessionPool } from '../src/runners/pool.js';
@@ -196,6 +197,20 @@ describe('assistant bridge', () => {
     const full = await tool('propose', { question: made.id, type: 'how' });
     expect(full.error).toBe(true);
     expect(full.text).toContain('inbox full');
+  });
+
+  it('tells open tabs when the inbox changes', async () => {
+    await app.inject({ method: 'PUT', url: '/api/settings', payload: { assistantBridge: true } });
+    const item = courses.active!.content.current.all()[0]!.meta.id;
+    const made = (await app.inject({ method: 'POST', url: '/api/questions', payload: { item, text: 'Was ist zipWith?' } })).json();
+    let told = 0;
+    const on = () => told++;
+    changesBus.on('changes', on);
+    const pending = (await app.inject({ method: 'GET', url: '/api/changes' })).json().filter((c: { status: string }) => c.status === 'pending');
+    await app.inject({ method: 'POST', url: '/api/changes/accept', payload: { ids: pending.slice(0, 1).map((c: { id: string }) => c.id) } });
+    changesBus.off('changes', on);
+    expect(made.id).toBeTruthy();
+    expect(told).toBe(1);
   });
 
   it('is off again when the student turns it off', async () => {
