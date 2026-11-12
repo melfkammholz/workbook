@@ -642,6 +642,12 @@ export const MIGRATIONS: Migration[] = [
    */ `
   ALTER TABLE questions ADD COLUMN who TEXT;
   `,
+  /*
+   * 25: a duplicate that was merged stays in the list, closed, and says which question took its place.
+   */ `
+  ALTER TABLE questions ADD COLUMN merged_into TEXT;
+  CREATE INDEX questions_merged ON questions (merged_into) WHERE merged_into IS NOT NULL;
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

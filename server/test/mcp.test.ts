@@ -66,7 +66,7 @@ describe('assistant bridge', () => {
     expect(init.capabilities.tools).toBeDefined();
     expect((await rpc('notifications/initialized', undefined, {}, null)).statusCode).toBe(202);
     const names = (await rpc('tools/list')).json().result.tools.map((x: { name: string }) => x.name);
-    expect([...names].sort()).toEqual(['get_context', 'get_exercise_work', 'get_progress', 'list_decks', 'list_digests', 'list_labels', 'list_proposals', 'list_questions', 'propose', 'propose_card', 'propose_highlight', 'propose_question', 'read_page', 'run_tests', 'search', 'write_digest']);
+    expect([...names].sort()).toEqual(['get_context', 'get_exercise_work', 'get_progress', 'list_decks', 'list_digests', 'list_labels', 'list_proposals', 'list_questions', 'propose', 'propose_card', 'propose_highlight', 'propose_merge', 'propose_question', 'read_page', 'run_tests', 'search', 'write_digest']);
     expect((await rpc('nope')).json().error.code).toBe(-32601);
   });
 
@@ -328,6 +328,43 @@ describe('assistant bridge', () => {
     expect(courses.resources.listPages(res.id)[0]).toMatchObject({ pageIndex: 2, note: '„wichtig“\nmerken' });
     await decide(note!.id, 'undo');
     expect(courses.resources.listPages(res.id)[0]!.note).toBe('');
+  });
+
+  it('merges duplicates: answers and labels move to the survivor, the duplicates close with a link, undo restores', async () => {
+    const ask = (text: string) => g().addQuestion({ text, anchor: { kind: 'none' } }).id;
+    const [a, b, c] = [ask('Was ist foldl?'), ask('Was macht foldl?'), ask('Wofuer foldl?')];
+    g().updateQuestion(b, { answer: 'Faltet von links.' });
+    g().updateQuestion(a, { answer: 'Eine Faltung.' });
+    const lbl = (id: string, name: string) => g().propose('assistant', id, { labels: [name] });
+    lbl(b, 'Faltung');
+    const decide = (id: string, what: string, payload = {}) => app.inject({ method: 'POST', url: `/api/changes/${id}/${what}`, payload });
+    for (const ch of (await app.inject({ method: 'GET', url: '/api/changes' })).json() as { id: string; status: string; ref: { id: string } }[]) if (ch.status === 'pending' && ch.ref.id === b) await decide(ch.id, 'accept');
+    expect((await tool('propose_merge', { survivor: a, duplicates: [a] })).error).toBe(true);
+    expect((await tool('propose_merge', { survivor: a, duplicates: ['nope'] })).error).toBe(true);
+    expect((await tool('propose_merge', { survivor: a, duplicates: [b, c], text: 'Was ist foldl, und was macht es?', reason: 'gleiche Frage' })).error).toBe(false);
+    const find = async (id: string) => (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === id);
+    expect(await find(b)).toMatchObject({ mergedInto: null, status: 'open' });
+    const merge = ((await app.inject({ method: 'GET', url: '/api/changes' })).json() as { id: string; field: string; status: string }[]).find((x) => x.field === 'merge' && x.status === 'pending')!;
+    expect((await decide(merge.id, 'accept')).json().status).toBe('applied');
+    expect(await find(a)).toMatchObject({ text: 'Was ist foldl, und was macht es?', answer: 'Eine Faltung.\n\nFaltet von links.', status: 'open' });
+    expect((await find(a)).labels).toHaveLength(1);
+    expect(await find(b)).toMatchObject({ mergedInto: a, status: 'done' });
+    expect(await find(c)).toMatchObject({ mergedInto: a, status: 'done' });
+    // the survivor cannot be merged away while it survives, and a merged one cannot be merged again
+    expect((await tool('propose_merge', { survivor: b, duplicates: [c] })).error).toBe(true);
+    expect((await decide(merge.id, 'undo')).statusCode).toBe(200);
+    expect(await find(a)).toMatchObject({ text: 'Was ist foldl?', answer: 'Eine Faltung.', labels: [] });
+    expect(await find(b)).toMatchObject({ mergedInto: null, status: 'open', answer: 'Faltet von links.' });
+    // reopening a merged duplicate frees it
+    await tool('propose_merge', { survivor: a, duplicates: [c] });
+    const again = ((await app.inject({ method: 'GET', url: '/api/changes' })).json() as { id: string; field: string; status: string }[]).find((x) => x.field === 'merge' && x.status === 'pending')!;
+    await decide(again.id, 'accept');
+    await app.inject({ method: 'PATCH', url: `/api/questions/${c}`, payload: { status: 'open' } });
+    expect(await find(c)).toMatchObject({ mergedInto: null, status: 'open' });
+    // a waiting merge goes out of date when a duplicate disappears
+    await tool('propose_merge', { survivor: a, duplicates: [b] });
+    g().deleteQuestion(b);
+    expect(((await app.inject({ method: 'GET', url: '/api/changes' })).json() as { field: string; status: string }[]).filter((x) => x.field === 'merge' && x.status === 'pending')).toHaveLength(0);
   });
 
   it('is off again when the student turns it off', async () => {

@@ -89,6 +89,11 @@ const TOOLS = [
     description: `Propose a NEW question the student might ask ("you might ask: ..."), about a place in a material (resource + page + quote) or a workbook item (item + course). It waits in the inbox, marked as yours, and becomes an open question if accepted. Do not answer it yourself here; for answers use propose on an existing question.`,
     inputSchema: { type: 'object', properties: { text: { type: 'string' }, resource: { type: 'string', description: 'Material id' }, page: { type: 'integer', description: 'Page of the material, 1-based' }, quote: { type: 'string', description: 'Words of that page, copied exactly' }, item: { type: 'string', description: 'Or a workbook item id' }, course: { type: 'string', description: 'Workbook id, if the item id is not unique' }, reason: { type: 'string' } }, required: ['text'] },
   },
+  {
+    name: 'propose_merge',
+    description: `Propose merging duplicate questions (see list_questions for their ids). One question survives; the duplicates close as "merged into" it and stay visible in the student's list. The survivor gets the duplicates' labels and their answers joined, so nothing is lost; text is an optional clearer wording for the survivor. It waits in the inbox until the student accepts it (one undo puts everything back). Only for questions that really ask the same thing; never re-propose what was rejected (list_proposals).`,
+    inputSchema: { type: 'object', properties: { survivor: { type: 'string', description: 'Id of the question that stays' }, duplicates: { type: 'array', items: { type: 'string' }, description: 'Ids of the questions that close' }, text: { type: 'string' }, reason: { type: 'string' } }, required: ['survivor', 'duplicates'] },
+  },
   { name: 'list_proposals', description: 'Your proposals: waiting, applied, rejected (with what the student told you) and expired.', inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['pending', 'applied', 'rejected', 'expired', 'undone'] } } } },
   {
     name: 'write_digest',
@@ -284,7 +289,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
           .sort((x, y) => y.createdAt - x.createdAt)
           .slice(0, Math.min(int(a.limit) ?? 50, 200));
         const names = new Map(g().listLabels('any').map((l) => [l.id, l.name]));
-        return qs.map((q) => ({ id: q.id, text: q.text, status: q.status, answer: q.answer, type: q.kind, labels: q.labels.flatMap((l) => (names.has(l) ? [names.get(l)!] : [])), where: where(q), pass: q.passId, created: new Date(q.createdAt).toISOString() }));
+        return qs.map((q) => ({ id: q.id, text: q.text, status: q.status, ...(q.mergedInto ? { mergedInto: q.mergedInto } : {}), answer: q.answer, type: q.kind, labels: q.labels.flatMap((l) => (names.has(l) ? [names.get(l)!] : [])), where: where(q), pass: q.passId, created: new Date(q.createdAt).toISOString() }));
       }
       case 'search': {
         const query = str(a.query);
@@ -444,6 +449,12 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         const text = str(a.text);
         if (!text) throw new ToolError('text is required');
         return filed(g().proposeCreate('assistant', 'question', { text, anchor: anchorOf(a) }, str(a.reason)));
+      }
+      case 'propose_merge': {
+        const survivor = str(a.survivor);
+        const dups = Array.isArray(a.duplicates) ? a.duplicates.filter((x): x is string => typeof x === 'string') : [];
+        if (!survivor || !dups.length) throw new ToolError('survivor and duplicates are required');
+        return filed(g().proposeMerge('assistant', survivor, dups, { ...(typeof a.text === 'string' ? { text: a.text } : {}), ...(str(a.reason) ? { reason: str(a.reason)! } : {}) }));
       }
       case 'list_proposals': {
         const status = str(a.status);

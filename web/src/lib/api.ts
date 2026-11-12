@@ -424,7 +424,7 @@ export const askQuestion = (where: QuestionPlace, text: string, continuePass = f
       : where.material
         ? { kind: 'material', resource: where.material }
         : { kind: 'none' };
-  const q: Question = { id, text, anchor, course: '', highlightId: null, passId: null, unplaced: false, status: 'open', answer: null, kind: null, who: null, labels: [], createdAt: t, updatedAt: t, doneAt: null };
+  const q: Question = { id, text, anchor, course: '', highlightId: null, passId: null, unplaced: false, status: 'open', answer: null, kind: null, who: null, mergedInto: null, labels: [], createdAt: t, updatedAt: t, doneAt: null };
   const item = where.item ?? null;
   if (item) patchWork(item, (w) => ({ ...w, questions: [...w.questions, q] }));
   patchQuestions((qs) => [...qs, q]);
@@ -434,7 +434,7 @@ export const askQuestion = (where: QuestionPlace, text: string, continuePass = f
 export const addQuestion = (item: string, text: string) => askQuestion({ item }, text);
 export const updateQuestion = (item: string | null, id: string, patch: { text?: string; status?: 'open' | 'done' }) => {
   const t = Date.now();
-  const apply = (qs: Question[]) => qs.map((q) => (q.id !== id ? q : { ...q, ...patch, updatedAt: t, doneAt: patch.status ? (patch.status === 'done' ? t : null) : q.doneAt }));
+  const apply = (qs: Question[]) => qs.map((q) => (q.id !== id ? q : { ...q, ...patch, ...(patch.status === 'open' ? { mergedInto: null } : {}), updatedAt: t, doneAt: patch.status ? (patch.status === 'done' ? t : null) : q.doneAt }));
   if (item) patchWork(item, (w) => ({ ...w, questions: apply(w.questions) }));
   patchQuestions(apply);
   return saved(item, api.patch(`/api/questions/${encodeURIComponent(id)}`, patch));

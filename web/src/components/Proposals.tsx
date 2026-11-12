@@ -1,8 +1,8 @@
 import * as Popover from '@radix-ui/react-popover';
 import { Check, Pencil, X } from 'lucide-react';
 import { useState } from 'react';
-import { QUESTION_KINDS, type CardPayload, type Change, type ChangeValue as Val, type HighlightPayload, type QuestionKind, type QuestionPayload } from '@wb/shared';
-import { acceptChanges, decideChange } from '@/lib/api';
+import { QUESTION_KINDS, type CardPayload, type Change, type MergePayload, type ChangeValue as Val, type HighlightPayload, type QuestionKind, type QuestionPayload } from '@wb/shared';
+import { acceptChanges, decideChange, useQuestions } from '@/lib/api';
 import { useFlashcards } from '@/lib/flashcards';
 import { useT } from '@/lib/i18n';
 import { Button, clsx } from './ui';
@@ -13,9 +13,14 @@ export type Value = Val;
 export function useChangeText() {
   const t = useT();
   const kindName = (k: Value) => (typeof k === 'string' && (QUESTION_KINDS as readonly string[]).includes(k) ? t.questionKinds[k as QuestionKind] : t.inboxNone);
-  const show = (c: Change, v: Value) => (c.field === 'create' ? createSummary(v) : c.field === 'kind' ? kindName(v) : c.field === 'labels' ? (Array.isArray(v) && v.length ? v.join(', ') : t.inboxNone) : typeof v === 'string' ? v : t.inboxNone);
-  const fieldName = (c: Change) => (c.field === 'create' ? t.inboxCreate[c.ref.kind] : c.field === 'kind' ? t.inboxFieldKind : c.field === 'labels' ? t.inboxFieldLabels : c.field === 'text' ? t.inboxFieldText : t.inboxFieldAnswer);
+  const show = (c: Change, v: Value) => (c.field === 'merge' ? mergeSummary(v, t.inboxMergeCount) : c.field === 'create' ? createSummary(v) : c.field === 'kind' ? kindName(v) : c.field === 'labels' ? (Array.isArray(v) && v.length ? v.join(', ') : t.inboxNone) : typeof v === 'string' ? v : t.inboxNone);
+  const fieldName = (c: Change) => (c.field === 'merge' ? t.inboxFieldMerge : c.field === 'create' ? t.inboxCreate[c.ref.kind] : c.field === 'kind' ? t.inboxFieldKind : c.field === 'labels' ? t.inboxFieldLabels : c.field === 'text' ? t.inboxFieldText : t.inboxFieldAnswer);
   return { show, fieldName };
+}
+
+function mergeSummary(v: Value, count: (n: number) => string): string {
+  const p = v as Partial<MergePayload> | null;
+  return p && typeof p === 'object' && Array.isArray(p.duplicates) ? count(p.duplicates.length) : '';
 }
 
 /** One line for a proposal that makes something. */
@@ -97,11 +102,42 @@ function CreateEditor({ c, value, onChange }: { c: Change; value: Value; onChang
   return area(c.ref.kind === 'question' ? t.inboxCreate.question : '', 'text');
 }
 
+/** The duplicates that would close, with the wording the survivor would get. */
+function MergeView({ c }: { c: Change }) {
+  const t = useT();
+  const all = useQuestions().data;
+  const p = c.after as MergePayload;
+  const text = (id: string) => all?.find((q) => q.id === id)?.text || t.inboxNoText;
+  const survivor = all?.find((q) => q.id === c.ref.id);
+  return (
+    <div className="mt-0.5 space-y-1">
+      {p.text && survivor && p.text !== survivor.text ? (
+        <>
+          <p className="whitespace-pre-wrap break-words text-ink-3 line-through decoration-ink-3/50">{survivor.text}</p>
+          <p className="whitespace-pre-wrap break-words">{p.text}</p>
+        </>
+      ) : null}
+      <p className="text-[12.5px] text-ink-3">{t.inboxMergeClose}</p>
+      <ul className="space-y-0.5">
+        {p.duplicates.map((id) => (
+          <li key={id} className="whitespace-pre-wrap break-words border-l-2 border-line pl-2 text-ink-2">
+            {text(id)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** The input to change what is proposed before accepting it. */
 export function ChangeEditor({ c, value, onChange }: { c: Change; value: Value; onChange: (v: Value) => void }) {
   const t = useT();
   const { fieldName } = useChangeText();
   if (c.field === 'create') return <CreateEditor c={c} value={value} onChange={onChange} />;
+  if (c.field === 'merge') {
+    const p = value as MergePayload;
+    return <textarea rows={3} value={p.text ?? ''} onChange={(e) => onChange({ ...p, text: e.target.value })} placeholder={t.inboxMergeKeepText} aria-label={t.inboxMergeKeepText} className="wb-field w-full px-2 py-1 text-sm" />;
+  }
   if (c.field === 'kind')
     return (
       <select value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value || null)} aria-label={fieldName(c)} className="wb-field px-2 py-1 text-sm">
@@ -123,6 +159,7 @@ export function ChangeValue({ c }: { c: Change }) {
   const t = useT();
   const { show } = useChangeText();
   if (c.field === 'create') return <CreateView c={c} />;
+  if (c.field === 'merge') return <MergeView c={c} />;
   if (c.field === 'text')
     return (
       <>

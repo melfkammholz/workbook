@@ -21,6 +21,8 @@ export interface Question {
   kind: QuestionKind | null;
   /** Who asked it when it was not the student, e.g. 'assistant' (an accepted proposal). */
   who: string | null;
+  /** Set when it was a duplicate: the question that took its place. It stays in the list, closed, with this link. */
+  mergedInto: string | null;
   /** Ids of the student's labels on it (topics, clusters). */
   labels: string[];
   createdAt: number;
@@ -46,7 +48,7 @@ export const MAX_PENDING_CHANGES = 100;
  * its text. `create` makes something new (see `CreatePayload`); then `after` is the payload and `before` stays empty
  * until accepted, when it holds `{ id }` of what was made, so that undo can remove it.
  */
-export type ChangeField = 'kind' | 'labels' | 'answer' | 'text' | 'create';
+export type ChangeField = 'kind' | 'labels' | 'answer' | 'text' | 'create' | 'merge';
 export type ChangeStatus = 'pending' | 'applied' | 'rejected' | 'expired' | 'undone';
 /** What a proposal can make: a flashcard (in an existing or a new deck), a note on a PDF page, a question. */
 export type ChangeRefKind = 'question' | 'card' | 'highlight';
@@ -79,7 +81,20 @@ export interface Created {
   /** A page note: what the page's note said before (the assistant's text was added below it). */
   note?: string;
 }
-export type ChangeValue = string | string[] | null | CreatePayload | Created;
+/**
+ * A `merge` proposal is about the question that survives (`ref`). Its answer and labels are joined with those of the
+ * duplicates, which close as "merged into" it; `text` is an optional rewording of the survivor.
+ */
+export interface MergePayload {
+  duplicates: string[];
+  text?: string;
+}
+/** What accepting a merge replaced, so that undo puts it back. */
+export interface MergeUndo {
+  survivor: { text: string; answer: string | null; status: 'open' | 'done'; doneAt: number | null; updatedAt: number; labels: string[] };
+  duplicates: { id: string; status: 'open' | 'done'; doneAt: number | null; answer: string | null; labels: string[] }[];
+}
+export type ChangeValue = string | string[] | null | CreatePayload | Created | MergePayload | MergeUndo;
 
 /**
  * One line of the `changes` log: the inbox (pending), the audit log (applied) and the undo. `before` and `after` are

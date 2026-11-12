@@ -156,6 +156,7 @@ export function QuestionRow({ item, q, extra }: { item: string | null; q: Questi
   const ref = useAutoGrow(draft ?? '');
   const done = q.status === 'done';
   const waiting = usePendingProposals().get(q.id);
+  const into = useQuestions().data?.find((x) => x.id === q.mergedInto);
   const labelNames = new Map((useSettings().data?.highlightLabels ?? []).map((l) => [l.id, l.name]));
   const store = () => {
     const text = (draft ?? '').trim();
@@ -201,6 +202,7 @@ export function QuestionRow({ item, q, extra }: { item: string | null; q: Questi
           <div className="min-w-0 flex-1">
             <p className={clsx('whitespace-pre-wrap break-words text-[14px] leading-snug', done && 'text-ink-3 line-through')}>{q.text}</p>
             {extra}
+            {q.mergedInto ? <p className="mt-0.5 break-words text-[12.5px] text-ink-3">{t.mergedInto}: {into?.text || t.inboxNoText}</p> : null}
             {q.kind || q.labels.length || q.who ? (
               <p className="mt-0.5 flex flex-wrap gap-x-2 text-[12.5px] text-ink-3">
                 {q.who ? <span title={t.inboxFromAssistant}>{t.assistantMark}</span> : null}

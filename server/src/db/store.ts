@@ -27,6 +27,8 @@ import {
   type CreatePayload,
   type Created,
   type QuestionPayload,
+  type MergePayload,
+  type MergeUndo,
   type ChangeStatus,
   type QuestionKind,
   QUESTION_KINDS,
@@ -481,6 +483,8 @@ export class Store {
     const t = this.now();
     const status = patch.status ?? cur.status;
     const doneAt = status === 'done' ? (cur.status === 'done' ? cur.doneAt : t) : null;
+    // Reopening a merged duplicate is the student disagreeing: it stands on its own again.
+    if (patch.status === 'open') this.run('UPDATE questions SET merged_into = NULL WHERE id = ?', id);
     this.run(
       'UPDATE questions SET text = ?, status = ?, answer = ?, done_at = ?, updated_at = ? WHERE id = ?',
       patch.text === undefined ? cur.text : patch.text.trim().slice(0, MAX_QUESTION),
@@ -529,6 +533,8 @@ export class Store {
   deleteQuestion(id: string): boolean {
     const had = this.getQuestion(id) !== null;
     if (had) {
+      // Duplicates that were merged into it are open questions again.
+      this.run("UPDATE questions SET merged_into = NULL, status = 'open', done_at = NULL WHERE merged_into = ?", id);
       this.run('DELETE FROM questions WHERE id = ?', id);
       this.run('DELETE FROM question_labels WHERE question_id = ?', id);
     }
@@ -615,6 +621,77 @@ export class Store {
     return { id };
   }
 
+  /**
+   * The assistant proposes merging duplicates into `survivor`. One waits per survivor (a new one replaces it).
+   */
+  proposeMergeInner(who: string, survivor: string, duplicates: string[], opts: { text?: string; reason?: string } = {}): { id: string } | { error: string } {
+    const ids = [...new Set(duplicates)];
+    const err = this.checkMerge(survivor, ids);
+    if (err) return { error: err };
+    if (opts.text !== undefined && (!opts.text.trim() || opts.text.length > MAX_QUESTION)) return { error: 'text must be a question of reasonable length' };
+    this.run("DELETE FROM changes WHERE status = 'pending' AND ref_kind = 'question' AND ref_id = ? AND field = 'merge'", survivor);
+    if (Number(this.get("SELECT COUNT(*) AS n FROM changes WHERE status = 'pending'")!.n) >= MAX_PENDING_CHANGES) return { error: 'inbox full: the student has to go through what is waiting first' };
+    const id = `ch-${randomUUID()}`;
+    const payload: MergePayload = { duplicates: ids, ...(opts.text?.trim() ? { text: opts.text.trim() } : {}) };
+    this.run(
+      `INSERT INTO changes (id, who, ref_kind, ref_id, field, before, after, base_version, group_id, status, reason, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?,?)`,
+      id, who, 'question', survivor, 'merge', null, JSON.stringify(payload), 0, `g-${randomUUID()}`, (opts.reason ?? '').slice(0, 500), this.now(),
+    );
+    return { id };
+  }
+
+  private checkMerge(survivor: string, duplicates: string[]): string | null {
+    const s = this.getQuestion(survivor);
+    if (!s) return 'the surviving question does not exist';
+    if (s.mergedInto) return 'the surviving question was itself merged into another';
+    if (!duplicates.length) return 'name at least one duplicate';
+    if (duplicates.length > 20) return 'at most 20 duplicates';
+    for (const d of duplicates) {
+      if (d === survivor) return 'a question cannot be merged into itself';
+      const q = this.getQuestion(d);
+      if (!q) return `unknown question ${d}`;
+      if (q.mergedInto) return `question ${d} was merged already`;
+    }
+    return null;
+  }
+
+  private applyMerge(c: Change, value: ChangeValue, undo: boolean): string | null {
+    if (undo) {
+      const u = c.before as MergeUndo | null;
+      if (!u?.survivor) return null;
+      const s = u.survivor;
+      if (this.getQuestion(c.ref.id)) {
+        this.run('UPDATE questions SET text = ?, answer = ?, status = ?, done_at = ?, updated_at = ? WHERE id = ?', s.text, s.answer, s.status, s.doneAt, s.updatedAt, c.ref.id);
+        this.run('DELETE FROM question_labels WHERE question_id = ?', c.ref.id);
+        for (const l of s.labels) this.run('INSERT OR IGNORE INTO question_labels (question_id, label_id) VALUES (?,?)', c.ref.id, l);
+      }
+      for (const d of u.duplicates) {
+        if (!this.getQuestion(d.id)) continue;
+        this.run('UPDATE questions SET merged_into = NULL, status = ?, done_at = ?, answer = ? WHERE id = ?', d.status, d.doneAt, d.answer, d.id);
+      }
+      return null;
+    }
+    const p = value as MergePayload;
+    const dups = Array.isArray(p?.duplicates) ? [...new Set(p.duplicates.filter((x): x is string => typeof x === 'string'))] : [];
+    const bad = this.checkMerge(c.ref.id, dups);
+    if (bad) return bad;
+    if (p.text !== undefined && (typeof p.text !== 'string' || !p.text.trim())) return 'the question needs text';
+    const s = this.getQuestion(c.ref.id)!;
+    const all = dups.map((d) => this.getQuestion(d)!);
+    const undo_: MergeUndo = {
+      survivor: { text: s.text, answer: s.answer, status: s.status, doneAt: s.doneAt, updatedAt: s.updatedAt, labels: s.labels },
+      duplicates: all.map((q) => ({ id: q.id, status: q.status, doneAt: q.doneAt, answer: q.answer, labels: q.labels })),
+    };
+    // Answers are joined (the survivor's first), labels are the union.
+    const answers = [s.answer, ...all.map((q) => q.answer)].map((a) => a?.trim() ?? '').filter((a, i, l) => a && l.indexOf(a) === i);
+    const t = this.now();
+    this.run('UPDATE questions SET text = ?, answer = ?, updated_at = ? WHERE id = ?', (p.text?.trim() ?? s.text).slice(0, MAX_QUESTION), answers.length ? answers.join('\n\n') : null, t, s.id);
+    for (const q of all) for (const l of q.labels) this.run('INSERT OR IGNORE INTO question_labels (question_id, label_id) VALUES (?,?)', s.id, l);
+    for (const q of all) this.run("UPDATE questions SET merged_into = ?, status = 'done', done_at = ? WHERE id = ?", s.id, q.status === 'done' ? (q.doneAt ?? t) : t, q.id);
+    this.run('UPDATE changes SET before = ? WHERE id = ?', JSON.stringify(undo_), c.id);
+    return null;
+  }
+
   private checkCreate(kind: ChangeRefKind, p: CreatePayload): string | null {
     const text = (v: unknown, max: number) => typeof v === 'string' && v.trim().length > 0 && v.length <= max;
     if (kind === 'question') return text((p as QuestionPayload).text, MAX_QUESTION) && (p as QuestionPayload).anchor ? null : 'a question needs text and a place';
@@ -630,6 +707,11 @@ export class Store {
   // Each of these tells the open tabs that the inbox changed.
   proposeCreate(...a: Parameters<Store['proposeCreateInner']>): ReturnType<Store['proposeCreateInner']> {
     const r = this.proposeCreateInner(...a);
+    announceChanges();
+    return r;
+  }
+  proposeMerge(...a: Parameters<Store['proposeMergeInner']>): ReturnType<Store['proposeMergeInner']> {
+    const r = this.proposeMergeInner(...a);
     announceChanges();
     return r;
   }
@@ -680,6 +762,10 @@ export class Store {
     // A creation only goes stale when what it points at (the deck, the material) is gone.
     for (const r of this.all("SELECT id, ref_kind, after FROM changes WHERE status = 'pending' AND field = 'create' AND ref_kind <> 'question'")) {
       if (this.db.creators?.gone(r.ref_kind as 'card' | 'highlight', JSON.parse(r.after as string) as CreatePayload)) this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE id = ?", t, r.id as string);
+    }
+    for (const r of this.all("SELECT id, ref_id, after FROM changes WHERE status = 'pending' AND field = 'merge'")) {
+      const p = JSON.parse(r.after as string) as MergePayload;
+      if (this.checkMerge(r.ref_id as string, p.duplicates)) this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE id = ?", t, r.id as string);
     }
     this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE status = 'pending' AND field IN ('answer','text') AND EXISTS (SELECT 1 FROM questions q WHERE q.id = changes.ref_id AND q.updated_at <> changes.base_version)", t);
   }
@@ -776,6 +862,7 @@ export class Store {
 
   /** Applies one change (or, with `undo`, takes it back): a field of a question, or a creation. */
   private applyChange(c: Change, value: ChangeValue, undo = false): string | null {
+    if (c.field === 'merge') return this.applyMerge(c, value, undo);
     if (c.field !== 'create') return this.applyField(c.ref.id, c.field, value as string | string[] | null, undo);
     const kind = c.ref.kind;
     if (undo) {
@@ -933,7 +1020,7 @@ export class Store {
   }
 
   resolvedMarkCount(): number {
-    return Number(this.get("SELECT COUNT(*) AS n FROM questions q JOIN annotations a ON a.id = q.highlight_id AND a.course = q.course WHERE q.course = ? AND q.status = 'done'", this.course)!.n);
+    return Number(this.get("SELECT COUNT(*) AS n FROM questions q JOIN annotations a ON a.id = q.highlight_id AND a.course = q.course WHERE q.course = ? AND q.status = 'done' AND q.merged_into IS NULL", this.course)!.n);
   }
 
   noteCount(): number {
@@ -1303,6 +1390,7 @@ function rowToQuestion(r: Row, labels: string[] = []): Question {
     answer: (r.answer as string | null) ?? null,
     kind: (r.kind as QuestionKind | null) ?? null,
     who: (r.who as string | null) ?? null,
+    mergedInto: (r.merged_into as string | null) ?? null,
     labels,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
