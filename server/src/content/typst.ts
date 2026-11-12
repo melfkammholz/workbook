@@ -33,6 +33,48 @@ const RENDER_VERSION = '4';
 const LOST_IN_HTML = /was ignored during HTML export/;
 const lostSomething = (d: TypstDiagnostic[]) => d.some((x) => x.severity === 'warning' && LOST_IN_HTML.test(x.message)) && !d.some((x) => x.severity === 'error');
 
+/**
+ * Warming the render cache after a course is loaded: one compile at a time for all courses, only while no student is
+ * waiting for a render. A real compile ends the one being warmed (it is tried again later), so it never waits for it.
+ */
+type Renderable = Pick<ServerItem, 'typst' | 'chapterRel' | 'codeLanguage'> & { meta?: { type: string } };
+/** How long renders must have been quiet before warming goes on: a student clicking around comes first. */
+const WARM_QUIET_MS = 500;
+const lane = {
+  jobs: [] as { renderer: TypstRenderer; text: Renderable }[],
+  /** Real compiles running now, in any course. */
+  busy: 0,
+  quietSince: Date.now(),
+  /** Ends the compile being warmed. */
+  cancel: null as (() => void) | null,
+  running: false,
+};
+
+async function pumpWarming(): Promise<void> {
+  if (lane.running) return;
+  lane.running = true;
+  try {
+    while (lane.jobs.length > 0) {
+      const wait = lane.busy > 0 ? WARM_QUIET_MS : lane.quietSince + WARM_QUIET_MS - Date.now();
+      if (wait > 0) {
+        await new Promise((res) => setTimeout(res, wait).unref());
+        continue;
+      }
+      const job = lane.jobs.shift()!;
+      let done = true;
+      try {
+        done = await job.renderer.warmOne(job.text);
+      } catch {
+        /* a text that cannot be rendered is rendered when it is asked for */
+      }
+      // Ended by a real compile: tried again once things are quiet, unless the course has gone or was loaded again.
+      if (!done && lane.jobs.every((j) => j.renderer !== job.renderer || j.text !== job.text)) lane.jobs.unshift(job);
+    }
+  } finally {
+    lane.running = false;
+  }
+}
+
 // With `--diagnostic-format short`: path:line:col: error: message
 const SHORT = /^(?<file>.+?):(?<line>\d+):(?<col>\d+): (?<sev>error|warning): (?<msg>.*)$/;
 
@@ -107,24 +149,54 @@ export class TypstRenderer {
     return lines;
   }
 
-  async renderItem(item: Pick<ServerItem, 'typst' | 'chapterRel' | 'codeLanguage'> & { meta?: { type: string } }): Promise<RenderedItem> {
-    item = { ...item, typst: withQuizSources(item.typst) };
+  private async itemSource(item: Renderable): Promise<{ source: string; headerLines: number; inlineRemarks: boolean; key: string }> {
+    const typst = withQuizSources(item.typst);
     const header = this.header(item.chapterRel, item.codeLanguage).join('\n') + '\n';
     // A lesson's remarks are notes in its text, where the author put them.
     const inlineRemarks = item.meta?.type === 'lesson';
-    const key = await this.cacheKey(header + item.typst + (inlineRemarks ? '\0inline-remarks' : ''));
+    const key = await this.cacheKey(header + typst + (inlineRemarks ? '\0inline-remarks' : ''));
+    return { source: header + typst, headerLines: header.split('\n').length - 1, inlineRemarks, key };
+  }
+
+  async renderItem(item: Renderable): Promise<RenderedItem> {
+    const { source, headerLines, inlineRemarks, key } = await this.itemSource(item);
     const cached = this.readCache(key);
     // Titles are filled in after the cache, so renaming an exercise updates links to it.
     if (cached) return this.fillTitles(cached);
 
-    const run = await this.compile(header + item.typst, header.split('\n').length - 1);
+    const run = await this.compile(source, headerLines);
     if (run.html === null) {
       return { task: '', remarks: [], hints: [], samples: [], questions: [], css: '', diagnostics: run.diagnostics.map((d) => ({ ...d })) };
     }
-    const parts = splitDocument(run.html, { inlineRemarks });
-    const rendered: RenderedItem = { ...parts, diagnostics: run.diagnostics };
+    const rendered: RenderedItem = { ...splitDocument(run.html, { inlineRemarks }), diagnostics: run.diagnostics };
     this.writeCache(key, rendered);
     return this.fillTitles(rendered);
+  }
+
+  /**
+   * Renders these texts in the background, so the first visit to each finds it in the cache. Replaces what was
+   * still to be warmed for this course; texts already in the cache cost a hash each.
+   */
+  warm(texts: Renderable[]): void {
+    this.stopWarming();
+    lane.jobs.push(...texts.map((text) => ({ renderer: this, text })));
+    lane.quietSince = Math.max(lane.quietSince, Date.now());
+    void pumpWarming();
+  }
+
+  /** Forgets what was still to be warmed for this course, e.g. when it is removed. */
+  stopWarming(): void {
+    lane.jobs = lane.jobs.filter((j) => j.renderer !== this);
+  }
+
+  /** One text of `warm`. False when a real compile ended it first. */
+  async warmOne(item: Renderable): Promise<boolean> {
+    const { source, headerLines, inlineRemarks, key } = await this.itemSource(item);
+    if (fs.existsSync(this.cachePath(key))) return true;
+    const run = await this.compile(source, headerLines, {}, true);
+    if (run.cancelled) return false;
+    if (run.html !== null) this.writeCache(key, { ...splitDocument(run.html, { inlineRemarks }), diagnostics: run.diagnostics });
+    return true;
   }
 
   /** Renders a student's note. Never cached: it is previewed while typing. */
@@ -207,9 +279,13 @@ export class TypstRenderer {
       .digest('hex');
   }
 
+  private cachePath(key: string): string {
+    return path.join(this.cacheDir, key + '.json');
+  }
+
   private readCache<T = RenderedItem>(key: string): T | null {
     try {
-      return JSON.parse(fs.readFileSync(path.join(this.cacheDir, key + '.json'), 'utf8')) as T;
+      return JSON.parse(fs.readFileSync(this.cachePath(key), 'utf8')) as T;
     } catch {
       return null;
     }
@@ -218,7 +294,10 @@ export class TypstRenderer {
   private writeCache(key: string, r: { diagnostics: TypstDiagnostic[] }): void {
     // Compile errors are not cached: fixing a package or the prelude should show up immediately.
     if (r.diagnostics.some((d) => d.severity === 'error')) return;
-    fs.writeFileSync(path.join(this.cacheDir, key + '.json'), JSON.stringify(r));
+    // Written whole and then moved, so a render read at the same time never sees half of it.
+    const tmp = `${this.cachePath(key)}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(r));
+    fs.renameSync(tmp, this.cachePath(key));
   }
 
   private async acquire(): Promise<void> {
@@ -235,8 +314,19 @@ export class TypstRenderer {
     else this.queue--;
   }
 
-  private async compile(source: string, headerLines: number, inputs: Record<string, string> = {}): Promise<{ html: string | null; diagnostics: TypstDiagnostic[] }> {
-    await this.acquire();
+  /** `background`: warming, outside the pool of real compiles, and ended by the next one of those. */
+  private async compile(
+    source: string,
+    headerLines: number,
+    inputs: Record<string, string> = {},
+    background = false,
+  ): Promise<{ html: string | null; diagnostics: TypstDiagnostic[]; cancelled?: boolean }> {
+    if (!background) {
+      lane.busy++;
+      lane.cancel?.();
+      await this.acquire();
+    }
+    let cancelled = false;
     const id = crypto.randomBytes(6).toString('hex');
     const input = path.join(this.root, '_tmp', `${id}.typ`);
     const output = path.join(this.root, '_tmp', `${id}.html`);
@@ -270,6 +360,11 @@ export class TypstRenderer {
             },
           },
         );
+        if (background)
+          lane.cancel = () => {
+            cancelled = true;
+            proc.kill('SIGKILL');
+          };
         let stderr = '';
         proc.stderr.setEncoding('utf8').on('data', (d: string) => (stderr += d));
         const timer = setTimeout(() => proc.kill('SIGKILL'), 60_000);
@@ -279,6 +374,8 @@ export class TypstRenderer {
           resolve({ stderr, code, error: null });
         });
       });
+      if (background) lane.cancel = null;
+      if (cancelled) return { html: null, diagnostics: [], cancelled };
 
       const diagnostics = parseDiagnostics(stderr, headerLines, path.basename(input));
       if (error) diagnostics.push({ severity: 'error', line: null, column: null, message: `Could not run typst: ${error}` });
@@ -289,8 +386,16 @@ export class TypstRenderer {
     } finally {
       fs.rmSync(input, { force: true });
       fs.rmSync(output, { force: true });
-      this.release();
+      if (!background) {
+        this.release();
+        this.idle();
+      }
     }
+  }
+
+  private idle(): void {
+    lane.busy--;
+    lane.quietSince = Date.now();
   }
 }
 

@@ -82,6 +82,8 @@ interface Options {
   /** Ends what still runs against the course being left. */
   onSwitch?: () => void;
   onLoad?: (title: string, c: Content) => void;
+  /** Renders every text in the background after a course is loaded, so a first visit does not wait for Typst. */
+  warm?: boolean;
 }
 
 /**
@@ -244,6 +246,7 @@ export class CourseManager {
       if (next) this.setActive(next);
       else this.clearActive();
     }
+    this.open.get(id)?.renderer.stopWarming();
     this.open.delete(id);
     this.updates.delete(id);
     fs.rmSync(this.home(id), { recursive: true, force: true });
@@ -309,6 +312,7 @@ export class CourseManager {
   }
 
   close(): void {
+    for (const c of this.open.values()) c.renderer.stopWarming();
     this.open.clear();
     this.global.close();
   }
@@ -397,6 +401,8 @@ export class CourseManager {
     const content = new ContentService(contentDir, (c) => {
       renderer.titles = (itemId) => c.get(itemId)?.meta.title;
       renderer.language = c.outline.language;
+      // On start, after adding or updating, and when an author edits: what is in the cache already is skipped.
+      if (this.o.warm) renderer.warm([...c.allDocs(), ...c.all()]);
       this.o.onLoad?.(c.outline.title, c);
     });
     const store = this.global.forCourse(this.key(id));

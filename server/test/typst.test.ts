@@ -250,3 +250,49 @@ describe.skipIf(!have)('TypstRenderer', () => {
     expect(out.css).toContain('mtable.cases');
   });
 });
+
+describe.skipIf(!have)('warming the render cache', () => {
+  const content = loadContent(EXAMPLE_CONTENT);
+  const make = () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-data-'));
+    const r = new TypstRenderer({ bin, contentDir: EXAMPLE_CONTENT, dataDir, assetsDir: path.resolve(import.meta.dirname, '../assets/typst'), language: 'de' });
+    return { r, cache: path.join(dataDir, 'cache', 'render') };
+  };
+  const cached = (dir: string) => fs.readdirSync(dir).filter((f) => f.endsWith('.json')).length;
+  const until = async (ok: () => boolean, ms = 30_000) => {
+    for (const end = Date.now() + ms; !ok(); ) {
+      if (Date.now() > end) throw new Error('timed out');
+      await new Promise((res) => setTimeout(res, 50));
+    }
+  };
+
+  it('renders texts in the background, so asking for one needs no compile', async () => {
+    const { r, cache } = make();
+    const texts = ['mutual-recursion', 'side-effects', 'automatic-differentiation'].map((id) => content.get(id)!);
+    r.warm(texts);
+    await until(() => cached(cache) === texts.length);
+    const t = performance.now();
+    const out = await r.renderItem(texts[1]!);
+    expect(performance.now() - t).toBeLessThan(50);
+    expect(out.remarks[0]).toContain('xkcd.com/1312');
+  }, 60_000);
+
+  it('gives way to a real render and finishes afterwards', async () => {
+    const { r, cache } = make();
+    const texts = content.all().slice(0, 6);
+    r.warm(texts);
+    // Past the quiet time, so a warming compile is running when the student asks.
+    await new Promise((res) => setTimeout(res, 700));
+    const out = await r.renderItem(content.get('mutual-recursion')!);
+    expect(out.task).toContain('even :: Int -> Bool');
+    await until(() => cached(cache) >= texts.length);
+  }, 60_000);
+
+  it('forgets what was left when stopped', async () => {
+    const { r, cache } = make();
+    r.warm(content.all().slice(0, 6));
+    r.stopWarming();
+    await new Promise((res) => setTimeout(res, 1500));
+    expect(cached(cache)).toBe(0);
+  });
+});
