@@ -409,6 +409,42 @@ export const MIGRATIONS: Migration[] = [
   ALTER TABLE pdf_pages_new RENAME TO pdf_pages;
   CREATE UNIQUE INDEX pdf_pages_place ON pdf_pages (resource, page_index) WHERE unplaced = 0;
   `,
+  /*
+   * 16: the student's labels get a table of their own: names for highlights (any scope, with a color) and for kinds
+   * of PDF pages (scope `page`). They were two lists in the settings row; ids are kept, so stored references stay valid.
+   */ (db) => {
+    db.exec(`
+    CREATE TABLE labels (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      color      TEXT NOT NULL DEFAULT '',
+      scope      TEXT NOT NULL CHECK (scope IN ('any','page')),
+      sort       INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX labels_scope ON labels (scope, sort);
+    `);
+    const row = db.prepare("SELECT value FROM settings WHERE course = '' AND key = 'settings'").get() as { value: string } | undefined;
+    if (!row) return;
+    let settings: Record<string, unknown>;
+    try {
+      settings = JSON.parse(row.value) as Record<string, unknown>;
+    } catch {
+      return;
+    }
+    const t = Date.now();
+    const insert = db.prepare('INSERT OR IGNORE INTO labels (id, name, color, scope, sort, created_at, updated_at) VALUES (?,?,?,?,?,?,?)');
+    const lists: [string, 'any' | 'page'][] = [['highlightLabels', 'any'], ['pdfPageMarks', 'page']];
+    for (const [key, scope] of lists) {
+      const list = Array.isArray(settings[key]) ? (settings[key] as { id?: unknown; name?: unknown; color?: unknown }[]) : [];
+      list.forEach((l, i) => {
+        if (typeof l?.id === 'string') insert.run(l.id, typeof l.name === 'string' ? l.name : '', typeof l.color === 'string' ? l.color : '', scope, i, t, t);
+      });
+      delete settings[key];
+    }
+    db.prepare("UPDATE settings SET value = ? WHERE course = '' AND key = 'settings'").run(JSON.stringify(settings));
+  },
 ];
 
 /** The course a mounted `/content` folder is. */
@@ -416,6 +452,12 @@ export const MOUNTED_COURSE = 'content';
 
 /** Settings rows that belong to the student, not to a course (stored with course ''). */
 export const GLOBAL_KEYS = ['settings', 'courses', 'activeCourse', 'importedLegacy'];
+
+/**
+ * Tables with a `course` column that a reset of the course's work keeps: what the student made on the course's text
+ * (highlights) belongs to the student, the column only says where it was made. Old files are still imported with them.
+ */
+export const COURSE_REFERENCE_TABLES = ['annotations'];
 
 /** Tables whose rows belong to one course, all with `course` as their first column. */
 export const COURSE_TABLES = [
@@ -430,7 +472,6 @@ export const COURSE_TABLES = [
   'checklist_answers',
   'checklist_ratings',
   'achievements',
-  'annotations',
   'settings',
   'search',
 ];

@@ -1,6 +1,6 @@
 // Finding the student's highlights and page items again in a new version of a PDF. Pure: the browser reads the pages
 // with pdf.js and hands over plain text items, so the server and the tests can run the same code.
-import { locateQuoteScored, type TextQuote } from './annotations';
+import { locateQuoteScored, type TextQuote } from './anchors';
 import { mergeLineRects, type PageRect } from './pdfAnnotations';
 import { pageFingerprint } from './pdfPages';
 

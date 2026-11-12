@@ -56,12 +56,15 @@ describe('the text that can be highlighted', () => {
 });
 
 describe('stored annotations', () => {
-  it('are kept, changed, searched and reset with the rest of the work', () => {
+  it('are kept, changed and searched, and a reset of the course keeps them', () => {
     const s = new Store(':memory:');
     const a = s.addAnnotation({ target: 'x', part: 'task', quote: 'Typklasse', prefix: '', suffix: '', color: 'pink', comment: 'Wie bei Interfaces?' });
     expect(s.updateAnnotation(a.id, { review: 'open' })).toMatchObject({ review: 'open', comment: 'Wie bei Interfaces?' });
     expect(s.search('interfaces')).toEqual([expect.objectContaining({ exerciseId: 'x', source: 'annotation' })]);
     s.resetWork();
+    expect(s.listAnnotations()).toHaveLength(1);
+    expect(s.search('interfaces')).toHaveLength(1);
+    s.resetHighlights();
     expect(s.listAnnotations()).toEqual([]);
     expect(s.search('interfaces')).toEqual([]);
     s.close();

@@ -279,7 +279,7 @@ describe('one database for all courses', () => {
     expect(a.getState().progress.x?.status).toBe('done');
     a.resetWork();
     expect(a.getState().progress).toEqual({});
-    expect(a.listAnnotations()).toEqual([]);
+    expect(a.listAnnotations()).toHaveLength(1);
   });
 
   it('keeps the settings when a course or course "" is reset', () => {
@@ -395,5 +395,26 @@ describe('importing per-course databases of earlier versions', () => {
     expect(fs.readFileSync(bad, 'utf8')).toContain('not a database');
     expect(store.forCourse('a').getState().progress).toEqual({});
     store.close();
+  });
+});
+
+describe('migration 16', () => {
+  it('moves the highlight labels and the page marks out of the settings, keeping ids and order', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-m16-'));
+    const file = path.join(dir, 'workbook.db');
+    const settings = { displayName: 'Ada', highlightLabels: [{ id: 'l1', name: 'Wichtig', color: '#ff0000' }, { id: 'l2', name: '', color: 'blue' }], pdfPageMarks: [{ id: 'm1', name: 'Klausur' }, { id: 'm2', name: 'Unklar' }] };
+    oldDatabase(file, 15, `INSERT INTO settings (course, key, value) VALUES ('', 'settings', '${JSON.stringify(settings)}')`);
+    const store = new Store(file);
+    const got = store.getSettings();
+    expect(got.displayName).toBe('Ada');
+    expect(got.highlightLabels).toEqual([{ id: 'l1', name: 'Wichtig', color: '#ff0000' }, { id: 'l2', name: '', color: 'blue' }]);
+    expect(got.pdfPageMarks).toEqual([{ id: 'm1', name: 'Klausur' }, { id: 'm2', name: 'Unklar' }]);
+    expect(String(store.sql.get("SELECT value FROM settings WHERE course = '' AND key = 'settings'")!.value)).not.toContain('Wichtig');
+    // Changing one list leaves the other alone.
+    store.saveSettings({ pdfPageMarks: [{ id: 'm2', name: 'Unklar!' }] });
+    expect(store.getSettings().highlightLabels).toHaveLength(2);
+    expect(store.getSettings().pdfPageMarks).toEqual([{ id: 'm2', name: 'Unklar!' }]);
+    store.close();
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });

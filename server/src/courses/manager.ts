@@ -270,6 +270,7 @@ export class CourseManager {
   resetAll(): CoursesResponse {
     // Removed courses too: their work is still here.
     for (const id of [...(this.hasMount ? [MOUNTED] : []), ...this.records().map((r) => r.id)]) this.global.forCourse(this.key(id)).resetWork();
+    this.global.resetHighlights();
     this.flashcards.reset();
     this.resources.reset();
     this.global.resetSettings();

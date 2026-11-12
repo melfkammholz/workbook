@@ -1,5 +1,6 @@
 // Highlights in uploaded PDFs. Pure: no DOM, so the server and the tests can use it.
-import type { AnnotationColor, AnnotationReview, TextQuote } from './annotations';
+import type { TextQuote } from './anchors';
+import type { AnnotationColor, AnnotationReview } from './annotations';
 
 /** A rectangle on a page, in fractions of the page's width and height (0..1), so it holds at any zoom. */
 export interface PageRect {

@@ -918,6 +918,7 @@ Antworte auf Deutsch, in reinem Text ohne Markdown.
 {deck}
 </deck>`,
 };
+export * from './anchors';
 export * from './annotations';
 export * from './cards';
 export * from './sld';

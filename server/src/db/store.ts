@@ -20,13 +20,14 @@ import {
   type ProgressEntry,
   type Reflection,
   type ReviewData,
+  type HighlightLabel,
   type Settings,
   type Stats,
   type Status,
   type StudentState,
   type TextQuote,
 } from '@wb/shared';
-import { COURSE_TABLES, GLOBAL_KEYS, migrate } from './migrations.js';
+import { COURSE_REFERENCE_TABLES, COURSE_TABLES, GLOBAL_KEYS, migrate } from './migrations.js';
 
 const DAY = 86_400_000;
 /** Review intervals in days: how long "review later" waits, growing each time it is chosen again. */
@@ -619,21 +620,53 @@ export class Store {
 
   // ───────────────────────── settings ─────────────────────────
 
-  /** The student's settings, the same from every view. */
+  /** The student's settings, the same from every view. The labels live in their own table and are put in here. */
   getSettings(): Settings {
-    return { ...DEFAULT_SETTINGS, ...this.getRaw<Partial<Settings>>(GLOBAL, 'settings', {}) };
+    const raw = this.getRaw<Partial<Settings>>(GLOBAL, 'settings', {});
+    return { ...DEFAULT_SETTINGS, ...raw, highlightLabels: this.listLabels('any') as HighlightLabel[], pdfPageMarks: this.listLabels('page').map(({ id, name }) => ({ id, name })) };
   }
 
   saveSettings(patch: Partial<Settings>): Settings {
-    const next = { ...this.getSettings(), ...patch };
-    this.setRaw(GLOBAL, 'settings', next);
-    return next;
+    const { highlightLabels, pdfPageMarks, ...rest } = patch;
+    this.tx(() => {
+      if (highlightLabels) this.replaceLabels('any', highlightLabels);
+      if (pdfPageMarks) this.replaceLabels('page', pdfPageMarks.map((m) => ({ ...m, color: '' })));
+      const { highlightLabels: _a, pdfPageMarks: _b, ...stored } = { ...this.getSettings(), ...rest };
+      this.setRaw(GLOBAL, 'settings', stored);
+    });
+    return this.getSettings();
+  }
+
+  // ───────────────────────── labels ─────────────────────────
+
+  /** The student's names for highlights (`any`, with a color) or for kinds of PDF pages (`page`), in their order. */
+  listLabels(scope: 'any' | 'page'): { id: string; name: string; color: string }[] {
+    return this.all('SELECT id, name, color FROM labels WHERE scope = ? ORDER BY sort, id', scope).map((r) => ({ id: r.id as string, name: r.name as string, color: r.color as string }));
+  }
+
+  /** Makes the labels of a scope exactly this list: new ones are added, changed ones updated, missing ones removed. */
+  private replaceLabels(scope: 'any' | 'page', labels: { id: string; name: string; color: string }[]): void {
+    const t = this.now();
+    const keep = new Set(labels.map((l) => l.id));
+    for (const r of this.all('SELECT id FROM labels WHERE scope = ?', scope)) if (!keep.has(r.id as string)) this.run('DELETE FROM labels WHERE id = ?', r.id as string);
+    labels.forEach((l, i) =>
+      this.run(
+        `INSERT INTO labels (id, name, color, scope, sort, created_at, updated_at) VALUES (?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, color = excluded.color, sort = excluded.sort, updated_at = excluded.updated_at WHERE scope = excluded.scope`,
+        l.id, l.name, l.color, scope, i, t, t,
+      ),
+    );
   }
 
   /** Forgets all work in this course, and nothing else. */
   resetWork(): void {
     this.tx(() => {
-      for (const table of COURSE_TABLES) if (table !== 'settings') this.run(`DELETE FROM ${table} WHERE course = ?`, this.course);
+      for (const table of COURSE_TABLES) {
+        if (table === 'settings') continue;
+        // What the student highlighted is theirs: it stays, and so does the way search finds it.
+        if (table === 'search') this.run("DELETE FROM search WHERE course = ? AND source != 'annotation'", this.course);
+        else this.run(`DELETE FROM ${table} WHERE course = ?`, this.course);
+      }
       // Course '' is also where the student's own values live.
       this.run(`DELETE FROM settings WHERE course = ? AND key NOT IN (${GLOBAL_KEYS.map(() => '?').join(',')})`, this.course, ...GLOBAL_KEYS);
     });
@@ -642,6 +675,15 @@ export class Store {
   /** Back to the defaults, as on the first start. */
   resetSettings(): void {
     this.run("DELETE FROM settings WHERE course = '' AND key = 'settings'");
+    this.run('DELETE FROM labels');
+  }
+
+  /** Every highlight on a course's text, in every course: part of starting over, not of resetting one course. */
+  resetHighlights(): void {
+    this.tx(() => {
+      for (const table of COURSE_REFERENCE_TABLES) this.run(`DELETE FROM ${table}`);
+      this.run("DELETE FROM search WHERE source = 'annotation'");
+    });
   }
 
   /** A named value outside the student's settings and outside any course, e.g. the list of courses. */
@@ -737,7 +779,7 @@ export class Store {
       this.db.raw.prepare('ATTACH DATABASE ? AS legacy').run(tmp);
       try {
         this.tx(() => {
-          for (const table of COURSE_TABLES) {
+          for (const table of [...COURSE_TABLES, ...COURSE_REFERENCE_TABLES]) {
             const columns = (this.db.raw.prepare(`PRAGMA legacy.table_info(${table})`).all() as { name: string; pk: number; type: string }[])
               // Numbered rows get new numbers here, in the same order.
               .filter((col) => col.name !== 'course' && !(col.name === 'id' && col.type === 'INTEGER'))

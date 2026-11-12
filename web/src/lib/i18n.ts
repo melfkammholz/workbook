@@ -69,7 +69,7 @@ const en = {
   courseDelete: 'Delete all my data',
   courseDeleteNamed: (title: string) => `Delete all my data for ${title}`,
   courseDeleteBody: (title: string, mounted: boolean) =>
-    `This deletes everything you did in ${title} on this computer: answers and their history, notes, highlights, confidence ratings, open questions, status, time, self-evaluations, achievements, friends and plants. ${mounted ? 'The workbook folder stays, so you start it fresh.' : 'The workbook is removed too; add it again to start fresh.'} Your settings, flashcards and other workbooks stay. This cannot be undone.`,
+    `This deletes everything you did in ${title} on this computer: answers and their history, notes, confidence ratings, open questions, status, time, self-evaluations, achievements, friends and plants. ${mounted ? 'The workbook folder stays, so you start it fresh.' : 'The workbook is removed too; add it again to start fresh.'} Your settings, flashcards, highlights in the workbook's text and other workbooks stay. This cannot be undone.`,
   courseRemove: 'Remove',
   courseRemoveNamed: (title: string) => `Remove ${title}`,
   courseRemoveBody: 'The workbook leaves your list. Your answers, notes and progress in it stay on this computer: add the same address again and they are back.',
@@ -1360,7 +1360,7 @@ const de: Strings = {
   courseDelete: 'Alle meine Daten löschen',
   courseDeleteNamed: (title) => `Alle meine Daten zu ${title} löschen`,
   courseDeleteBody: (title, mounted) =>
-    `Das löscht alles, was du in ${title} auf diesem Rechner gemacht hast: Antworten und ihren Verlauf, Notizen, Markierungen, Einschätzungen, offene Fragen, Status, Zeit, Selbstevaluationen, Erfolge, Freunde und Pflanzen. ${mounted ? 'Der Workbook-Ordner bleibt, du fängst das Workbook also neu an.' : 'Das Workbook wird auch entfernt; füge es wieder hinzu, um neu anzufangen.'} Deine Einstellungen, Karteikarten und anderen Workbooks bleiben. Das lässt sich nicht rückgängig machen.`,
+    `Das löscht alles, was du in ${title} auf diesem Rechner gemacht hast: Antworten und ihren Verlauf, Notizen, Einschätzungen, offene Fragen, Status, Zeit, Selbstevaluationen, Erfolge, Freunde und Pflanzen. ${mounted ? 'Der Workbook-Ordner bleibt, du fängst das Workbook also neu an.' : 'Das Workbook wird auch entfernt; füge es wieder hinzu, um neu anzufangen.'} Deine Einstellungen, Karteikarten, Markierungen im Text des Workbooks und anderen Workbooks bleiben. Das lässt sich nicht rückgängig machen.`,
   courseRemove: 'Entfernen',
   courseRemoveNamed: (title) => `${title} entfernen`,
   courseRemoveBody: 'Das Workbook verschwindet aus deiner Liste. Deine Antworten, Notizen und dein Fortschritt darin bleiben auf diesem Rechner: Füge dieselbe Adresse wieder hinzu, und alles ist wieder da.',

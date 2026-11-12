@@ -1,5 +1,6 @@
 // Notes on whole pages and slides of uploaded PDFs. Pure: no DOM, so the server and the tests can use it.
-import { normalizeQuote, type AnnotationReview } from './annotations';
+import { normalizeQuote } from './anchors';
+import type { AnnotationReview } from './annotations';
 
 /** What the student keeps on one page: a note (Typst), marks (ids of their own page marks) and come-back state. */
 export interface PdfPageItem {
