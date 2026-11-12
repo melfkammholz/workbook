@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { ANNOTATION_COLORS, DUSK_COLORS, isCustomColor, normalizeColor, type AnnotationColor, type HighlightLabel, type PdfPageMark, type Settings, type SnapshotInfo, type UiLanguage } from '@wb/shared';
 import { Plus, X } from 'lucide-react';
 import { api, keys, useSaveSettings, useSettings } from '@/lib/api';
+import { useAllPdfPages } from '@/lib/pdfPages';
 import { swatchProps } from '@/lib/annotations';
 import { useLang, useT } from '@/lib/i18n';
 import { applyTheme } from '@/lib/theme';
@@ -75,19 +76,31 @@ function CustomColor({ value, label, onPick }: { value: string; label: string; o
 /** The student's own marks for PDF pages. They are made in the viewer; here they can be renamed or removed. */
 function PageMarksEditor({ marks, onChange }: { marks: PdfPageMark[]; onChange: (m: PdfPageMark[]) => void }) {
   const t = useT();
+  const all = useAllPdfPages().data;
+  const [asking, setAsking] = useState<string | null>(null);
   if (!marks.length) return null;
+  const count = (id: string) => (all ?? []).filter((p) => p.marks.includes(id)).length;
   return (
     <div className="ml-7 max-w-lg space-y-2">
       <p className="text-sm font-medium">{t.pdfPageMarksTitle}</p>
       <p className="text-[13px] text-ink-2">{t.pdfPageMarksBody}</p>
       <ul className="space-y-1.5">
         {marks.map((m) => (
-          <li key={m.id} className="flex items-center gap-2">
+          <Fragment key={m.id}>
+          <li className="flex items-center gap-2">
             <input defaultValue={m.name} maxLength={60} aria-label={t.pdfMarkName} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== m.name && onChange(marks.map((x) => (x.id === m.id ? { ...x, name: e.target.value.trim() } : x)))} className="h-8.5 min-w-0 flex-1 wb-field px-2" />
-            <button type="button" onClick={() => onChange(marks.filter((x) => x.id !== m.id))} aria-label={t.pdfPageMarkRemove(m.name)} title={t.pdfPageMarkRemove(m.name)} className="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-sunk hover:text-danger">
+            <button type="button" onClick={() => setAsking(m.id)} aria-label={t.pdfPageMarkRemove(m.name)} title={t.pdfPageMarkRemove(m.name)} className="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-sunk hover:text-danger">
               <X size={15} />
             </button>
           </li>
+          {asking === m.id ? (
+            <li role="alertdialog" aria-label={t.pdfPageMarkRemove(m.name)} className="flex flex-wrap items-center gap-2 rounded-md bg-sunk px-2 py-1.5 text-[13px]">
+              <span className="mr-auto">{count(m.id) === 0 ? t.pdfMarkRemoveAskNone(m.name) : t.pdfMarkRemoveAsk(m.name, count(m.id))}</span>
+              <button type="button" autoFocus onClick={() => { setAsking(null); onChange(marks.filter((x) => x.id !== m.id)); }} className="rounded-md px-2 py-0.5 font-medium text-danger hover:bg-paper">{t.pdfMarkRemoveYes}</button>
+              <button type="button" onClick={() => setAsking(null)} className="rounded-md px-2 py-0.5 text-ink-2 hover:bg-paper">{t.cancel}</button>
+            </li>
+          ) : null}
+          </Fragment>
         ))}
       </ul>
     </div>

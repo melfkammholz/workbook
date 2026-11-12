@@ -124,11 +124,7 @@ function PageMarks({
     setAsking(null);
     saveSettings.mutate({ pdfPageMarks: marks.filter((m) => m.id !== id) });
   };
-  const ask = (id: string) => {
-    // Pages are only known once they are loaded; a mark nobody uses goes at once.
-    if (count(id) === 0) removeNow(id);
-    else setAsking(id);
-  };
+  const ask = (id: string) => setAsking(id);
   const rename = (id: string, raw: string) => {
     setRenaming(null);
     const name = raw.trim();
@@ -237,7 +233,9 @@ function PageMarks({
           className="mt-2 flex flex-wrap items-center gap-2 rounded-md bg-sunk px-2 py-1.5 text-[12.5px]"
         >
           <span className="mr-auto">
-            {t.pdfMarkRemoveAsk(askMark.name, count(askMark.id))}
+            {count(askMark.id) === 0
+              ? t.pdfMarkRemoveAskNone(askMark.name)
+              : t.pdfMarkRemoveAsk(askMark.name, count(askMark.id))}
           </span>
           <button
             type="button"
