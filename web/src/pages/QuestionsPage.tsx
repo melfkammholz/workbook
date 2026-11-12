@@ -1,9 +1,8 @@
-import { ArrowUpRight, ChevronDown, Search } from 'lucide-react';
+import { ChevronDown, Search } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { QUESTION_KINDS, RESOURCE_TYPES, type Question, type QuestionKind, type ResourceType } from '@wb/shared';
-import { Quote } from '@/components/PdfQuestions';
 import { QuestionRow } from '@/components/Questions';
 import { Empty, Spinner } from '@/components/ui';
 import { useCourses, useOutline, useQuestions, useSettings } from '@/lib/api';
@@ -11,9 +10,6 @@ import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { useResources } from '@/lib/resources';
 
-/** The item or text a workbook question is about. */
-/** What a "come back to" question without text is about: the passage it was made on. */
-const TextQuote = ({ quote }: { quote: string }) => <p className="mt-0.5 line-clamp-2 break-words text-[13px] italic text-ink-2">{quote.trim()}</p>;
 
 const placeOf = (a: Exclude<Question['anchor'], { kind: 'page' | 'none' | 'material' }>) => (a.kind === 'text' ? a.target : a.id);
 
@@ -179,7 +175,7 @@ export function QuestionsPage() {
   const allClosed = names.length > 0 && names.every((n) => closed.has(n));
   const searching = !!f.text.trim();
   const passAge = (ms: number) => new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-  const rowOf = (q: Question) => <QuestionRow key={q.id} item={q.anchor.kind === 'page' || q.anchor.kind === 'none' || q.anchor.kind === 'material' ? null : placeOf(q.anchor)} q={q} extra={q.anchor.kind === 'text' ? <TextQuote quote={q.anchor.quote} /> : q.anchor.kind === 'none' ? null : <Quote q={q} />} />;
+  const rowOf = (q: Question, where?: string) => <QuestionRow dense where={where} key={q.id} item={q.anchor.kind === 'page' || q.anchor.kind === 'none' || q.anchor.kind === 'material' ? null : placeOf(q.anchor)} q={q} extra={null} />;
   const filterSelect = (key: 'where' | 'kind' | 'age' | 'pass', label: string, children: React.ReactNode) => (
     <select value={f[key]} onChange={(e) => set({ [key]: e.target.value })} aria-label={label} className={selectClass(!!f[key])}>
       {children}
@@ -316,12 +312,7 @@ export function QuestionsPage() {
             <p className="mt-5 text-ink-2">
               <b className="font-semibold text-ink">{t.questionsLatestSitting}</b>
             </p>
-            {filtered.map(({ q, gTitle, pTitle }) => (
-              <div key={q.id} className="border-b border-line py-1">
-                <p className="mt-1 truncate text-[12.5px] text-accent">{pTitle ? `${gTitle}, ${pTitle}` : gTitle}</p>
-                <ul>{rowOf(q)}</ul>
-              </div>
-            ))}
+            <ul className="divide-y divide-line">{filtered.map(({ q, gTitle, pTitle }) => rowOf(q, pTitle ? `${gTitle}, ${pTitle}` : gTitle))}</ul>
           </>
         ) : (
           groups.map((g) => {
@@ -344,14 +335,14 @@ export function QuestionsPage() {
                             <span />
                           ) : p.href ? (
                             <Link href={p.href} className="inline-flex h-fit w-fit items-center gap-1 pt-1.5 text-[12.5px] font-medium text-accent hover:underline">
-                              {p.title} <ArrowUpRight size={13} aria-hidden />
+                              {p.title}
                             </Link>
                           ) : (
                             <span className="pt-1.5 text-[12.5px] text-ink-3" title={t.questionsOtherWorkbook}>
                               {p.title}
                             </span>
                           )}
-                          <ul className="min-w-0 divide-y divide-line">{p.items.map(rowOf)}</ul>
+                          <ul className="min-w-0 divide-y divide-dotted divide-line">{p.items.map((q) => rowOf(q))}</ul>
                         </div>
                       ))}
                   </div>

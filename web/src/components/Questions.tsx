@@ -1,5 +1,5 @@
 import * as Popover from '@radix-ui/react-popover';
-import { Check, Circle, HelpCircle, Pencil, Trash2, X } from 'lucide-react';
+import { Check, Circle, CircleCheck, HelpCircle, Pencil, Trash2, X } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { PASS_GAP_MS, type Question } from '@wb/shared';
 import { askQuestion, deleteQuestion, updateQuestion, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
@@ -150,7 +150,11 @@ export function QuestionInput({ item, autoFocus = false }: { item: string; autoF
   return <CaptureField autoFocus={autoFocus} onSave={(text, o) => void askQuestion({ item }, text, o.continuePass)} />;
 }
 
-export function QuestionRow({ item, q, extra }: { item: string | null; q: Question; extra?: React.ReactNode }) {
+/**
+ * `dense`: one line per question (text and the passage it was made on, then type, labels and age); the done mark is a
+ * button among the hover actions, a done question is struck through with a small check at its end.
+ */
+export function QuestionRow({ item, q, extra, dense = false, where }: { item: string | null; q: Question; extra?: React.ReactNode; dense?: boolean; where?: string }) {
   const t = useT();
   const [draft, setDraft] = useState<string | null>(null);
   const ref = useAutoGrow(draft ?? '');
@@ -163,6 +167,79 @@ export function QuestionRow({ item, q, extra }: { item: string | null; q: Questi
     setDraft(null);
     if (text && text !== q.text) void updateQuestion(item, q.id, { text });
   };
+  const editor = (
+    <div className="min-w-0 flex-1">
+      <textarea
+        ref={ref}
+        rows={1}
+        autoFocus
+        value={draft ?? ''}
+        aria-label={t.editQuestion}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => submitKey(e, store, () => setDraft(null))}
+        className="block w-full resize-none wb-field px-2 py-1 text-sm"
+      />
+      <div className="mt-1 flex gap-2">
+        <Button size="sm" variant="primary" onClick={store}>
+          {t.save}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>
+          {t.cancel}
+        </Button>
+      </div>
+    </div>
+  );
+  if (dense) {
+    const raw = q.anchor.kind === 'text' ? q.anchor.quote : q.anchor.kind === 'page' ? q.anchor.quote?.trim() || q.anchor.snippet : '';
+    const quote = raw?.trim().replace(/\s+/g, ' ') || null;
+    const days = Math.floor((Date.now() - q.createdAt) / 86_400_000);
+    const labels = q.labels.flatMap((l) => (labelNames.has(l) ? [labelNames.get(l)!] : []));
+    return (
+      <li className="group py-1">
+        {draft !== null ? (
+          editor
+        ) : (
+          <div className={clsx('grid items-baseline', where ? 'grid-cols-[13rem_1fr_auto]' : 'grid-cols-[1fr_auto]')} style={{ columnGap: '0.625rem' }}>
+            {where ? <span className="truncate text-[12.5px] text-accent">{where}</span> : null}
+            <p className={clsx('min-w-0 truncate text-[14px] leading-[1.4]', done && 'text-ink-3 line-through')} title={q.text || undefined}>
+              {q.text || (quote ? <span className="italic text-ink-3">{quote}</span> : <span className="text-ink-3">{t.inboxNoText}</span>)}
+              {q.mergedInto ? <span className="ml-2 text-[12.5px] text-ink-3">{t.mergedInto}: {into?.text || t.inboxNoText}</span> : null}
+            </p>
+            <div className="flex items-center gap-1.5 whitespace-nowrap text-[12px] text-ink-3">
+              {waiting ? <ProposalMarker changes={waiting} /> : null}
+              <span className="flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                <IconButton label={t.editQuestion} className="size-5" onClick={() => setDraft(q.text)}>
+                  <Pencil size={12} />
+                </IconButton>
+                <IconButton label={t.deleteQuestion} className="size-5" onClick={() => void deleteQuestion(item, q.id)}>
+                  <Trash2 size={12} />
+                </IconButton>
+              </span>
+              {q.who ? <span title={t.inboxFromAssistant}>{t.assistantMark}</span> : null}
+              {q.kind ? <span className="rounded-[3px] bg-review-soft px-1.5 text-review">{t.questionKinds[q.kind]}</span> : null}
+              {labels.map((l) => (
+                <span key={l} className="rounded-[3px] bg-sunk px-1.5 text-ink-2">
+                  {l}
+                </span>
+              ))}
+              <span className="min-w-[5.2rem] text-right tabular-nums">{t.questionAge(days)}</span>
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={done}
+                aria-label={done ? t.questionReopen : t.questionDone}
+                title={done ? t.questionReopen : t.questionDone}
+                onClick={() => void updateQuestion(item, q.id, { status: done ? 'open' : 'done' })}
+                className={clsx('inline-flex size-5 items-center justify-center rounded-full', done ? 'text-done' : 'text-ink-3/50 hover:text-done')}
+              >
+                <CircleCheck size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+      </li>
+    );
+  }
   return (
     <li className="group flex items-start gap-1.5 py-1.5">
       <button
