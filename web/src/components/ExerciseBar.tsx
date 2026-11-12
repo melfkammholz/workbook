@@ -88,7 +88,7 @@ export function ExerciseBar({
       {onMakeCard ? (
         <>
           {showTimer ? <span aria-hidden className="mx-1 h-4 w-px bg-line" /> : null}
-          <button type="button" onClick={onMakeCard} title={`${t.makeCard} (${altKey}+C)`} className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[13px] text-ink-3 hover:bg-sunk hover:text-ink">
+          <button type="button" onClick={onMakeCard} title={`${t.makeCard} (${altKey}+A)`} className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[13px] text-ink-3 hover:bg-sunk hover:text-ink">
             <Layers size={14} /> <span className="hidden sm:inline">{t.makeCard}</span>
           </button>
         </>

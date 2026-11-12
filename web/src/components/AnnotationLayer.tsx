@@ -21,6 +21,7 @@ import {
 } from '@/lib/annotations';
 import { api, keys, saveNote, useSettings, type Work } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { isTyping } from '@/lib/keys';
 import { useDebouncedCallback } from '@/lib/useDebounced';
 import { MakeCardDialog } from './MakeCardDialog';
 import { clsx } from './ui';
@@ -157,13 +158,14 @@ function Layer() {
     setPop(then === 'comment' || then === 'review' ? { kind: 'edit', id: made.id, focus: then === 'comment' } : null);
   };
 
-  // Keys while the colours are offered: 1 to 9 for a colour or label, c to comment, r to come back to it, m to make a card.
+  // Keys while the colours are offered: 1 to 9 for a colour or label, c to comment, r to come back to it, a to add a card.
+  // These listen on the document, so they run before `usePageKeys` (on the window) and a lone `a` is never taken for `g a`.
   useEffect(() => {
     if (pop?.kind !== 'new') return;
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const i = '123456789'.indexOf(e.key);
-      const action = i >= 0 && swatches[i] ? () => create(swatches[i]!.color, undefined, swatches[i]!.label) : e.key === 'm' && cards ? () => create(lastColor(), 'card') : e.key === 'c' ? () => create(lastColor(), 'comment') : e.key === 'r' ? () => create(lastColor(), 'review') : null;
+      const action = i >= 0 && swatches[i] ? () => create(swatches[i]!.color, undefined, swatches[i]!.label) : e.key === 'a' && cards ? () => create(lastColor(), 'card') : e.key === 'c' ? () => create(lastColor(), 'comment') : e.key === 'r' ? () => create(lastColor(), 'review') : null;
       if (!action) return;
       e.preventDefault();
       void action();
@@ -172,15 +174,16 @@ function Layer() {
     return () => document.removeEventListener('keydown', onKey);
   });
 
-  // The same key makes a card from an open highlight, unless a text is being written.
+  // In an open highlight, unless a text is being written: the same key makes a card, d removes it (with undo).
   useEffect(() => {
-    if (pop?.kind !== 'edit' || !cards) return;
+    if (pop?.kind !== 'edit') return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'm' || e.ctrlKey || e.metaKey || e.altKey) return;
-      if ((e.target as Element | null)?.closest('input, textarea, select, [contenteditable]')) return;
+      if ((e.key !== 'a' || !cards) && e.key !== 'd') return;
+      if (e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
       const a = annotations?.find((x) => x.id === pop.id);
       if (!a) return;
       e.preventDefault();
+      if (e.key === 'd') return void remove(a);
       setCard({ exerciseId: itemOfTarget(a.target), highlightId: a.id });
       close();
     };
@@ -343,7 +346,7 @@ function NewHighlight({ onPick }: { onPick: (c: AnnotationColor, then?: 'comment
         <RotateCcw size={15} />
       </IconAction>
       {showCards ? (
-        <IconAction onClick={() => onPick(last, 'card')} label={`${t.annMakeCard} (m)`}>
+        <IconAction onClick={() => onPick(last, 'card')} label={`${t.annMakeCard} (a)`}>
           <Layers size={15} />
         </IconAction>
       ) : null}
@@ -438,12 +441,12 @@ function EditHighlight({ id, focus, onRemove, onCard, onGone }: { id: string; fo
               save.flush();
               onCard({ ...ann, comment: draft });
             }}
-            label={`${t.annMakeCard} (m)`}
+            label={`${t.annMakeCard} (a)`}
           >
             <Layers size={15} />
           </IconAction>
         ) : null}
-        <button type="button" onClick={() => onRemove(ann)} aria-label={t.annRemove} title={t.annRemove} className="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-sunk hover:text-danger">
+        <button type="button" onClick={() => onRemove(ann)} aria-label={t.annRemove} title={`${t.annRemove} (d)`} className="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-sunk hover:text-danger">
           <Trash2 size={15} />
         </button>
       </div>

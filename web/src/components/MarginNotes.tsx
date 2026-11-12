@@ -14,7 +14,9 @@ const ICON = 16;
 
 type Found = Annotation & { found: boolean };
 /** Slips in the free margin right of the page, or icons beside each passage's last line when there is no margin. */
-type Place = { mode: 'slips'; left: number; width: number; tops: Map<string, number> } | { mode: 'icons'; at: Map<string, { left: number; top: number; gutter: boolean }> };
+/** Notes whose passages end at the same spot share one icon. */
+type IconGroup = { key: string; ids: string[]; left: number; top: number; gutter: boolean };
+type Place = { mode: 'slips'; left: number; width: number; tops: Map<string, number> } | { mode: 'icons'; groups: IconGroup[] };
 
 /**
  * The student's comments on highlights. Where the page has free space to its right, they are slips there, each level
@@ -45,7 +47,8 @@ export function MarginNotes({ target, page }: { target: string; page: React.RefO
       const ranges = notes
         .map((n) => ({ n, r: paintedRange(n.id) }))
         .filter((x): x is { n: Found; r: Range } => !!x.r && x.r.getBoundingClientRect().height > 0)
-        .sort((x, y) => x.r.getBoundingClientRect().top - y.r.getBoundingClientRect().top);
+        // Top to bottom; passages that start on the same line in text order.
+        .sort((x, y) => x.r.getBoundingClientRect().top - y.r.getBoundingClientRect().top || x.r.compareBoundaryPoints(Range.START_TO_START, y.r));
       // The free space between the page's right edge and the scroller's, less a gap on both sides.
       // Without the scrollbar's width, which a classic scrollbar takes from the right.
       const room = s.left + scroller.clientLeft + scroller.clientWidth - a.right - 2 * GAP;
@@ -64,14 +67,20 @@ export function MarginNotes({ target, page }: { target: string; page: React.RefO
       // In the page's left padding, level with the passage's last line, so the icon never covers text; at the
       // passage's end only when the padding is too narrow.
       const pad = parseFloat(getComputedStyle(article).paddingLeft) || 0;
-      const at = new Map<string, { left: number; top: number; gutter: boolean }>();
+      const groups = new Map<string, IconGroup>();
       const gutter = pad >= ICON + 6;
       for (const { n, r } of ranges) {
         const rects = [...r.getClientRects()].filter((x) => x.width > 0);
         const last = rects[rects.length - 1];
-        if (last) at.set(n.id, { left: gutter ? (pad - ICON) / 2 : last.right - a.left + 1, top: last.top - a.top + (last.height - ICON) / 2, gutter });
+        if (!last) continue;
+        const left = Math.round(gutter ? (pad - ICON) / 2 : last.right - a.left + 1);
+        const top = Math.round(last.top - a.top + (last.height - ICON) / 2);
+        const key = `${left}:${top}`;
+        const g = groups.get(key);
+        if (g) g.ids.push(n.id);
+        else groups.set(key, { key, ids: [n.id], left, top, gutter });
       }
-      setPlace({ mode: 'icons', at });
+      setPlace({ mode: 'icons', groups: [...groups.values()] });
     };
     measure();
     // Again once the slips have their heights, and whenever the page changes size (widgets, fonts, the window).
@@ -90,10 +99,10 @@ export function MarginNotes({ target, page }: { target: string; page: React.RefO
   const slipStyle = (n: Annotation) => ({ background: `color-mix(in srgb, ${colorOf(n)} 22%, var(--sheet))`, borderColor: `color-mix(in srgb, ${colorOf(n)} 55%, transparent)` });
   const slip = 'rounded-lg border px-[11px] py-2 text-[13px] leading-[1.45] text-ink-2 shadow-[0_2px_8px_rgb(60_50_30/0.08)] whitespace-pre-line [overflow-wrap:anywhere]';
 
-  return (
-    <div aria-label={t.yourNotes} role="complementary">
-      {notes.map((n) => {
-        if (place.mode === 'slips') {
+  if (place.mode === 'slips') {
+    return (
+      <div aria-label={t.yourNotes} role="complementary">
+        {notes.map((n) => {
           const top = place.tops.get(n.id);
           if (top === undefined) return null;
           return (
@@ -109,28 +118,41 @@ export function MarginNotes({ target, page }: { target: string; page: React.RefO
               {n.comment}
             </aside>
           );
-        }
-        const at = place.at.get(n.id);
-        if (!at) return null;
-        const shown = open === n.id;
+        })}
+      </div>
+    );
+  }
+
+  const byId = new Map(notes.map((n) => [n.id, n]));
+  return (
+    <div aria-label={t.yourNotes} role="complementary">
+      {place.groups.map((g) => {
+        const group = g.ids.map((id) => byId.get(id)).filter((n): n is Found => !!n);
+        const first = group[0];
+        if (!first) return null;
+        const shown = open === g.key;
         return (
-          <span key={n.id} className="absolute z-[6]" style={{ left: at.left, top: at.top }} onMouseEnter={() => setOpen(n.id)} onMouseLeave={() => setOpen((o) => (o === n.id ? null : o))}>
+          <span key={g.key} className="absolute z-[6]" style={{ left: g.left, top: g.top }} onMouseEnter={() => setOpen(g.key)} onMouseLeave={() => setOpen((o) => (o === g.key ? null : o))}>
             <button
               type="button"
-              aria-label={t.yourNote}
+              aria-label={group.length > 1 ? t.yourNotesCount(group.length) : t.yourNote}
               aria-expanded={shown}
               // Focus has opened it already, so a click (or a tap, with no hover) only keeps it open.
-              onClick={() => setOpen(n.id)}
-              onFocus={() => setOpen(n.id)}
-              onBlur={() => setOpen((o) => (o === n.id ? null : o))}
+              onClick={() => setOpen(g.key)}
+              onFocus={() => setOpen(g.key)}
+              onBlur={() => setOpen((o) => (o === g.key ? null : o))}
               className="grid size-4 place-items-center rounded-[4px] text-ink-3 hover:text-ink"
-              style={{ background: `color-mix(in srgb, ${colorOf(n)} 45%, var(--sheet))` }}
+              style={{ background: `color-mix(in srgb, ${colorOf(first)} 45%, var(--sheet))` }}
             >
               <StickyNote size={11} aria-hidden />
             </button>
             {shown ? (
-              <span role="note" className={clsx('absolute top-[22px]', at.gutter ? 'left-0' : 'right-0', 'block w-[min(260px,70vw)]', slip)} style={{ ...slipStyle(n), background: `color-mix(in srgb, ${colorOf(n)} 14%, var(--sheet))` }}>
-                {n.comment}
+              <span className={clsx('absolute top-[22px]', g.gutter ? 'left-0' : 'right-0', 'flex w-[min(260px,70vw)] flex-col gap-1.5')}>
+                {group.map((n) => (
+                  <span key={n.id} role="note" className={clsx('block', slip)} style={{ ...slipStyle(n), background: `color-mix(in srgb, ${colorOf(n)} 14%, var(--sheet))` }}>
+                    {n.comment}
+                  </span>
+                ))}
               </span>
             ) : null}
           </span>

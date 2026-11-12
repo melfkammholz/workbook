@@ -106,8 +106,8 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.altKey || e.ctrlKey || e.metaKey || document.querySelector('[role=dialog]')) return;
-      // Alt+C: a card, whenever something is worth remembering.
-      if (e.code === 'KeyC' && !e.shiftKey && makeCardRef.current) {
+      // Alt+A: a card ("add"), whenever something is worth remembering.
+      if (e.code === 'KeyA' && !e.shiftKey && makeCardRef.current) {
         e.preventDefault();
         makeCardRef.current();
         return;
