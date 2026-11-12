@@ -7,6 +7,7 @@
 # (`up -d --build`) only when the Dockerfile changes. Its own volume, so unfinished code never touches your real
 # workbook on :8080. COURSE_DIR (default: the tests' small course) is mounted as /content, e.g.
 # `COURSE_DIR=../workbook-deklprog docker compose -f compose.dev.yaml up -d`, or put it into `.env`.
+# WORKBOOKS_DIR (default ../workbooks) is mounted as /workbooks, the folder the add dialog lists.
 name: workbook-dev
 services:
   workbook:
@@ -19,7 +20,10 @@ services:
     volumes:
       - .:/app:ro
       - ${COURSE_DIR:-./server/test/fixtures/course}:/content:ro
+      - ${WORKBOOKS_DIR:-../workbooks}:/workbooks:ro
       - workbook-dev-data:/data
+    environment:
+      WORKBOOKS_DIR: /workbooks
     command: ["node", "--watch-path=server/dist", "--disable-warning=ExperimentalWarning", "server/dist/index.js"]
     mem_limit: 2g
     pids_limit: 1024
