@@ -1,22 +1,23 @@
-import { Columns2, PanelTop, Square } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Group, Panel } from '@/components/Panels';
-import type { Extension } from '@codemirror/state';
-import type { EditorView } from '@codemirror/view';
-import type { Diagnostic } from '@wb/shared';
-import { previewNote, type NotePreview } from '@/lib/api';
-import type { EditorVariant } from '@/lib/editor';
-import { useT } from '@/lib/i18n';
-import { readPref, writePref } from '@/lib/shell';
-import { useMediaQuery } from '@/lib/useActiveTime';
-import { CodeEditor } from './CodeEditor';
-import { Prose } from './Prose';
-import { ResizeHandle } from './ResizeHandle';
-import { IconButton, clsx } from './ui';
+import { Columns2, PanelTop, Square } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Group, Panel } from "@/components/Panels";
+import type { Extension } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
+import type { Diagnostic } from "@wb/shared";
+import { previewNote, type NotePreview } from "@/lib/api";
+import type { EditorVariant } from "@/lib/editor";
+import { useT } from "@/lib/i18n";
+import { readPref, writePref } from "@/lib/shell";
+import { useMediaQuery } from "@/lib/useActiveTime";
+import { CodeEditor } from "./CodeEditor";
+import { Prose } from "./Prose";
+import { ResizeHandle } from "./ResizeHandle";
+import { IconButton, clsx } from "./ui";
 
-const LAYOUTS = ['stacked', 'side', 'write'] as const;
+const LAYOUTS = ["stacked", "side", "write"] as const;
 type Layout = (typeof LAYOUTS)[number];
-const KEY = 'wb-typst-layout';
+const KEY = "wb-typst-layout";
+const COMPACT_KEY = "wb-typst-compact";
 
 /**
  * A Typst source with a live preview, rendered by the server with the same
@@ -35,7 +36,7 @@ export function TypstEditor({
   diagnostics,
   onView,
   previewHeader,
-  previewClassName = 'prose-note',
+  previewClassName = "prose-note",
   extensions,
   compact,
 }: {
@@ -56,18 +57,31 @@ export function TypstEditor({
   previewClassName?: string;
   /** More editor behaviour, read once when the editor is made. */
   extensions?: Extension;
-  /** For a narrow column: always the editor above the preview, without the choice of layout. */
-  compact?: boolean;
+  /** For a narrow column: the editor or the preview, one at a time, with a switch between them (editor first). */
+  compact?: "switch";
 }) {
   const t = useT();
-  const [layout, setLayoutState] = useState<Layout>(() => readPref(KEY, LAYOUTS, 'stacked'));
+  const [layout, setLayoutState] = useState<Layout>(() =>
+    readPref(KEY, LAYOUTS, "stacked"),
+  );
   // The last render that compiled. It stays up while the text in between does not, like a half-typed `$…$`.
   const [preview, setPreview] = useState<NotePreview | null>(null);
-  const [errors, setErrors] = useState<NotePreview['diagnostics']>([]);
+  const [errors, setErrors] = useState<NotePreview["diagnostics"]>([]);
   const [showErrors, setShowErrors] = useState(false);
   // Side by side does not fit a phone. The choice is kept for when there is room again.
-  const roomy = useMediaQuery('(min-width: 900px)');
-  const effective: Layout = compact ? 'stacked' : layout === 'side' && !roomy ? 'stacked' : layout;
+  const roomy = useMediaQuery("(min-width: 900px)");
+  const [mode, setModeState] = useState<"write" | "preview">(() =>
+    readPref(COMPACT_KEY, ["write", "preview"] as const, "write"),
+  );
+  const setMode = (m: "write" | "preview") => {
+    setModeState(m);
+    writePref(COMPACT_KEY, m);
+  };
+  const effective: Layout | "preview" = compact
+    ? mode
+    : layout === "side" && !roomy
+      ? "stacked"
+      : layout;
 
   const setLayout = (l: Layout) => {
     setLayoutState(l);
@@ -86,10 +100,16 @@ export function TypstEditor({
     if (!el) return;
     const ro = new ResizeObserver(() => {
       const style = getComputedStyle(el);
-      const inner = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-      const em = parseFloat(getComputedStyle(el.querySelector('.prose-task') ?? el).fontSize) || 14.5;
+      const inner =
+        el.clientWidth -
+        parseFloat(style.paddingLeft) -
+        parseFloat(style.paddingRight);
+      const em =
+        parseFloat(
+          getComputedStyle(el.querySelector(".prose-task") ?? el).fontSize,
+        ) || 14.5;
       // In steps of 20pt: dragging a divider should not ask for a new picture at every pixel.
-      const pt = Math.max(100, Math.floor(((inner * 11) / em) / 20) * 20);
+      const pt = Math.max(100, Math.floor((inner * 11) / em / 20) * 20);
       if (pt !== width.current) {
         width.current = pt;
         setWidthStep(pt);
@@ -110,7 +130,7 @@ export function TypstEditor({
       .then(
         (p) => {
           if (mine !== generation.current) return;
-          const errs = p.diagnostics.filter((d) => d.severity === 'error');
+          const errs = p.diagnostics.filter((d) => d.severity === "error");
           setErrors(errs);
           if (!errs.length) setPreview(p);
         },
@@ -165,15 +185,31 @@ export function TypstEditor({
   }, [errors, preview]);
 
   const editor = (
-    <CodeEditor variant={variant} language="typst" value={value} onChange={onChange} label={label} wrap lineNumbers={false} placeholder={placeholder} {...(diagnostics ? { diagnostics } : {})} {...(onView ? { onView } : {})} {...(extensions ? { extensions } : {})} />
+    <CodeEditor
+      variant={variant}
+      language="typst"
+      value={value}
+      onChange={onChange}
+      label={label}
+      wrap
+      lineNumbers={false}
+      placeholder={placeholder}
+      {...(diagnostics ? { diagnostics } : {})}
+      {...(onView ? { onView } : {})}
+      {...(extensions ? { extensions } : {})}
+    />
   );
   const pane = (
-    <div ref={paneRef} className="h-full min-h-0 overflow-y-auto bg-paper/40 p-4" aria-label={t.preview}>
+    <div
+      ref={paneRef}
+      className="h-full min-h-0 overflow-y-auto bg-paper/40 p-4"
+      aria-label={t.preview}
+    >
       {showErrors && errors.length ? (
         <ul className="mb-3 rounded-md bg-danger-soft px-3 py-2 text-[13px] text-danger">
           {errors.map((e, i) => (
             <li key={i}>
-              {e.line ? t.lineN(e.line) : ''}
+              {e.line ? t.lineN(e.line) : ""}
               {e.message}
             </li>
           ))}
@@ -181,17 +217,27 @@ export function TypstEditor({
       ) : null}
       {previewHeader}
       {preview ? (
-        <Prose html={preview.html} css={preview.css} className={clsx(previewClassName, 'transition-opacity', showErrors && errors.length > 0 && 'opacity-60')} />
+        <Prose
+          html={preview.html}
+          css={preview.css}
+          className={clsx(
+            previewClassName,
+            "transition-opacity",
+            showErrors && errors.length > 0 && "opacity-60",
+          )}
+        />
       ) : !errors.length ? (
-        <p className="text-sm text-ink-3">{value.trim() ? t.rendering : t.previewHere}</p>
+        <p className="text-sm text-ink-3">
+          {value.trim() ? t.rendering : t.previewHere}
+        </p>
       ) : null}
     </div>
   );
 
   const OPTIONS: [Layout, typeof PanelTop, string][] = [
-    ['stacked', PanelTop, t.layoutStacked],
-    ['side', Columns2, t.layoutSide],
-    ['write', Square, t.layoutWrite],
+    ["stacked", PanelTop, t.layoutStacked],
+    ["side", Columns2, t.layoutSide],
+    ["write", Square, t.layoutWrite],
   ];
 
   return (
@@ -200,23 +246,68 @@ export function TypstEditor({
         <span className="mr-auto pl-1 text-xs text-ink-3" aria-live="polite">
           {status}
         </span>
-        <div className={clsx('flex items-center', compact && 'hidden')} role="group" aria-label={t.preview}>
-          {OPTIONS.filter(([l]) => l !== 'side' || roomy).map(([l, Icon, name]) => (
-            <IconButton key={l} label={name} aria-pressed={effective === l} onClick={() => setLayout(l)} className={clsx('size-7', effective === l && 'bg-sunk text-ink')}>
-              <Icon size={15} />
-            </IconButton>
-          ))}
+        {compact ? (
+          <div
+            className="flex rounded-md border border-line p-0.5 text-[12.5px]"
+            role="group"
+            aria-label={t.preview}
+          >
+            {(["write", "preview"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                aria-pressed={mode === m}
+                onClick={() => setMode(m)}
+                className={clsx(
+                  "rounded px-2 py-0.5",
+                  mode === m
+                    ? "bg-sunk font-medium text-ink"
+                    : "text-ink-3 hover:text-ink-2",
+                )}
+              >
+                {m === "write" ? t.editorWrite : t.preview}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <div
+          className={clsx("flex items-center", compact && "hidden")}
+          role="group"
+          aria-label={t.preview}
+        >
+          {OPTIONS.filter(([l]) => l !== "side" || roomy).map(
+            ([l, Icon, name]) => (
+              <IconButton
+                key={l}
+                label={name}
+                aria-pressed={effective === l}
+                onClick={() => setLayout(l)}
+                className={clsx(
+                  "size-7",
+                  effective === l && "bg-sunk text-ink",
+                )}
+              >
+                <Icon size={15} />
+              </IconButton>
+            ),
+          )}
         </div>
       </div>
       <div className="min-h-0 flex-1">
-        {effective === 'write' ? (
+        {effective === "write" ? (
           editor
+        ) : effective === "preview" ? (
+          pane
         ) : (
-          <Group key={effective} orientation={effective === 'side' ? 'horizontal' : 'vertical'} className="h-full">
+          <Group
+            key={effective}
+            orientation={effective === "side" ? "horizontal" : "vertical"}
+            className="h-full"
+          >
             <Panel defaultSize="50" minSize="15">
               {editor}
             </Panel>
-            <ResizeHandle direction={effective === 'side' ? 'row' : 'column'} />
+            <ResizeHandle direction={effective === "side" ? "row" : "column"} />
             <Panel defaultSize="50" minSize="15">
               {pane}
             </Panel>

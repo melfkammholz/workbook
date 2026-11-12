@@ -314,7 +314,11 @@ export const useSaveSettings = () => {
       if (ctx?.prev) qc.setQueryData(keys.settings, ctx.prev);
       reportSaveFailed();
     },
-    onSuccess: (data) => qc.setQueryData(keys.settings, data),
+    onSuccess: (data, patch) => {
+      qc.setQueryData(keys.settings, data);
+      // A removed mark is taken off the pages on the server.
+      if (patch.pdfPageMarks) void qc.invalidateQueries({ queryKey: ['pdf-pages'] });
+    },
   });
 };
 

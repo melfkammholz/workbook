@@ -265,6 +265,22 @@ export class Resources {
     return this.getPage(cur.id)!;
   }
 
+  /** Takes mark ids that no longer exist off every page, so no page keeps a dead one. Returns how many pages changed. */
+  pruneMarks(keep: string[]): number {
+    const ok = new Set(keep);
+    let n = 0;
+    this.sql.tx(() => {
+      for (const r of this.sql.all('SELECT * FROM pdf_pages')) {
+        const p = toPage(r);
+        const marks = p.marks.filter((id) => ok.has(id));
+        if (marks.length === p.marks.length) continue;
+        this.sql.run('UPDATE pdf_pages SET marks = ? WHERE id = ?', JSON.stringify(marks), p.id);
+        n++;
+      }
+    });
+    return n;
+  }
+
   /** Starts over: every resource and every file. Snapshots keep their own copies. */
   reset(): void {
     this.sql.tx(() => {

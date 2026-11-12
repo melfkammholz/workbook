@@ -3,6 +3,7 @@ import { pageFingerprint, pageQuote, rectsTop, slideGroups, slideOfPage, type Pd
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { ChevronLeft, ChevronRight, Maximize, PanelRight, PanelRightClose, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FoldSection } from '@/components/FoldSection';
 import { MakeCardDialog } from '@/components/MakeCardDialog';
 import { CopyRefButton, PdfHighlightLayer, type Editing } from '@/components/PdfHighlights';
 import { PagesWithNotes, PdfPageNotes } from '@/components/PdfPageNotes';
@@ -481,8 +482,7 @@ function AllHighlights({ resource, list, current, labelOf, editing, onJump }: { 
     if (top < 0 || top > box.clientHeight - 80) box.scrollTo({ top: box.scrollTop + top - 80 });
   }, [here]);
   return (
-    <section ref={column} className="mt-5 border-t border-line pt-3" aria-label={t.pdfAllHighlights}>
-      <h3 className="mb-1.5 text-[13px] font-semibold text-ink-2">{t.pdfAllHighlights}</h3>
+    <FoldSection id="pdf-highlights" title={t.pdfAllHighlights} defaultOpen sectionRef={column} className="mt-5">
       {groups.length === 0 ? <p className="text-[13px] text-ink-3">{t.pdfAllHighlightsNone}</p> : null}
       {groups.map((g) => (
         <div key={g.page} data-group={g.page} className="mb-2">
@@ -506,6 +506,6 @@ function AllHighlights({ resource, list, current, labelOf, editing, onJump }: { 
           </ul>
         </div>
       ))}
-    </section>
+    </FoldSection>
   );
 }

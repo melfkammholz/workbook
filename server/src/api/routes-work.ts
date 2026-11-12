@@ -235,7 +235,10 @@ export function workRoutes(app: FastifyInstance, d: Deps): void {
   app.put('/api/settings', async (req, reply) => {
     const b = parse(bodies.settings, req.body, reply);
     if (!b) return;
-    return d.courses.global.saveSettings(b);
+    const saved = d.courses.global.saveSettings(b);
+    // A removed mark must not stay on any page.
+    if (b.pdfPageMarks) d.courses.resources.pruneMarks(saved.pdfPageMarks.map((m) => m.id));
+    return saved;
   });
 
   app.get('/api/achievements', async (): Promise<AchievementsResponse> => {

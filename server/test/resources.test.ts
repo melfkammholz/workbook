@@ -144,4 +144,16 @@ describe('highlights in PDFs', () => {
     await app.inject({ method: 'DELETE', url: `/api/resources/${res.id}` });
     expect(((await app.inject({ method: 'GET', url: '/api/pdf-pages' })).json() as { resource: string }[]).some((p) => p.resource === res.id)).toBe(false);
   });
+
+  it('takes a removed mark off every page', async () => {
+    const res = (await up({ filename: 'm.pdf', title: 'M', type: 'slides' }, Buffer.from('%PDF-1.4 marks'))).json() as Resource;
+    const base = { version: res.file.sha256, fingerprint: 'index:0' };
+    await app.inject({ method: 'PUT', url: '/api/settings', payload: { pdfPageMarks: [{ id: 'a', name: 'exam' }, { id: 'b', name: 'unclear' }] } });
+    for (const i of [0, 1]) await app.inject({ method: 'PUT', url: `/api/resources/${res.id}/pages/${i}`, payload: { ...base, id: crypto.randomUUID(), marks: ['a', 'b'] } });
+    await app.inject({ method: 'PUT', url: '/api/settings', payload: { pdfPageMarks: [{ id: 'b', name: 'unclear' }] } });
+    const pages = (await app.inject({ method: 'GET', url: `/api/resources/${res.id}/pages` })).json() as { marks: string[] }[];
+    expect(pages.map((p) => p.marks)).toEqual([['b'], ['b']]);
+    await app.inject({ method: 'PUT', url: '/api/settings', payload: { pdfPageMarks: [] } });
+    await app.inject({ method: 'DELETE', url: `/api/resources/${res.id}` });
+  });
 });
