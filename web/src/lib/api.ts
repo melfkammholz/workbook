@@ -380,7 +380,7 @@ export const useQuestions = () => useQuery({ queryKey: questionsKey, queryFn: ()
 const patchQuestions = (fn: (qs: Question[]) => Question[]) => queryClient.setQueryData<Question[]>(questionsKey, (qs) => qs && fn(qs));
 
 /** What a change to a question touches: the item's cached work, the list of all, the review page, the dashboard. */
-const questionsChanged = (item: string | null) => {
+export const questionsChanged = (item: string | null) => {
   if (item) void queryClient.invalidateQueries({ queryKey: keys.work(item) });
   void queryClient.invalidateQueries({ queryKey: questionsKey });
   void queryClient.invalidateQueries({ queryKey: keys.mine });

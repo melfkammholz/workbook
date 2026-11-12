@@ -11,6 +11,9 @@ import { useT } from '@/lib/i18n';
 import { useResources } from '@/lib/resources';
 
 /** The item or text a workbook question is about. */
+/** What a "come back to" question without text is about: the passage it was made on. */
+const TextQuote = ({ quote }: { quote: string }) => <p className="mt-0.5 line-clamp-2 break-words text-[13px] italic text-ink-2">{quote.trim()}</p>;
+
 const placeOf = (a: Exclude<Question['anchor'], { kind: 'page' | 'none' | 'material' }>) => (a.kind === 'text' ? a.target : a.id);
 
 interface Group {
@@ -112,7 +115,7 @@ export function QuestionsPage() {
                   )}
                   <ul className="divide-y divide-line">
                     {p.items.map((q) => (
-                      <QuestionRow key={q.id} item={q.anchor.kind === 'page' || q.anchor.kind === 'none' || q.anchor.kind === 'material' ? null : placeOf(q.anchor)} q={q} extra={<Quote q={q} />} />
+                      <QuestionRow key={q.id} item={q.anchor.kind === 'page' || q.anchor.kind === 'none' || q.anchor.kind === 'material' ? null : placeOf(q.anchor)} q={q} extra={q.anchor.kind === 'text' ? <TextQuote quote={q.anchor.quote} /> : <Quote q={q} />} />
                     ))}
                   </ul>
                 </div>

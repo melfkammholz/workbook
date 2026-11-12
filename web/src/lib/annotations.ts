@@ -1,7 +1,7 @@
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 import type { CSSProperties } from 'react';
 import { isCustomColor, locateQuote, type Annotation, type AnnotationColor, type AnnotationEntry, type AnnotationReview, type TextQuote } from '@wb/shared';
-import { api, useSettings } from './api';
+import { api, questionsChanged, useSettings } from './api';
 import { reportSaveFailed } from './saveNotice';
 
 // ───────────────────────── data ─────────────────────────
@@ -44,7 +44,11 @@ export function addAnnotation(qc: QueryClient, a: NewAnnotation): AnnotationEntr
   const made: AnnotationEntry = { ...body, createdAt: t, updatedAt: t, found: true };
   setList(qc, (l) => [...l, made]);
   const saving = api.post<Annotation>('/api/annotations', body).then(
-    (saved) => setList(qc, (l) => l.map((x) => (x.id === made.id ? { ...saved, ...x, createdAt: saved.createdAt } : x))),
+    (saved) => {
+      setList(qc, (l) => l.map((x) => (x.id === made.id ? { ...saved, ...x, createdAt: saved.createdAt } : x)));
+      // "Come back to" is a question.
+      if (body.review) questionsChanged(null);
+    },
     (e: unknown) => {
       setList(qc, (l) => l.filter((x) => x.id !== made.id));
       reportSaveFailed();
@@ -62,6 +66,7 @@ export async function updateAnnotation(qc: QueryClient, id: string, patch: Annot
   try {
     await arrived(id);
     await api.patch<Annotation>(`/api/annotations/${encodeURIComponent(id)}`, patch);
+    if (patch.review !== undefined) questionsChanged(null);
   } catch (e) {
     void qc.invalidateQueries({ queryKey: annotationKey });
     reportSaveFailed();

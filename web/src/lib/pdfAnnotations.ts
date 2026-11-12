@@ -1,7 +1,7 @@
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 import { isCustomColor, type AnnotationColor, type AnnotationReview, type PageRect, type PdfAnnotation, type TextQuote } from '@wb/shared';
 import type { CSSProperties } from 'react';
-import { api, useSettings } from './api';
+import { api, questionsChanged, useSettings } from './api';
 import { reportSaveFailed } from './saveNotice';
 
 export const pdfAnnotationKey = (resource: string) => ['pdf-annotations', resource] as const;
@@ -54,7 +54,10 @@ export function addPdfHighlight(qc: QueryClient, resource: string, a: NewPdfHigh
   const made: PdfAnnotation = { ...body, resource, createdAt: t, updatedAt: t };
   setList(qc, resource, (l) => [...l, made]);
   const saving = api.post<PdfAnnotation>(`/api/resources/${encodeURIComponent(resource)}/annotations`, body).then(
-    () => refresh(qc, resource),
+    () => {
+      refresh(qc, resource);
+      if (body.review) questionsChanged(null);
+    },
     (e: unknown) => {
       setList(qc, resource, (l) => l.filter((x) => x.id !== made.id));
       reportSaveFailed();
@@ -71,6 +74,7 @@ export async function updatePdfHighlight(qc: QueryClient, resource: string, id: 
   try {
     await arrived(id);
     await api.patch<PdfAnnotation>(`/api/pdf-annotations/${encodeURIComponent(id)}`, patch);
+    if (patch.review !== undefined) questionsChanged(null);
   } catch (e) {
     refresh(qc, resource);
     reportSaveFailed();

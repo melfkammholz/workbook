@@ -492,6 +492,36 @@ export const MIGRATIONS: Migration[] = [
     CREATE INDEX questions_resource ON questions (json_extract(anchor, '$.resource')) WHERE json_extract(anchor, '$.kind') = 'page';
     `);
   },
+  /*
+   * 19: "come back to" on a highlight or a page is a question without text, linked by `highlight_id` (the id of the
+   * highlight or page item), open or done; the `review` columns go. The question keeps a copy of the anchor.
+   */ (db) => {
+    const insert = db.prepare(
+      "INSERT INTO questions (id, text, anchor, course, highlight_id, pass_id, status, answer, created_at, updated_at, done_at, unplaced) VALUES (?,'',?,?,?,NULL,?,NULL,?,?,?,?)",
+    );
+    const add = (course: string, source: string, anchor: object, review: string, created: number, updated: number, unplaced: number) =>
+      insert.run(`q-${randomUUID()}`, JSON.stringify(anchor), course, source, review === 'resolved' ? 'done' : 'open', created, updated, review === 'resolved' ? updated : null, unplaced);
+    type R = Record<string, string | number>;
+    for (const a of db.prepare('SELECT * FROM annotations WHERE review IS NOT NULL').all() as R[]) {
+      const course = String(a.course ?? '');
+      add(course, String(a.id), { kind: 'text', course, target: a.target, part: a.part, quote: a.quote, prefix: a.prefix, suffix: a.suffix }, String(a.review), Number(a.created_at), Number(a.updated_at), 0);
+    }
+    const fingerprint = db.prepare('SELECT fingerprint FROM pdf_pages WHERE resource = ? AND page_index = ? AND unplaced = 0');
+    for (const a of db.prepare('SELECT * FROM pdf_annotations WHERE review IS NOT NULL').all() as R[]) {
+      const page = fingerprint.get(String(a.resource), Number(a.page_index)) as { fingerprint: string } | undefined;
+      const anchor = { kind: 'page', resource: a.resource, version: a.version, pageIndex: a.page_index, fingerprint: page?.fingerprint ?? '', rects: JSON.parse(String(a.rects)), quote: a.quote, prefix: a.prefix, suffix: a.suffix };
+      add('', String(a.id), anchor, String(a.review), Number(a.created_at), Number(a.updated_at), Number(a.unplaced ?? 0));
+    }
+    for (const p of db.prepare('SELECT * FROM pdf_pages WHERE review IS NOT NULL').all() as R[]) {
+      add('', String(p.id), { kind: 'page', resource: p.resource, version: p.version, pageIndex: p.page_index, fingerprint: p.fingerprint }, String(p.review), Number(p.created_at), Number(p.updated_at), Number(p.unplaced ?? 0));
+    }
+    db.exec(`
+    ALTER TABLE annotations DROP COLUMN review;
+    ALTER TABLE pdf_annotations DROP COLUMN review;
+    ALTER TABLE pdf_pages DROP COLUMN review;
+    CREATE INDEX questions_source ON questions (highlight_id) WHERE highlight_id IS NOT NULL;
+    `);
+  },
 ];
 
 /** The course a mounted `/content` folder is. */

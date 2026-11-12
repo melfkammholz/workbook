@@ -1,6 +1,6 @@
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 import type { AnnotationReview, PdfPageItem } from '@wb/shared';
-import { api, useSettings } from './api';
+import { api, questionsChanged, useSettings } from './api';
 import { reportSaveFailed } from './saveNotice';
 import { typstString } from './pdfAnnotations';
 
@@ -59,7 +59,10 @@ export function savePdfPage(qc: QueryClient, resource: string, pageIndex: number
     .catch(() => undefined)
     .then(() => api.put(`/api/resources/${encodeURIComponent(resource)}/pages/${pageIndex}`, { id: next.id, version: base.version, fingerprint: base.fingerprint, ...patch }))
     .then(
-      () => void qc.invalidateQueries({ queryKey: allKey }),
+      () => {
+        void qc.invalidateQueries({ queryKey: allKey });
+        if (patch.review !== undefined) questionsChanged(null);
+      },
       () => {
         void qc.invalidateQueries({ queryKey: key });
         reportSaveFailed();

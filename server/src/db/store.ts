@@ -451,6 +451,39 @@ export class Store {
     return this.getQuestion(id);
   }
 
+  /**
+   * "Come back to" is an open question without text about the highlight or page `source` (its `highlight_id`):
+   * open means to come back to it, done that it is cleared up. The question keeps its own anchor, so it outlives
+   * the highlight.
+   */
+  reviews(): Map<string, AnnotationReview> {
+    const out = new Map<string, AnnotationReview>();
+    for (const r of this.all('SELECT highlight_id, status FROM questions WHERE highlight_id IS NOT NULL ORDER BY created_at DESC, rowid DESC')) out.set(r.highlight_id as string, r.status === 'done' ? 'resolved' : 'open');
+    return out;
+  }
+
+  /** Sets, changes or (null) clears the come-back question of `source`; a cleared one with text of its own stays, unlinked. */
+  setReview(source: string, review: AnnotationReview | null, anchor: Anchor): void {
+    const cur = this.get('SELECT id, text FROM questions WHERE highlight_id = ? ORDER BY created_at, rowid LIMIT 1', source);
+    if (review === null) {
+      if (!cur) return;
+      if (cur.text) this.run('UPDATE questions SET highlight_id = NULL WHERE id = ?', cur.id as string);
+      else this.run('DELETE FROM questions WHERE id = ?', cur.id as string);
+      return;
+    }
+    const status = review === 'resolved' ? 'done' : 'open';
+    if (cur) this.updateQuestion(cur.id as string, { status });
+    else {
+      const q = this.addQuestion({ text: '', anchor, highlightId: source });
+      if (status === 'done') this.updateQuestion(q.id, { status });
+    }
+  }
+
+  private textAnchor(id: string): Anchor {
+    const a = this.get('SELECT target, part, quote, prefix, suffix FROM annotations WHERE id = ? AND course = ?', id, this.course)!;
+    return { kind: 'text', course: this.course, target: a.target as string, part: a.part as string, quote: a.quote as string, prefix: a.prefix as string, suffix: a.suffix as string };
+  }
+
   deleteQuestion(id: string): boolean {
     const had = this.getQuestion(id) !== null;
     if (had) this.run('DELETE FROM questions WHERE id = ?', id);
@@ -498,12 +531,13 @@ export class Store {
     const rows = target
       ? this.all('SELECT * FROM annotations WHERE course = ? AND target = ? ORDER BY created_at, id', this.course, target)
       : this.all('SELECT * FROM annotations WHERE course = ? ORDER BY created_at, id', this.course);
-    return rows.map(rowToAnnotation);
+    const reviews = this.reviews();
+    return rows.map((r) => rowToAnnotation(r, reviews));
   }
 
   getAnnotation(id: string): Annotation | null {
     const r = this.get('SELECT * FROM annotations WHERE id = ? AND course = ?', id, this.course);
-    return r ? rowToAnnotation(r) : null;
+    return r ? rowToAnnotation(r, this.reviews()) : null;
   }
 
   addAnnotation(a: AnnotationPlace & TextQuote & { id?: string; color: AnnotationColor; label?: string | null; comment?: string; review?: AnnotationReview | null }): Annotation {
@@ -511,7 +545,7 @@ export class Store {
     const t = this.now();
     this.tx(() => {
       this.run(
-        'INSERT INTO annotations (course, id, target, part, quote, prefix, suffix, color, label, comment, review, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO annotations (course, id, target, part, quote, prefix, suffix, color, label, comment, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
         this.course,
         id,
         a.target,
@@ -522,10 +556,10 @@ export class Store {
         a.color,
         a.label ?? null,
         (a.comment ?? '').slice(0, 4000),
-        a.review ?? null,
         t,
         t,
       );
+      if (a.review) this.setReview(id, a.review, this.textAnchor(id));
       this.reindexAnnotations(a.target);
     });
     return this.getAnnotation(id)!;
@@ -538,15 +572,15 @@ export class Store {
     const next = { ...prev, ...patch, comment: (patch.comment ?? prev.comment).slice(0, 4000) };
     this.tx(() => {
       this.run(
-        'UPDATE annotations SET color = ?, label = ?, comment = ?, review = ?, updated_at = ? WHERE id = ? AND course = ?',
+        'UPDATE annotations SET color = ?, label = ?, comment = ?, updated_at = ? WHERE id = ? AND course = ?',
         next.color,
         next.label,
         next.comment,
-        next.review,
         this.now(),
         id,
         this.course,
       );
+      if (patch.review !== undefined) this.setReview(id, patch.review, this.textAnchor(id));
       this.reindexAnnotations(prev.target);
     });
     return this.getAnnotation(id);
@@ -571,7 +605,7 @@ export class Store {
   }
 
   resolvedMarkCount(): number {
-    return Number(this.get("SELECT COUNT(*) AS n FROM annotations WHERE course = ? AND review = 'resolved'", this.course)!.n);
+    return Number(this.get("SELECT COUNT(*) AS n FROM questions q JOIN annotations a ON a.id = q.highlight_id AND a.course = q.course WHERE q.course = ? AND q.status = 'done'", this.course)!.n);
   }
 
   noteCount(): number {
@@ -902,7 +936,7 @@ function rowToReflection(r: Row): Reflection {
   };
 }
 
-function rowToAnnotation(r: Row): Annotation {
+function rowToAnnotation(r: Row, reviews: Map<string, AnnotationReview>): Annotation {
   return {
     id: r.id as string,
     target: r.target as string,
@@ -913,7 +947,7 @@ function rowToAnnotation(r: Row): Annotation {
     color: r.color as AnnotationColor,
     label: (r.label as string | null) ?? null,
     comment: r.comment as string,
-    review: (r.review as AnnotationReview | null) ?? null,
+    review: reviews.get(r.id as string) ?? null,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
   };

@@ -87,7 +87,7 @@ function toToc(r: Row): TocEdit {
   };
 }
 
-function toPage(r: Row): PdfPageItem {
+function toPage(r: Row, reviews: Map<string, AnnotationReview>): PdfPageItem {
   let marks: string[] = [];
   try {
     const m = JSON.parse(r.marks as string) as unknown;
@@ -103,13 +103,13 @@ function toPage(r: Row): PdfPageItem {
     fingerprint: r.fingerprint as string,
     note: r.note as string,
     marks,
-    review: (r.review as AnnotationReview | null) ?? null,
+    review: reviews.get(r.id as string) ?? null,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
   };
 }
 
-function toHighlight(r: Row): PdfAnnotation {
+function toHighlight(r: Row, reviews: Map<string, AnnotationReview>): PdfAnnotation {
   return {
     id: r.id as string,
     resource: r.resource as string,
@@ -122,7 +122,7 @@ function toHighlight(r: Row): PdfAnnotation {
     color: r.color as AnnotationColor,
     label: (r.label as string | null) ?? null,
     comment: r.comment as string,
-    review: (r.review as AnnotationReview | null) ?? null,
+    review: reviews.get(r.id as string) ?? null,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
   };
@@ -233,22 +233,26 @@ export class Resources {
     const rows = resource
       ? this.sql.all('SELECT * FROM pdf_annotations WHERE resource = ? AND unplaced = 0 ORDER BY page_index, created_at, id', resource)
       : this.sql.all('SELECT * FROM pdf_annotations WHERE unplaced = 0 ORDER BY resource, page_index, created_at, id');
-    return rows.map(toHighlight);
+    const reviews = this.store.reviews();
+    return rows.map((r) => toHighlight(r, reviews));
   }
 
   getHighlight(id: string): PdfAnnotation | null {
     const r = this.sql.get('SELECT * FROM pdf_annotations WHERE id = ?', id);
-    return r ? toHighlight(r) : null;
+    return r ? toHighlight(r, this.store.reviews()) : null;
   }
 
   addHighlight(resource: string, a: NewPdfAnnotation): PdfAnnotation {
     this.get(resource);
     const id = a.id ?? crypto.randomUUID();
     const t = this.now();
-    this.sql.run(
-      'INSERT INTO pdf_annotations (id, resource, version, page_index, rects, quote, prefix, suffix, color, label, comment, review, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-      id, resource, a.version, a.pageIndex, JSON.stringify(a.rects), a.quote, a.prefix, a.suffix, a.color, a.label ?? null, (a.comment ?? '').slice(0, 4000), a.review ?? null, t, t,
-    );
+    this.sql.tx(() => {
+      this.sql.run(
+        'INSERT INTO pdf_annotations (id, resource, version, page_index, rects, quote, prefix, suffix, color, label, comment, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        id, resource, a.version, a.pageIndex, JSON.stringify(a.rects), a.quote, a.prefix, a.suffix, a.color, a.label ?? null, (a.comment ?? '').slice(0, 4000), t, t,
+      );
+      if (a.review) this.store.setReview(id, a.review, this.highlightAnchor(id));
+    });
     return this.getHighlight(id)!;
   }
 
@@ -256,8 +260,33 @@ export class Resources {
     const prev = this.getHighlight(id);
     if (!prev) return null;
     const next = { ...prev, ...patch };
-    this.sql.run('UPDATE pdf_annotations SET color = ?, label = ?, comment = ?, review = ?, updated_at = ? WHERE id = ?', next.color, next.label, next.comment.slice(0, 4000), next.review, this.now(), id);
+    this.sql.tx(() => {
+      this.sql.run('UPDATE pdf_annotations SET color = ?, label = ?, comment = ?, updated_at = ? WHERE id = ?', next.color, next.label, next.comment.slice(0, 4000), this.now(), id);
+      if (patch.review !== undefined) this.store.setReview(id, patch.review, this.highlightAnchor(id));
+    });
     return this.getHighlight(id);
+  }
+
+  /** Where a highlight's come-back question is asked: its page and passage. The page's fingerprint is only known if the page has an item. */
+  private highlightAnchor(id: string): Anchor {
+    const a = this.sql.get('SELECT * FROM pdf_annotations WHERE id = ?', id)!;
+    const page = this.sql.get('SELECT fingerprint FROM pdf_pages WHERE resource = ? AND page_index = ? AND unplaced = 0', a.resource as string, Number(a.page_index));
+    return {
+      kind: 'page',
+      resource: a.resource as string,
+      version: a.version as string,
+      pageIndex: Number(a.page_index),
+      fingerprint: (page?.fingerprint as string | undefined) ?? '',
+      rects: JSON.parse(a.rects as string) as PageRect[],
+      quote: a.quote as string,
+      prefix: a.prefix as string,
+      suffix: a.suffix as string,
+    };
+  }
+
+  private pageAnchor(id: string): Anchor {
+    const p = this.sql.get('SELECT resource, version, page_index, fingerprint FROM pdf_pages WHERE id = ?', id)!;
+    return { kind: 'page', resource: p.resource as string, version: p.version as string, pageIndex: Number(p.page_index), fingerprint: p.fingerprint as string };
   }
 
   deleteHighlight(id: string): boolean {
@@ -271,12 +300,13 @@ export class Resources {
   /** Every page item of one resource, or of all of them. */
   listPages(resource?: string): PdfPageItem[] {
     const rows = resource ? this.sql.all('SELECT * FROM pdf_pages WHERE resource = ? AND unplaced = 0 ORDER BY page_index', resource) : this.sql.all('SELECT * FROM pdf_pages WHERE unplaced = 0 ORDER BY resource, page_index');
-    return rows.map(toPage);
+    const reviews = this.store.reviews();
+    return rows.map((r) => toPage(r, reviews));
   }
 
   getPage(id: string): PdfPageItem | null {
     const r = this.sql.get('SELECT * FROM pdf_pages WHERE id = ?', id);
-    return r ? toPage(r) : null;
+    return r ? toPage(r, this.store.reviews()) : null;
   }
 
   /**
@@ -289,15 +319,21 @@ export class Resources {
     const prev = this.sql.get('SELECT * FROM pdf_pages WHERE resource = ? AND page_index = ? AND unplaced = 0', resource, pageIndex);
     if (!prev) {
       const id = f.id ?? crypto.randomUUID();
-      this.sql.run(
-        'INSERT INTO pdf_pages (id, resource, version, page_index, fingerprint, note, marks, review, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
-        id, resource, f.version, pageIndex, f.fingerprint, f.note ?? '', JSON.stringify([...new Set(f.marks ?? [])]), f.review ?? null, t, t,
-      );
+      this.sql.tx(() => {
+        this.sql.run(
+          'INSERT INTO pdf_pages (id, resource, version, page_index, fingerprint, note, marks, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)',
+          id, resource, f.version, pageIndex, f.fingerprint, f.note ?? '', JSON.stringify([...new Set(f.marks ?? [])]), t, t,
+        );
+        if (f.review) this.store.setReview(id, f.review, this.pageAnchor(id));
+      });
       return this.getPage(id)!;
     }
-    const cur = toPage(prev);
+    const cur = toPage(prev, new Map());
     const marks = f.marks ? [...new Set(f.marks)] : cur.marks;
-    this.sql.run('UPDATE pdf_pages SET note = ?, marks = ?, review = ?, updated_at = ? WHERE id = ?', f.note ?? cur.note, JSON.stringify(marks), f.review === undefined ? cur.review : f.review, t, cur.id);
+    this.sql.tx(() => {
+      this.sql.run('UPDATE pdf_pages SET note = ?, marks = ?, updated_at = ? WHERE id = ?', f.note ?? cur.note, JSON.stringify(marks), t, cur.id);
+      if (f.review !== undefined) this.store.setReview(cur.id, f.review, this.pageAnchor(cur.id));
+    });
     return this.getPage(cur.id)!;
   }
 
@@ -307,7 +343,7 @@ export class Resources {
     let n = 0;
     this.sql.tx(() => {
       for (const r of this.sql.all('SELECT * FROM pdf_pages')) {
-        const p = toPage(r);
+        const p = toPage(r, new Map());
         const marks = p.marks.filter((id) => ok.has(id));
         if (marks.length === p.marks.length) continue;
         this.sql.run('UPDATE pdf_pages SET marks = ? WHERE id = ?', JSON.stringify(marks), p.id);
@@ -443,9 +479,10 @@ export class Resources {
   /** What the new file could not place, to fix or drop. */
   listUnplaced(id: string): UnplacedItems {
     this.get(id);
+    const reviews = this.store.reviews();
     return {
-      highlights: this.sql.all('SELECT * FROM pdf_annotations WHERE resource = ? AND unplaced = 1 ORDER BY page_index, created_at', id).map(toHighlight),
-      pages: this.sql.all('SELECT * FROM pdf_pages WHERE resource = ? AND unplaced = 1 ORDER BY page_index', id).map(toPage),
+      highlights: this.sql.all('SELECT * FROM pdf_annotations WHERE resource = ? AND unplaced = 1 ORDER BY page_index, created_at', id).map((r) => toHighlight(r, reviews)),
+      pages: this.sql.all('SELECT * FROM pdf_pages WHERE resource = ? AND unplaced = 1 ORDER BY page_index', id).map((r) => toPage(r, reviews)),
       toc: this.sql.all('SELECT * FROM pdf_toc WHERE resource = ? AND unplaced = 1 ORDER BY page_index', id).map(toToc),
       questions: this.store.listQuestions({ resource: id }).filter((q) => q.unplaced),
     };
