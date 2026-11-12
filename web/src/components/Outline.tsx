@@ -14,6 +14,7 @@ import { Plant } from './Plant';
 import { Level, StatusMark, clsx } from './ui';
 import { Title } from '@/components/Title';
 import { NavLink } from '@/lib/history';
+import { afterPaint } from '@/lib/afterPaint';
 
 const STATUSES: Status[] = ['todo', 'in_progress', 'done', 'review'];
 
@@ -374,10 +375,11 @@ const Row = memo(function Row({ item, status, answered, current, first, last, wi
   const t = useT();
   const ex = item.type === 'exercise' ? item : null;
   const done = status === 'done';
-  // In a long outline, what is open should not be somewhere out of sight.
+  // In a long outline, what is open should not be somewhere out of sight. After the page is painted: finding out
+  // where the row is lays out the whole page, which would otherwise happen once more before the first frame.
   const row = useRef<HTMLLIElement>(null);
   useEffect(() => {
-    if (current) row.current?.scrollIntoView({ block: 'nearest' });
+    if (current) return afterPaint(() => row.current?.scrollIntoView({ block: 'nearest' }));
   }, [current]);
   return (
     <li ref={row} className={clsx('relative scroll-mt-10', wide && 'mt-1.5')} data-first={first || undefined} data-last={last || undefined}>

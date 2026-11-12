@@ -35,7 +35,9 @@ export function Prose({ html, css, className, lang: langProp, annotate }: { html
     const root = ref.current;
     if (!root || waiting) return;
     // Widgets first: their parts are rendered by a Prose of their own, and highlighted there.
-    setWidgets(takeWidgets(root));
+    // Most texts have none: then nothing changes, and the text is not rendered a second time.
+    const found = takeWidgets(root);
+    setWidgets((w) => (w.length === 0 && found.length === 0 ? w : found));
     const cleanups: (() => void)[] = [];
     // Once per element: highlighting again would start from text whose gap marks are already spans.
     root.querySelectorAll<HTMLElement>('code[data-lang]:not([data-hl])').forEach((code) => {

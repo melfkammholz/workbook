@@ -1,8 +1,8 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import * as Tooltip from '@radix-ui/react-tooltip';
 import { clsx } from 'clsx';
 import { X } from 'lucide-react';
-import { useLayoutEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { cloneElement, useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactElement, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { Status } from '@wb/shared';
 import { useT } from '@/lib/i18n';
 
@@ -61,18 +61,119 @@ export function IconButton({ label, children, className, ...p }: ButtonHTMLAttri
   );
 }
 
-export function Tip({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <Tooltip.Provider delayDuration={400}>
-      <Tooltip.Root>
-        <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
-        <Tooltip.Portal>
-          <Tooltip.Content sideOffset={6} className="z-50 rounded-md bg-ink px-2 py-1 text-xs text-paper shadow-md">
-            {label}
-          </Tooltip.Content>
-        </Tooltip.Portal>
-      </Tooltip.Root>
-    </Tooltip.Provider>
+/**
+ * A tooltip over its one child, which must pass `data-tip` on to its element (elements, `Link`, Radix triggers do).
+ * Nothing is mounted per tip: one `TipLayer` finds `[data-tip]` under the pointer or focus, so a page full of icon
+ * buttons costs nothing extra to render.
+ */
+export function Tip({ label, children }: { label: string; children: ReactElement<{ 'data-tip'?: string }> }) {
+  return cloneElement(children, { 'data-tip': label });
+}
+
+const TIP_DELAY = 400;
+/** Moving from one tip to the next within this shows the next at once. */
+const TIP_SKIP = 300;
+const TIP_GAP = 6;
+
+/** The one tooltip of the app, mounted once at the root. */
+export function TipLayer() {
+  const [tip, setTip] = useState<{ anchor: HTMLElement; label: string } | null>(null);
+  const bubble = useRef<HTMLDivElement>(null);
+  const tipId = useId();
+
+  useEffect(() => {
+    let timer = 0;
+    let shown: HTMLElement | null = null;
+    let pending: HTMLElement | null = null;
+    let hiddenAt = 0;
+    const show = (el: HTMLElement) => {
+      pending = null;
+      shown = el;
+      setTip({ anchor: el, label: el.dataset.tip ?? '' });
+    };
+    const hide = () => {
+      clearTimeout(timer);
+      pending = null;
+      if (shown) hiddenAt = performance.now();
+      shown = null;
+      setTip(null);
+    };
+    const want = (el: HTMLElement | null, now: boolean) => {
+      if (el === shown || (el && el === pending && !now)) return;
+      clearTimeout(timer);
+      if (!el) return hide();
+      if (now || shown || performance.now() - hiddenAt < TIP_SKIP) show(el);
+      else {
+        pending = el;
+        timer = window.setTimeout(() => show(el), TIP_DELAY);
+      }
+    };
+    const target = (e: Event) => (e.target instanceof Element ? e.target.closest<HTMLElement>('[data-tip]') : null);
+    const over = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') want(target(e), false);
+    };
+    const out = (e: PointerEvent) => {
+      if (!(e.relatedTarget instanceof Element && e.relatedTarget.closest('[data-tip]') === target(e))) want(null, false);
+    };
+    // Only keyboard focus shows a tip; a click focuses too and should not.
+    const focusIn = (e: FocusEvent) => {
+      const el = target(e);
+      if (el?.matches(':focus-visible')) want(el, true);
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && shown) hide();
+    };
+    document.addEventListener('pointerover', over);
+    document.addEventListener('pointerout', out);
+    document.addEventListener('pointerdown', hide, true);
+    document.addEventListener('focusin', focusIn);
+    document.addEventListener('focusout', hide);
+    document.addEventListener('keydown', key, true);
+    window.addEventListener('scroll', hide, true);
+    window.addEventListener('blur', hide);
+    // A trigger that goes away (a page change) takes its tip with it.
+    const gone = setInterval(() => {
+      if (shown && !shown.isConnected) hide();
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(gone);
+      document.removeEventListener('pointerover', over);
+      document.removeEventListener('pointerout', out);
+      document.removeEventListener('pointerdown', hide, true);
+      document.removeEventListener('focusin', focusIn);
+      document.removeEventListener('focusout', hide);
+      document.removeEventListener('keydown', key, true);
+      window.removeEventListener('scroll', hide, true);
+      window.removeEventListener('blur', hide);
+    };
+  }, []);
+
+  // Above the trigger, or below when there is no room; kept inside the window.
+  useLayoutEffect(() => {
+    const b = bubble.current;
+    if (!tip || !b) return;
+    const a = tip.anchor.getBoundingClientRect();
+    const w = b.offsetWidth;
+    const h = b.offsetHeight;
+    const top = a.top - TIP_GAP - h >= 4 ? a.top - TIP_GAP - h : a.bottom + TIP_GAP;
+    const left = Math.min(Math.max(a.left + a.width / 2 - w / 2, 4), window.innerWidth - w - 4);
+    b.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+    b.style.visibility = 'visible';
+    // Described by the tip, unless it only repeats the trigger's name.
+    const describe = tip.anchor.getAttribute('aria-label') !== tip.label;
+    if (describe) tip.anchor.setAttribute('aria-describedby', tipId);
+    return () => {
+      if (describe) tip.anchor.removeAttribute('aria-describedby');
+    };
+  }, [tip, tipId]);
+
+  if (!tip) return null;
+  return createPortal(
+    <div ref={bubble} id={tipId} role="tooltip" style={{ visibility: 'hidden' }} className="pointer-events-none fixed left-0 top-0 z-50 max-w-xs rounded-md bg-ink px-2 py-1 text-xs text-paper shadow-md">
+      {tip.label}
+    </div>,
+    document.body,
   );
 }
 

@@ -1,6 +1,6 @@
 import { Columns2, PanelTop, Square } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Group, Panel } from 'react-resizable-panels';
+import { Group, Panel } from '@/components/Panels';
 import type { Extension } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import type { Diagnostic } from '@wb/shared';

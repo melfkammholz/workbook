@@ -20,9 +20,10 @@ export function ReplView({ repl, prompt, language }: { repl: Repl; prompt: strin
   const scroller = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Not for an empty log: reading its height lays the page out, once more before an opened exercise is painted.
   useEffect(() => {
     const el = scroller.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && repl.log.length) el.scrollTop = el.scrollHeight;
   }, [repl.log]);
 
   const submit = () => {

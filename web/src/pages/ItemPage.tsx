@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { BookOpen } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Group, Panel, usePanelRef } from 'react-resizable-panels';
+import { Group, Panel, usePanelRef } from '@/components/Panels';
 import { useLocation } from 'wouter';
 import type { HowSolved, Reflection, Status } from '@wb/shared';
 import { ConfirmDialog } from '@/components/Dialogs';
@@ -12,6 +12,7 @@ import { ReflectionDialog, type ReflectionInput, type ReflectionMode } from '@/c
 import { TaskColumn } from '@/components/TaskColumn';
 import { Button, Empty, IconButton, Spinner, clsx } from '@/components/ui';
 import { ResizeHandle } from '@/components/ResizeHandle';
+import { afterPaint } from '@/lib/afterPaint';
 import { api, indexItems, itemHref, keys, neighbours, patchWork, postReflection, recordHints, recordOpen, resetTimer, saveOpenQuestion, statusOf, useItem, useOutline, useSetStatus, useSettings, useState_, useWork, whatsNext, type Work } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { reportSaveFailed } from '@/lib/saveNotice';
@@ -94,9 +95,10 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
   const stateUnknown = state === undefined;
 
   useEffect(() => {
-    void recordOpen(id).then(() => qc.invalidateQueries({ queryKey: keys.state }));
+    const cancel = afterPaint(() => void recordOpen(id).then(() => qc.invalidateQueries({ queryKey: keys.state })));
     document.title = `${plainTitle(meta.title)} · ${outline.title}`;
     return () => {
+      cancel();
       document.title = outline.title;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -10,6 +10,8 @@
 #   --fresh         leave the first-run dialog and the course's focus question unanswered
 #   --host          run with the tools on this machine instead of the toolchain image
 #   --no-build      skip `npm run build` even if sources are newer than the build
+#   --web DIR       serve this web build instead of web/dist (inside this checkout; e.g. a profiling build, which
+#                   `npm run watch` would otherwise overwrite)
 #
 # NODE_ENV=development scripts/test-server.sh: the server logs every request slower than 50 ms (docker logs <name>).
 #
@@ -19,7 +21,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-port=8091 course=server/test/fixtures/course lang=en fresh=0 mode=docker build=1 cmd=start
+port=8091 course=server/test/fixtures/course lang=en fresh=0 mode=docker build=1 cmd=start web=web/dist
 while [ $# -gt 0 ]; do
   case "$1" in
     stop) cmd=stop ;;
@@ -29,6 +31,7 @@ while [ $# -gt 0 ]; do
     --fresh) fresh=1 ;;
     --host) mode=host ;;
     --no-build) build=0 ;;
+    --web) web=$(realpath --relative-to=. "$2"); shift ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
   shift
@@ -60,13 +63,13 @@ fi
 course=$(realpath "$course")
 if [ $mode = docker ]; then
   docker image inspect workbook-toolchain >/dev/null 2>&1 || docker compose -f compose.dev.yaml build >&2
-  docker run -d --rm --name "$name" -p "127.0.0.1:$port:8080" ${NODE_ENV:+-e NODE_ENV=$NODE_ENV} \
+  docker run -d --rm --name "$name" -p "127.0.0.1:$port:8080" ${NODE_ENV:+-e NODE_ENV=$NODE_ENV} -e WEB_DIR=/app/$web \
     -v "$PWD:/app:ro" -v "$course:/content:ro" --tmpfs /data:uid=1000,gid=1000 \
     workbook-toolchain >/dev/null
   logs="docker logs $name"
 else
   data=$(mktemp -d)
-  PORT=$port CONTENT_DIR=$course DATA_DIR=$data WEB_DIR=$PWD/web/dist \
+  PORT=$port CONTENT_DIR=$course DATA_DIR=$data WEB_DIR=$PWD/$web \
     nohup node --disable-warning=ExperimentalWarning server/dist/index.js >"$data/server.log" 2>&1 &
   echo $! >".data-test-$port.pid"
   logs="cat $data/server.log"

@@ -2,13 +2,14 @@ import * as Popover from '@radix-ui/react-popover';
 import { ChevronDown, ChevronUp, Clock, Download, GitCompare, History, MoreHorizontal, Repeat, RotateCcw, Eye, Lock, PencilLine } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EditorView } from '@codemirror/view';
-import { Group, Panel, usePanelRef } from 'react-resizable-panels';
+import { Group, Panel, usePanelRef } from '@/components/Panels';
 import { SLD_TREE_TEST, type CheckRun, type ExerciseMeta, type ItemDetail } from '@wb/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { fetchSample, fetchSolution, fetchVersions, forgetOtherWork, keys, runChecks, saveAnswer, stopChecks, useSettings, type Work } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { readPref, writePref } from '@/lib/shell';
 import { useMediaQuery } from '@/lib/useActiveTime';
+import { afterPaint } from '@/lib/afterPaint';
 import { useWorkLayout } from '@/lib/workLayout';
 import { useDebouncedCallback } from '@/lib/useDebounced';
 import { useRepl, type TypeSpan } from '@/lib/useRepl';
@@ -84,7 +85,9 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
   // An SLD tree opens on its picture.
   const [bottom, setBottom] = useState<BottomTab>(isSld ? 'preview' : 'interpreter');
   const panel = usePanelRef();
-  const [collapsed, setCollapsed] = useState(false);
+  // A text answer rarely needs the interpreter, so there it always starts collapsed, and opening it there is not
+  // remembered. A panel made again (another tab and back) takes its size from this.
+  const [collapsed, setCollapsed] = useState(() => !isCode || readPref(COLLAPSED_KEY, ['open', 'collapsed'], 'open') === 'collapsed');
   const [saved, setSaved] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [run, setRun] = useState<CheckRun | null>(null);
@@ -154,10 +157,8 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCode]);
 
-  // A text answer rarely needs the interpreter, so there it always starts collapsed, and opening it there is not remembered.
   const rememberPanel = isCode;
-  const startCollapsed = !isCode || readPref(COLLAPSED_KEY, ['open', 'collapsed'], 'open') === 'collapsed';
-  // Only an explicit choice is remembered: the panel also reports sizes while it mounts.
+  // Only an explicit choice is remembered, not a drag.
   const toggleBottom = () => {
     const expand = panel.current?.isCollapsed();
     if (expand) panel.current?.expand();
@@ -238,12 +239,15 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
   useEffect(() => {
     if (!canRetry) return;
     let live = true;
-    void fetchVersions(meta.id, slot).then((versions) => {
-      const earlier = versions.filter((v) => v.reason === 'retry').sort((a, b) => b.id - a.id)[0];
-      if (live && earlier) setAttempt(earlier.content);
-    });
+    const cancel = afterPaint(() =>
+      void fetchVersions(meta.id, slot).then((versions) => {
+        const earlier = versions.filter((v) => v.reason === 'retry').sort((a, b) => b.id - a.id)[0];
+        if (live && earlier) setAttempt(earlier.content);
+      }),
+    );
     return () => {
       live = false;
+      cancel();
     };
   }, [canRetry, meta.id, slot]);
 
@@ -540,7 +544,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
               <Panel
                 panelRef={panel}
                 // A collapsed panel stays collapsed across exercises with code. The picture of an SLD tree needs room.
-                defaultSize={startCollapsed ? TAB_ROW_PX : isSld ? '55' : '38'}
+                defaultSize={collapsed ? TAB_ROW_PX : isSld ? '55' : '38'}
                 minSize="15"
                 collapsible
                 collapsedSize={TAB_ROW_PX}
@@ -585,7 +589,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
                 </div>
               </Panel>
               <ResizeHandle direction="column" gutter />
-              <Panel panelRef={panel} defaultSize={startCollapsed ? TAB_ROW_PX : '38'} minSize="15" collapsible collapsedSize={TAB_ROW_PX} onResize={() => setCollapsed(panel.current?.isCollapsed() ?? false)}>
+              <Panel panelRef={panel} defaultSize={collapsed ? TAB_ROW_PX : '38'} minSize="15" collapsible collapsedSize={TAB_ROW_PX} onResize={() => setCollapsed(panel.current?.isCollapsed() ?? false)}>
                 <div className="wb-subcard h-full bg-sheet">{feedback}</div>
               </Panel>
             </Group>

@@ -1,7 +1,6 @@
-import { Separator } from 'react-resizable-panels';
+import { Separator } from './Panels';
 import { clsx } from './ui';
 
-// Not in `ui.tsx`: react-resizable-panels is only needed by the pages that split into panels.
 /**
  * Between two panels: a line, or with `gutter` the gap between two cards on warm paper (a line without it), which shows
  * a grip only while hovered or dragged.

@@ -10,9 +10,9 @@ import { SearchDialog } from '@/components/SearchDialog';
 import { QuickSettings } from '@/components/QuickMenus';
 import { SaveNotice } from '@/components/SaveNotice';
 import { SetupDialog } from '@/components/SetupDialog';
-import { Empty, IconButton, Spinner, clsx } from '@/components/ui';
+import { Empty, IconButton, Spinner, TipLayer, clsx } from '@/components/ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { checkCourseUpdates, keys, statusOf, useCourses, useOutline, useSettings, useState_ } from '@/lib/api';
+import { AppQueries, checkCourseUpdates, keys, statusOf, useCourses, useOutlineQuery, useSettings, useStateQuery, useState_ } from '@/lib/api';
 import { useFlashcards } from '@/lib/flashcards';
 import { useFilters } from '@/lib/filters';
 import { focusExercises } from '@/lib/focus';
@@ -53,8 +53,10 @@ export function App() {
   }, []);
   return (
     <Router hook={useAppLocation}>
+      <AppQueries />
       <Shell />
       <SaveNotice />
+      <TipLayer />
     </Router>
   );
 }
@@ -176,9 +178,9 @@ function NoCourse() {
 function CourseShell() {
   const t = useT();
   const qc = useQueryClient();
-  const outline = useOutline();
+  const outline = useOutlineQuery();
   const courses = useCourses().data;
-  const stateQuery = useState_();
+  const stateQuery = useStateQuery();
   const achievementsOn = !!useSettings().data?.showAchievements;
   const rewardIcon = useRewards().icon;
   const flashcardsOn = !!useSettings().data?.showFlashcards;

@@ -6,3 +6,4 @@ dist
 compose.override.yaml
 .env
 .data-test-*.pid
+dist-*

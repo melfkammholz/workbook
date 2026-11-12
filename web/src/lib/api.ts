@@ -1,4 +1,6 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { hashKey, keepPreviousData, useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { afterPaint } from './afterPaint';
 import { queryClient } from './queryClient';
 import { reportSaveFailed } from './saveNotice';
 import type {
@@ -103,9 +105,17 @@ export const keys = {
   achievements: ['achievements'] as const,
 };
 
-export const useCourses = () => useQuery({ queryKey: keys.courses, queryFn: () => api.get<CoursesResponse>('/api/courses'), staleTime: Infinity });
+/*
+ * The courses, the outline, the student's state and the settings are read by dozens of components on every page. Each
+ * real query observer costs a render, a subscription and a comparison on every page that mounts it, so only
+ * `AppQueries` holds observers for them (fetching, refetching on focus); everyone else reads the cache through
+ * `useCached`, which costs almost nothing. The `...Query` hooks are the full observers, for the few places that need
+ * more than the data.
+ */
 
-export const useOutline = () => {
+export const useCoursesQuery = () => useQuery({ queryKey: keys.courses, queryFn: () => api.get<CoursesResponse>('/api/courses'), staleTime: Infinity });
+
+export const useOutlineQuery = () => {
   const courseOpen = !!useCourses().data?.activeId;
   return useQuery({
     queryKey: keys.outline,
@@ -114,15 +124,58 @@ export const useOutline = () => {
     // Authors edit content while students read: pick up changes when the tab regains focus.
     refetchOnWindowFocus: true,
     staleTime: 10_000,
-    // Not when a component subscribes: many do, on every page, and a fetch started then changes the result for all of
-    // them at once, which re-renders the shell and the page again before the page is painted.
+    // Not when a component subscribes: a fetch started then changes the result for everyone at once, which re-renders
+    // the shell and the page again before the page is painted.
     refetchOnMount: false,
   });
 };
 
-/** Kept current by the app's own writes (they invalidate it), so a page that mounts does not fetch it again. See `useOutline`. */
-export const useState_ = () =>
+/** Kept current by the app's own writes (they invalidate it), so a page that mounts does not fetch it again. See `useOutlineQuery`. */
+export const useStateQuery = () =>
   useQuery({ queryKey: keys.state, queryFn: () => api.get<StateResponse>('/api/state'), placeholderData: keepPreviousData, refetchOnMount: false });
+
+export const useSettingsQuery = () => useQuery({ queryKey: keys.settings, queryFn: () => api.get<Settings>('/api/settings'), staleTime: Infinity });
+
+/** Mounted once at the root: the observers that fetch what `useCourses`, `useOutline`, `useState_` and `useSettings` read. */
+export function AppQueries() {
+  useCoursesQuery();
+  useOutlineQuery();
+  useStateQuery();
+  useSettingsQuery();
+  return null;
+}
+
+/** Listeners per query hash, behind one subscription to the cache. */
+const cacheListeners = new Map<string, Set<() => void>>();
+let cacheSubscribed = false;
+function listenTo(hash: string, cb: () => void) {
+  if (!cacheSubscribed) {
+    cacheSubscribed = true;
+    queryClient.getQueryCache().subscribe((e) => cacheListeners.get(e.query.queryHash)?.forEach((f) => f()));
+  }
+  let set = cacheListeners.get(hash);
+  if (!set) cacheListeners.set(hash, (set = new Set()));
+  set.add(cb);
+  return () => void set.delete(cb);
+}
+/** Stands for "failed without data", which is not pending any more. */
+const FAILED = Symbol('failed');
+
+/** A query's data as it is in the cache, re-rendering only when the data changes. Fetching is `AppQueries`' job. */
+function useCached<T>(key: QueryKey): { data: T | undefined; isPending: boolean } {
+  const hash = hashKey(key);
+  const subscribe = useCallback((cb: () => void) => listenTo(hash, cb), [hash]);
+  const snap = useSyncExternalStore(subscribe, () => {
+    const st = queryClient.getQueryCache().get(hash)?.state;
+    return st?.status === 'error' && st.data === undefined ? FAILED : (st?.data as T | undefined);
+  });
+  return snap === FAILED ? { data: undefined, isPending: false } : { data: snap as T | undefined, isPending: snap === undefined };
+}
+
+export const useCourses = () => useCached<CoursesResponse>(keys.courses);
+export const useOutline = () => useCached<Outline>(keys.outline);
+export const useState_ = () => useCached<StateResponse>(keys.state);
+export const useSettings = () => useCached<Settings>(keys.settings);
 
 export const useItem = (id: string, version: string | undefined) =>
   useQuery({
@@ -143,8 +196,25 @@ export const useDoc = (url: string) => {
  * it when they open, so a refetch never overwrites what is being typed. The app's own writes keep it current
  * (`patchWork`), so the cached copy is never older than what was typed before.
  */
-export const useWork = (id: string) =>
-  useQuery({ queryKey: keys.work(id), queryFn: () => api.get<Work>(`/api/work/${encodeURIComponent(id)}`), staleTime: 0, gcTime: Infinity });
+export const useWork = (id: string) => {
+  const q = useQuery({
+    queryKey: keys.work(id),
+    queryFn: () => api.get<Work>(`/api/work/${encodeURIComponent(id)}`),
+    staleTime: 0,
+    gcTime: Infinity,
+    // A cached copy is asked for again once the page is painted (below), not while it is being drawn.
+    refetchOnMount: (query) => query.state.data === undefined,
+  });
+  useEffect(
+    () =>
+      afterPaint(() => {
+        const st = queryClient.getQueryState(keys.work(id));
+        if (st?.data !== undefined && st.fetchStatus === 'idle') void queryClient.refetchQueries({ queryKey: keys.work(id), exact: true });
+      }),
+    [id],
+  );
+  return q;
+};
 
 /**
  * Changes the cached work of an exercise, if there is any. A fetch still on its way carries what the server had
@@ -159,7 +229,6 @@ export function patchWork(id: string, f: (w: Work) => Work) {
 /** A shared file is in the work of other exercises too: their cached copies are no longer right. */
 export const forgetOtherWork = (id: string) => queryClient.removeQueries({ queryKey: ['work'], predicate: (q) => q.queryKey[1] !== id });
 
-export const useSettings = () => useQuery({ queryKey: keys.settings, queryFn: () => api.get<Settings>('/api/settings'), staleTime: Infinity });
 
 /** The student's own work, for the review page. */
 export const useReviewData = () => useQuery({ queryKey: keys.mine, queryFn: () => api.get<ReviewData>('/api/review'), staleTime: 0 });

@@ -2,7 +2,7 @@ import { setDiagnostics, type Diagnostic as CmDiagnostic } from '@codemirror/lin
 import { EditorState, Prec, StateEffect, StateField, type Extension } from '@codemirror/state';
 import { Decoration, EditorView, hoverTooltip, keymap, type DecorationSet } from '@codemirror/view';
 import type { Diagnostic, TypeInfo } from '@wb/shared';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSettings } from '@/lib/api';
 import { baseExtensions, type EditorVariant } from '@/lib/editor';
 import { isKnown, languageFor, loadLanguage } from '@/lib/highlighter';
@@ -60,6 +60,32 @@ function tokenAt(text: string, column: number): { from: number; to: number } | n
   return null;
 }
 
+/**
+ * A view made ahead of time, while the browser is idle: building one (its DOM, observers, measuring) is a large part
+ * of opening an exercise. An editor that mounts takes it and gives it its own state; a new spare follows when idle.
+ */
+let spare: EditorView | null = null;
+let spareQueued = false;
+function queueSpare() {
+  if (spare || spareQueued) return;
+  spareQueued = true;
+  const idle = window.requestIdleCallback ?? ((f: () => void) => setTimeout(f, 200));
+  idle(() => {
+    spareQueued = false;
+    spare ??= new EditorView({ state: EditorState.create() });
+  });
+}
+function takeView(parent: HTMLElement, state: EditorState): EditorView {
+  const v = spare;
+  spare = null;
+  queueSpare();
+  if (!v) return new EditorView({ parent, state });
+  parent.appendChild(v.dom);
+  v.setState(state);
+  return v;
+}
+if (typeof window !== 'undefined') queueSpare();
+
 /** Vim keys, loaded the first time an editor wants them (most students never do). */
 let vimKeymap: typeof import('@replit/codemirror-vim').vim | null = null;
 
@@ -99,10 +125,18 @@ export function CodeMirrorEditor({ value, onChange, language, diagnostics, readO
   const hoogleRef = useRef('');
   hoogleRef.current = t.lookUpInHoogle;
 
-  useEffect(() => {
-    const v = new EditorView({
-      parent: host.current!,
-      state: EditorState.create({
+  // Whether the view shows diagnostics or a hover line. A view without them needs no empty set: every dispatch reads
+  // the DOM selection, which lays the page out once more before an opened exercise is painted.
+  const hasDiagnostics = useRef(false);
+  const hasHoverLine = useRef(false);
+
+  // A layout effect: the editor is in the page before anything measures it, so it is laid out once.
+  useLayoutEffect(() => {
+    hasDiagnostics.current = false;
+    hasHoverLine.current = false;
+    const v = takeView(
+      host.current!,
+      EditorState.create({
         doc: value,
         extensions: [
           // First, so that it sees every key before the normal bindings do.
@@ -169,7 +203,7 @@ export function CodeMirrorEditor({ value, onChange, language, diagnostics, readO
           }),
         ],
       }),
-    });
+    );
     view.current = v;
     onViewRef.current?.(v);
     return () => {
@@ -189,6 +223,8 @@ export function CodeMirrorEditor({ value, onChange, language, diagnostics, readO
   useEffect(() => {
     const v = view.current;
     if (!v) return;
+    if (!diagnostics?.length && !hasDiagnostics.current) return;
+    hasDiagnostics.current = !!diagnostics?.length;
     const doc = v.state.doc;
     const out: CmDiagnostic[] = (diagnostics ?? []).map((d) => {
       const line = doc.line(Math.min(Math.max(d.line, 1), doc.lines));
@@ -204,6 +240,8 @@ export function CodeMirrorEditor({ value, onChange, language, diagnostics, readO
   }, [diagnostics, language, languageReady, readOnly, lineNumbers, wrap, variant, vimKeys, tabMovesFocus]);
 
   useEffect(() => {
+    if (hoverLine == null && !hasHoverLine.current) return;
+    hasHoverLine.current = hoverLine != null;
     view.current?.dispatch({ effects: setHoverLine.of(hoverLine ?? null) });
   }, [hoverLine, language, languageReady, readOnly, lineNumbers, wrap, variant, vimKeys, tabMovesFocus]);
 

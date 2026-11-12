@@ -36,8 +36,11 @@ const MAX_LOG_CHARS = 200_000;
  * One warm interpreter per open exercise. `load(files)` is cheap to call on
  * every change: the server coalesces, and only the newest version is compiled.
  */
+/** Before the socket is open. One object, so that setting it again is no change. */
+const FRESH: ReplState = { connection: 'connecting', busy: false, loaded: null, loading: false, log: [], exitReason: null, sldTree: undefined, sldStale: false };
+
 export function useRepl(exerciseId: string, enabled: boolean) {
-  const [state, setState] = useState<ReplState>({ connection: 'connecting', busy: false, loaded: null, loading: false, log: [], exitReason: null, sldTree: undefined, sldStale: false });
+  const [state, setState] = useState<ReplState>(FRESH);
   const ws = useRef<WebSocket | null>(null);
   const latest = useRef<Record<string, string> | null>(null);
   const outstanding = useRef(0);
@@ -49,7 +52,8 @@ export function useRepl(exerciseId: string, enabled: boolean) {
 
   useEffect(() => {
     if (!enabled) return;
-    setState({ connection: 'connecting', busy: false, loaded: null, loading: false, log: [], exitReason: null, sldTree: undefined, sldStale: false });
+    // Unchanged on the first connect, so opening an exercise does not render it twice before it paints.
+    setState((s) => (s === FRESH ? s : FRESH));
     outstanding.current = 0;
     ready.current = false;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
