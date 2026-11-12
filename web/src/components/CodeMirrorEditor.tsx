@@ -2,11 +2,13 @@ import { setDiagnostics, type Diagnostic as CmDiagnostic } from '@codemirror/lin
 import { EditorState, Prec, StateEffect, StateField, type Extension } from '@codemirror/state';
 import { Decoration, EditorView, hoverTooltip, keymap, type DecorationSet } from '@codemirror/view';
 import type { Diagnostic, TypeInfo } from '@wb/shared';
+import { FileSearch } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSettings } from '@/lib/api';
 import { baseExtensions, type EditorVariant } from '@/lib/editor';
 import { isKnown, languageFor, loadLanguage } from '@/lib/highlighter';
 import { typstCompletions } from '@/lib/typst';
+import { openPdfRefPicker } from '@/lib/pdfRefPicker';
 import { useT } from '@/lib/i18n';
 
 export interface EditorProps {
@@ -95,7 +97,9 @@ let vimKeymap: typeof import('@replit/codemirror-vim').vim | null = null;
  */
 export function CodeMirrorEditor({ value, onChange, language, diagnostics, readOnly, lineNumbers, wrap, placeholder, onSubmit, label, variant, typeOf, onView, tabMovesFocus, extensions, hoverLine }: EditorProps) {
   const t = useT();
-  const wantsVim = useSettings().data?.editorKeys === 'vim' && !readOnly;
+  const settings = useSettings().data;
+  const materials = settings?.showMaterials;
+  const wantsVim = settings?.editorKeys === 'vim' && !readOnly;
   const [, loaded] = useState(0);
   useEffect(() => {
     if (wantsVim && !vimKeymap)
@@ -161,6 +165,19 @@ export function CodeMirrorEditor({ value, onChange, language, diagnostics, readO
                   return !!onSubmitRef.current;
                 },
               },
+              // A reference to a PDF or one of its highlights, in any Typst text.
+              ...(language === 'typst'
+                ? [
+                    {
+                      key: 'Alt-r',
+                      run: (view: EditorView) =>
+                        openPdfRefPicker((text) => {
+                          view.dispatch(view.state.replaceSelection(text));
+                          view.focus();
+                        }),
+                    },
+                  ]
+                : []),
             ]),
           ),
           hoverTooltip(async (view, pos) => {
@@ -246,5 +263,28 @@ export function CodeMirrorEditor({ value, onChange, language, diagnostics, readO
   }, [hoverLine, language, languageReady, readOnly, lineNumbers, wrap, variant, vimKeys, tabMovesFocus]);
 
   // `isolate`: CodeMirror's own panels and tooltips use high z-indexes, which must not reach dialogs above the editor.
-  return <div ref={host} className="isolate h-full min-h-0 overflow-hidden" />;
+  const refButton = language === 'typst' && !readOnly && !!materials;
+  const editor = <div ref={host} className="isolate h-full min-h-0 overflow-hidden" />;
+  if (!refButton) return editor;
+  return (
+    <div className="group/ed relative h-full min-h-0">
+      {editor}
+      <button
+        type="button"
+        data-tip={`${t.pdfRefInsert} (Alt+r)`}
+        aria-label={t.pdfRefInsert}
+        onClick={() =>
+          openPdfRefPicker((text) => {
+            const v = view.current;
+            if (!v) return;
+            v.dispatch(v.state.replaceSelection(text));
+            v.focus();
+          })
+        }
+        className="absolute right-2 top-1.5 z-10 grid size-7 place-items-center rounded-md border border-line bg-sheet/90 text-ink-3 opacity-0 transition-opacity hover:text-ink focus-visible:opacity-100 group-focus-within/ed:opacity-100 group-hover/ed:opacity-100"
+      >
+        <FileSearch size={15} />
+      </button>
+    </div>
+  );
 }

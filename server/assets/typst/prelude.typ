@@ -40,6 +40,22 @@
   if body == none { [] } else { body },
 )
 
+/// A pointer to a PDF in the student's materials, or to a highlight in it:
+/// `#pdf-ref("r-3fa9", "<highlight id>", quote: "the passage")`. The app writes the title and page; `quote` is what
+/// stays if the file or the highlight is deleted.
+#let pdf-ref(resource, ..target, quote: none) = {
+  let t = target.pos().at(0, default: none)
+  html.elem(
+    "a",
+    attrs: (
+      class: "wb-pdf-ref",
+      data-pdf-ref: resource + if t == none { "" } else { "/" + t },
+      href: "#/resources/" + resource + if t == none { "" } else { "/" + t },
+    ),
+    if quote == none { [] } else { quote },
+  )
+}
+
 // ───────────────────────── widgets ─────────────────────────
 //
 // Things to try out in a lesson (or any other text). The author configures them,

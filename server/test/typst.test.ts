@@ -193,6 +193,21 @@ describe.skipIf(!have)('TypstRenderer', () => {
     expect(out.remarks).toHaveLength(1);
   });
 
+  it('writes a PDF reference as title and page, or keeps the quote when it is gone', async () => {
+    r.pdfRefs = (res, target) => (res === 'r-1' ? { title: 'Skript', page: target ? 42 : null } : undefined);
+    try {
+      const out = await r.renderNote('#pdf-ref("r-1", "h-9", quote: "ein Satz") und #pdf-ref("r-1") und #pdf-ref("r-2", "h-1", quote: "weg")');
+      expect(out.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+      expect(out.html).toMatch(/<a [^>]*data-pdf-ref="r-1\/h-9"[^>]*href="#\/resources\/r-1\/h-9"[^>]*title="ein Satz"[^>]*>Skript, S\. 42<\/a>/);
+      expect(out.html).toMatch(/data-pdf-ref="r-1"[^>]*>Skript<\/a>/);
+      expect(out.html).toMatch(/wb-pdf-ref-broken[^>]*>weg<\/a>/);
+      const deck = await r.renderDeck('#flashcard(id: "a")[Q][A #pdf-ref("r-1", "h-9", quote: "ein Satz")]');
+      expect(deck.html).toContain('>Skript, S. 42</a>');
+    } finally {
+      r.pdfRefs = () => undefined;
+    }
+  });
+
   it('maps compile errors back to lines of the author file', async () => {
     const item = { ...content.get('strong-typing')!, typst: 'fine line\n\n#nonexistent(1)\n' };
     const out = await r.renderItem(item);

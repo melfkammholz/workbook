@@ -102,6 +102,8 @@ export class TypstRenderer {
   private readonly max: number;
   /** Id → title, kept current by the owner when content reloads. */
   titles: (id: string) => string | undefined = () => undefined;
+  /** What `#pdf-ref(resource, target)` points at now (the material's title, the highlight's page); undefined once it is gone. */
+  pdfRefs: (resource: string, target: string | null) => { title: string; page: number | null } | undefined = () => undefined;
   /** Content language; follows `workbook.yml` and is updated when content reloads. */
   language: string;
 
@@ -247,12 +249,29 @@ export class TypstRenderer {
 
   /** Fills in the (current) title of every `xref` that has no body of its own. */
   private fillXrefs(html: string): string {
-    return html.replace(/<a ([^>]*\bclass="wb-xref"[^>]*)><\/a>/g, (_m, attrs: string) => {
+    return this.fillPdfRefs(html).replace(/<a ([^>]*\bclass="wb-xref"[^>]*)><\/a>/g, (_m, attrs: string) => {
       const id = /\bdata-xref="([^"]*)"/.exec(attrs)?.[1] ?? '';
       const title = this.titles(id);
       const a = title === undefined ? attrs.replace('class="wb-xref"', 'class="wb-xref wb-xref-broken"') : attrs;
       // Code in a title, `like this`, is code in the link too.
       return `<a ${a}>${escape(title ?? id).replace(/`([^`]+)`/g, '<code>$1</code>')}</a>`;
+    });
+  }
+
+  /**
+   * A reference to a PDF reads "Title, p. 42" when it can be found. When the file or the highlight is gone it stays what
+   * the student wrote (the quote), and is marked broken so that it is shown plain.
+   */
+  private fillPdfRefs(html: string): string {
+    return html.replace(/<a ([^>]*\bclass="wb-pdf-ref"[^>]*)>([\s\S]*?)<\/a>/g, (_m, attrs: string, body: string) => {
+      const ref = /\bdata-pdf-ref="([^"]*)"/.exec(attrs)?.[1] ?? '';
+      const slash = ref.indexOf('/');
+      const found = this.pdfRefs(slash < 0 ? ref : ref.slice(0, slash), slash < 0 ? null : ref.slice(slash + 1));
+      if (!found) return `<a ${attrs.replace('class="wb-pdf-ref"', 'class="wb-pdf-ref wb-pdf-ref-broken"')}>${body}</a>`;
+      const quote = body.replace(/<[^>]*>/g, '').trim();
+      const label = found.page === null ? found.title : `${found.title}, ${PAGE_ABBR(found.page)}`;
+      const title = quote ? ` title="${escape(quote).replace(/"/g, '&quot;')}"` : '';
+      return `<a ${attrs}${title}>${escape(label)}</a>`;
     });
   }
 
@@ -399,6 +418,8 @@ export class TypstRenderer {
   }
 }
 
+/** The page in a reference chip: the app's text language is not known here, and "S." is what the German course texts say. */
+const PAGE_ABBR = (n: number) => `S. ${n}`;
 const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 function parseDiagnostics(stderr: string, headerLines: number, wrapperName: string): TypstDiagnostic[] {

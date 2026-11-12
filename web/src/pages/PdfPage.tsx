@@ -3,7 +3,7 @@ import { rectsTop, type PdfAnnotation, type Resource } from '@wb/shared';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { ChevronLeft, ChevronRight, Maximize, PanelRight, PanelRightClose, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PdfHighlightLayer, type Editing } from '@/components/PdfHighlights';
+import { CopyRefButton, PdfHighlightLayer, type Editing } from '@/components/PdfHighlights';
 import { NotesView, SlidesView, type Marks, type PdfLayout, type Size } from '@/components/PdfViewer';
 import { IconButton, Segmented, Spinner, Empty } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -53,7 +53,7 @@ function readView(id: string): Partial<ViewState> {
 const num = (v: unknown, fallback: number, min: number, max: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback);
 
 /** A PDF in a viewer of its own: scrolling notes or one slide at a time, with a column on the right. */
-export function PdfPage({ id }: { id: string }) {
+export function PdfPage({ id, highlight }: { id: string; highlight?: string | undefined }) {
   const t = useT();
   const list = useResources(null);
   const resource = list.data?.resources.find((r) => r.id === id);
@@ -71,10 +71,10 @@ export function PdfPage({ id }: { id: string }) {
       </div>
     );
   }
-  return <Viewer key={`${resource.id}-${resource.file.sha256}`} resource={resource} />;
+  return <Viewer key={`${resource.id}-${resource.file.sha256}`} resource={resource} highlight={highlight} />;
 }
 
-function Viewer({ resource }: { resource: Resource }) {
+function Viewer({ resource, highlight }: { resource: Resource; highlight?: string | undefined }) {
   const t = useT();
   const qc = useQueryClient();
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
@@ -94,14 +94,16 @@ function Viewer({ resource }: { resource: Resource }) {
   /** The reading position in the notes, written by the scrolling view, read when saving. */
   const offset = useRef(num(initial.offset, 0, 0, 1));
   const [editing, setEditing] = useState<Editing | null>(null);
+  /** The highlight just jumped to: it pulses once so the eye finds it. */
+  const [flash, setFlash] = useState<string | null>(null);
   const marksOn = usePdfAnnotationsOn();
   const highlights = usePdfAnnotations(resource.id).data;
   const marks: Marks | undefined = useMemo(() => {
     if (!marksOn || !highlights) return undefined;
     const byPage = new Map<number, PdfAnnotation[]>();
     for (const a of highlights) (byPage.get(a.pageIndex) ?? byPage.set(a.pageIndex, []).get(a.pageIndex)!).push(a);
-    return { byPage, active: editing?.id ?? null };
-  }, [marksOn, highlights, editing?.id]);
+    return { byPage, active: editing?.id ?? null, flash };
+  }, [marksOn, highlights, editing?.id, flash]);
   const [typed, setTyped] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const count = doc?.numPages ?? 0;
@@ -183,6 +185,69 @@ function Viewer({ resource }: { resource: Resource }) {
     },
     [count, layout],
   );
+  /**
+   * Scrolls so that the highlight is in the middle of the view. Pages that are not drawn yet are laid out at the size of
+   * the first one, so when they come in and the page changes height this looks again, until the student scrolls.
+   */
+  const centerTimers = useRef<number[]>([]);
+  const flashTimer = useRef(0);
+  const center = useCallback((id: string, smooth: boolean): boolean => {
+    const sc = scroller.current;
+    const boxes = [...(sc?.querySelectorAll<HTMLElement>(`[data-mark="${CSS.escape(id)}"]`) ?? [])].map((m) => m.getBoundingClientRect()).filter((b) => b.width > 0);
+    if (!sc || !boxes.length) return false;
+    const view = sc.getBoundingClientRect();
+    const mid = (Math.min(...boxes.map((b) => b.top)) + Math.max(...boxes.map((b) => b.bottom))) / 2 - view.top;
+    const midX = (Math.min(...boxes.map((b) => b.left)) + Math.max(...boxes.map((b) => b.right))) / 2 - view.left;
+    sc.scrollTo({ top: sc.scrollTop + mid - sc.clientHeight / 2, left: sc.scrollLeft + midX - sc.clientWidth / 2, behavior: smooth ? 'smooth' : 'auto' });
+    return true;
+  }, []);
+  const jumpTo = useCallback(
+    (a: Pick<PdfAnnotation, 'id' | 'pageIndex'>, open: boolean) => {
+      const sc = scroller.current;
+      const stop = () => {
+        centerTimers.current.forEach((x) => clearTimeout(x));
+        centerTimers.current = [];
+      };
+      stop();
+      setCurrent(a.pageIndex + 1);
+      offset.current = 0;
+      if (open) setEditing({ id: a.id, focus: false });
+      setFlash(a.id);
+      clearTimeout(flashTimer.current);
+      flashTimer.current = window.setTimeout(() => setFlash((f) => (f === a.id ? null : f)), 2200);
+      // The slide shown must change first; the notes already have the highlight laid out.
+      const go = (n: number) => centerTimers.current.push(window.setTimeout(() => center(a.id, false), n));
+      if (!center(a.id, false)) go(0);
+      go(60);
+      go(350);
+      go(900);
+      const cancel = () => {
+        stop();
+        sc?.removeEventListener('wheel', cancel);
+        sc?.removeEventListener('pointerdown', cancel);
+      };
+      sc?.addEventListener('wheel', cancel, { passive: true, once: true });
+      sc?.addEventListener('pointerdown', cancel, { once: true });
+    },
+    [center],
+  );
+  useEffect(
+    () => () => {
+      centerTimers.current.forEach((x) => clearTimeout(x));
+      clearTimeout(flashTimer.current);
+    },
+    [],
+  );
+  // Arriving from a reference: the highlight is opened and shown once the pages are there.
+  const arrived = useRef<string | null>(null);
+  useEffect(() => {
+    if (!highlight || !doc || !highlights || !guess || arrived.current === highlight) return;
+    const a = highlights.find((x) => x.id === highlight);
+    if (!a) return;
+    arrived.current = highlight;
+    // After the view has placed itself at the page it remembered.
+    requestAnimationFrame(() => jumpTo(a, true));
+  }, [highlight, doc, highlights, guess, jumpTo]);
   /** The printed label if there is one, else the index. */
   const resolve = (text: string): number | null => {
     const s = text.trim();
@@ -295,14 +360,14 @@ function Viewer({ resource }: { resource: Resource }) {
         </div>
         {marks && doc ? <PdfHighlightLayer resource={resource} scroller={scroller} list={highlights ?? []} editing={editing} setEditing={setEditing} /> : null}
         {column ? (
-          <aside className="w-72 shrink-0 overflow-y-auto border-l border-line bg-sheet p-4 text-sm">
+          <aside data-pdf-column className="w-72 shrink-0 overflow-y-auto border-l border-line bg-sheet p-4 text-sm">
             <h2 className="font-semibold">{resource.title}</h2>
             {resource.author ? <p className="text-ink-2">{resource.author}</p> : null}
             {doc ? <p className="mt-3 font-medium">{t.pdfPageInfo(current, count, labelOf(current))}</p> : null}
             <p className="mt-3 text-[13px] text-ink-2">
               {resource.file.filename} · {formatSize(resource.file.size)}
             </p>
-            {marks && doc ? <PageHighlights list={marks.byPage.get(current - 1) ?? []} editing={editing?.id ?? null} onOpen={(id) => setEditing({ id, focus: false })} /> : null}
+            {marks && doc ? <AllHighlights resource={resource.id} list={highlights ?? []} current={current} labelOf={labelOf} editing={editing?.id ?? null} onJump={(a) => jumpTo(a, true)} /> : null}
           </aside>
         ) : null}
       </div>
@@ -310,28 +375,58 @@ function Viewer({ resource }: { resource: Resource }) {
   );
 }
 
-/** The highlights on the page in view, top to bottom, with what the student wrote; a click opens one. */
-function PageHighlights({ list, editing, onOpen }: { list: PdfAnnotation[]; editing: string | null; onOpen: (id: string) => void }) {
+/**
+ * Every highlight of the PDF in reading order, grouped by page, with what the student wrote. A click jumps to the
+ * highlight (it lands in the middle of the view) and opens it. The page in view is marked.
+ */
+function AllHighlights({ resource, list, current, labelOf, editing, onJump }: { resource: string; list: PdfAnnotation[]; current: number; labelOf: (n: number) => string; editing: string | null; onJump: (a: PdfAnnotation) => void }) {
   const t = useT();
-  const sorted = useMemo(() => [...list].sort((a, b) => rectsTop(a.rects) - rectsTop(b.rects) || a.createdAt - b.createdAt), [list]);
+  const groups = useMemo(() => {
+    const sorted = [...list].sort((a, b) => a.pageIndex - b.pageIndex || rectsTop(a.rects) - rectsTop(b.rects) || a.createdAt - b.createdAt);
+    const out: { page: number; items: PdfAnnotation[] }[] = [];
+    for (const a of sorted) {
+      const last = out[out.length - 1];
+      if (last && last.page === a.pageIndex + 1) last.items.push(a);
+      else out.push({ page: a.pageIndex + 1, items: [a] });
+    }
+    return out;
+  }, [list]);
+  // The page in view comes into view in the column, too, when it has highlights.
+  const column = useRef<HTMLElement>(null);
+  const here = groups.find((g) => g.page === current)?.page;
+  useEffect(() => {
+    const el = column.current?.querySelector<HTMLElement>(`[data-group="${here}"]`);
+    const box = el?.closest('aside');
+    if (!el || !box) return;
+    const top = el.getBoundingClientRect().top - box.getBoundingClientRect().top;
+    if (top < 0 || top > box.clientHeight - 80) box.scrollTo({ top: box.scrollTop + top - 80 });
+  }, [here]);
   return (
-    <section className="mt-5 border-t border-line pt-3" aria-label={t.pdfPageHighlights}>
-      <h3 className="mb-1.5 text-[13px] font-semibold text-ink-2">{t.pdfPageHighlights}</h3>
-      {sorted.length === 0 ? <p className="text-[13px] text-ink-3">{t.pdfPageHighlightsNone}</p> : null}
-      <ul className="space-y-1">
-        {sorted.map((a) => (
-          <li key={a.id}>
-            <button type="button" onClick={() => onOpen(a.id)} aria-current={editing === a.id} className="flex w-full min-w-0 gap-2 rounded-md px-1.5 py-1 text-left hover:bg-sunk aria-[current=true]:bg-sunk">
-              <span {...swatchProps(a.color)} aria-hidden className="wb-ann-swatch mt-[0.2em] w-1 shrink-0 self-stretch rounded-full" />
-              <span className="min-w-0 flex-1">
-                <span className="line-clamp-3 break-words">{a.quote.trim()}</span>
-                {a.review === 'open' ? <span className="mt-0.5 block text-[12px] font-medium text-review">{t.annMarked}</span> : null}
-                {a.comment.trim() ? <span className="mt-0.5 block whitespace-pre-wrap text-[13px] text-ink-2">{a.comment.trim()}</span> : null}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
+    <section ref={column} className="mt-5 border-t border-line pt-3" aria-label={t.pdfAllHighlights}>
+      <h3 className="mb-1.5 text-[13px] font-semibold text-ink-2">{t.pdfAllHighlights}</h3>
+      {groups.length === 0 ? <p className="text-[13px] text-ink-3">{t.pdfAllHighlightsNone}</p> : null}
+      {groups.map((g) => (
+        <div key={g.page} data-group={g.page} className="mb-2">
+          <h4 className={`mb-0.5 px-1.5 text-[12px] font-medium ${g.page === current ? 'text-accent' : 'text-ink-3'}`}>{labelOf(g.page) !== String(g.page) ? `${t.pdfPageN(g.page)} (${labelOf(g.page)})` : t.pdfPageN(g.page)}</h4>
+          <ul className="space-y-0.5">
+            {g.items.map((a) => (
+              <li key={a.id} className="group/h relative">
+                <button type="button" onClick={() => onJump(a)} title={t.pdfJumpTo} aria-current={editing === a.id} className="flex w-full min-w-0 gap-2 rounded-md px-1.5 py-1 pr-8 text-left hover:bg-sunk aria-[current=true]:bg-sunk">
+                  <span {...swatchProps(a.color)} aria-hidden className="wb-ann-swatch mt-[0.2em] w-1 shrink-0 self-stretch rounded-full" />
+                  <span className="min-w-0 flex-1">
+                    <span className="line-clamp-3 break-words">{a.quote.trim()}</span>
+                    {a.review === 'open' ? <span className="mt-0.5 block text-[12px] font-medium text-review">{t.annMarked}</span> : null}
+                    {a.comment.trim() ? <span className="mt-0.5 block whitespace-pre-wrap text-[13px] text-ink-2">{a.comment.trim()}</span> : null}
+                  </span>
+                </button>
+                <span className="absolute right-0.5 top-0.5 opacity-0 focus-within:opacity-100 group-hover/h:opacity-100">
+                  <CopyRefButton resource={resource} a={a} size={14} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </section>
   );
 }

@@ -146,6 +146,7 @@ export class CourseManager {
       const contentDir = path.join(dataDir, 'no-content');
       fs.mkdirSync(contentDir, { recursive: true });
       this.deckRenderer = new TypstRenderer({ bin: this.o.config.typstBin, contentDir, dataDir, assetsDir: this.o.typstAssets, language: 'en' });
+      this.deckRenderer.pdfRefs = (res, target) => this.pdfRef(res, target);
     }
     return this.deckRenderer;
   }
@@ -327,6 +328,19 @@ export class CourseManager {
     return null;
   }
 
+  /** What a `#pdf-ref` points at: the material and, for a highlight, its page (1-based); undefined if either is gone. */
+  pdfRef(resource: string, target: string | null): { title: string; page: number | null } | undefined {
+    let title: string;
+    try {
+      title = this.resources.get(resource).title;
+    } catch {
+      return undefined;
+    }
+    if (!target) return { title, page: null };
+    const h = this.resources.getHighlight(target);
+    return h && h.resource === resource ? { title, page: h.pageIndex + 1 } : undefined;
+  }
+
   /** What a card's `highlight: "course/<annotation id>"` points at; null once the highlight is gone. */
   findHighlight(ref: string): CardHighlight | null {
     const slash = ref.indexOf('/');
@@ -469,6 +483,7 @@ export class CourseManager {
     const contentDir = mounted ? this.o.config.contentDir : this.repo(id);
     const dataDir = mounted ? this.o.config.dataDir : this.home(id);
     const renderer = new TypstRenderer({ bin: this.o.config.typstBin, contentDir, dataDir, assetsDir: this.o.typstAssets, language: 'en' });
+    renderer.pdfRefs = (res, target) => this.pdfRef(res, target);
     const content = new ContentService(contentDir, (c) => {
       renderer.titles = (itemId) => c.get(itemId)?.meta.title;
       renderer.language = c.outline.language;

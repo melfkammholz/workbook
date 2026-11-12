@@ -1,12 +1,35 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { MAX_QUOTE, type AnnotationColor, hitsRects, mergeLineRects, normalizeQuote, quoteAt, toPageRects, type PdfAnnotation, type PageRect, type Resource, type TextQuote } from '@wb/shared';
-import { Check, MessageSquare, RotateCcw, Trash2 } from 'lucide-react';
+import { Check, Layers, Link2, MessageSquare, RotateCcw, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
-import { addPdfHighlight, deletePdfHighlight, updatePdfHighlight } from '@/lib/pdfAnnotations';
+import { useSettings } from '@/lib/api';
+import { addPdfHighlight, deletePdfHighlight, pdfRefText, updatePdfHighlight } from '@/lib/pdfAnnotations';
 import { useT } from '@/lib/i18n';
 import { isTyping } from '@/lib/keys';
 import { useDebouncedCallback } from '@/lib/useDebounced';
+import { MakeCardDialog } from './MakeCardDialog';
 import { Floating, IconAction, LAST_COLOR, Removed, Swatches, lastColor, useSwatches } from './AnnotationLayer';
+
+/** Copies the reference to a highlight, for pasting into a card, a note or an answer; the icon says it worked. */
+export function CopyRefButton({ resource, a, size = 15 }: { resource: string; a: Pick<PdfAnnotation, 'id' | 'quote'>; size?: number }) {
+  const t = useT();
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    if (!done) return;
+    const timer = setTimeout(() => setDone(false), 1400);
+    return () => clearTimeout(timer);
+  }, [done]);
+  return (
+    <IconAction
+      onClick={() => {
+        void navigator.clipboard?.writeText(pdfRefText(resource, a)).then(() => setDone(true));
+      }}
+      label={done ? t.pdfRefCopied : t.pdfCopyRef}
+    >
+      {done ? <Check size={size} className="text-done" /> : <Link2 size={size} />}
+    </IconAction>
+  );
+}
 
 export interface Editing {
   id: string;
@@ -49,6 +72,8 @@ export function PdfHighlightLayer({ resource, scroller, list, editing, setEditin
   const [pop, setPop] = useState<Pop | null>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const swatches = useSwatches();
+  const cards = !!useSettings().data?.showFlashcards;
+  const [card, setCard] = useState<string | null>(null);
   const listRef = useRef(list);
   listRef.current = list;
 
@@ -77,7 +102,8 @@ export function PdfHighlightLayer({ resource, scroller, list, editing, setEditin
       }, 0);
     };
     const onClick = (e: MouseEvent) => {
-      if (inPop(e)) return;
+      // The side column's own buttons (jump to a highlight) open one themselves.
+      if (inPop(e) || (e.target as Element).closest?.('[data-pdf-column]')) return;
       const sel = getSelection();
       if (sel && !sel.isCollapsed) return;
       const el = pageOf(e.target as Node);
@@ -132,7 +158,7 @@ export function PdfHighlightLayer({ resource, scroller, list, editing, setEditin
     };
   }, [scroller]);
 
-  const create = (color: AnnotationColor, then?: 'comment' | 'review', label: string | null = null) => {
+  const create = (color: AnnotationColor, then?: 'comment' | 'review' | 'card', label: string | null = null) => {
     if (pop?.kind !== 'new') return;
     try {
       localStorage.setItem(LAST_COLOR, color);
@@ -142,6 +168,11 @@ export function PdfHighlightLayer({ resource, scroller, list, editing, setEditin
     getSelection()?.removeAllRanges();
     const made = addPdfHighlight(qc, resource.id, { version: resource.file.sha256, pageIndex: pop.page, rects: pop.rects, ...pop.quote, color, label, review: then === 'review' ? 'open' : null });
     setPop(null);
+    if (then === 'card') {
+      setEditing(null);
+      setCard(pdfRefText(resource.id, made));
+      return;
+    }
     setEditing(then ? { id: made.id, focus: then === 'comment' } : null);
   };
 
@@ -151,7 +182,7 @@ export function PdfHighlightLayer({ resource, scroller, list, editing, setEditin
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const i = '123456789'.indexOf(e.key);
-      const action = i >= 0 && swatches[i] ? () => create(swatches[i]!.color, undefined, swatches[i]!.label) : e.key === 'c' ? () => create(lastColor(), 'comment') : e.key === 'r' ? () => create(lastColor(), 'review') : null;
+      const action = i >= 0 && swatches[i] ? () => create(swatches[i]!.color, undefined, swatches[i]!.label) : e.key === 'a' && cards ? () => create(lastColor(), 'card') : e.key === 'c' ? () => create(lastColor(), 'comment') : e.key === 'r' ? () => create(lastColor(), 'review') : null;
       if (!action) return;
       e.preventDefault();
       action();
@@ -172,10 +203,14 @@ export function PdfHighlightLayer({ resource, scroller, list, editing, setEditin
   useEffect(() => {
     if (!editing) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'd' || e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
+      if ((e.key !== 'd' && (e.key !== 'a' || !cards)) || e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
       const a = listRef.current.find((x) => x.id === editing.id);
       if (!a) return;
       e.preventDefault();
+      if (e.key === 'a') {
+        setCard(pdfRefText(resource.id, a));
+        return close();
+      }
       void remove(a);
     };
     document.addEventListener('keydown', onKey);
@@ -188,8 +223,11 @@ export function PdfHighlightLayer({ resource, scroller, list, editing, setEditin
     if (pop) return { rects: [...pop.range.getClientRects()] };
     return ann ? { rects: markRects(ann.id) } : null;
   };
-  if (!pop && !ann) return null;
+  const dialog = card ? <MakeCardDialog open onClose={() => setCard(null)} exerciseId={null} initial={{ back: card }} /> : null;
+  if (!pop && !ann) return dialog;
   return (
+    <>
+    {dialog}
     <Floating anchor={anchor} popRef={popRef} wide={!pop && !!ann}>
       {pop?.kind === 'new' ? (
         <div className="flex items-center gap-1 p-1">
@@ -201,6 +239,11 @@ export function PdfHighlightLayer({ resource, scroller, list, editing, setEditin
           <IconAction onClick={() => create(lastColor(), 'review')} label={`${t.annComeBack} (r)`}>
             <RotateCcw size={15} />
           </IconAction>
+          {cards ? (
+            <IconAction onClick={() => create(lastColor(), 'card')} label={`${t.annMakeCard} (a)`}>
+              <Layers size={15} />
+            </IconAction>
+          ) : null}
         </div>
       ) : pop?.kind === 'notice' ? (
         <p className="max-w-xs px-3 py-2 text-[13px] text-ink-2">{pop.text}</p>
@@ -215,13 +258,14 @@ export function PdfHighlightLayer({ resource, scroller, list, editing, setEditin
           onGone={() => setPop(null)}
         />
       ) : ann ? (
-        <EditPdfHighlight key={ann.id} ann={ann} resourceId={resource.id} focus={editing!.focus} onRemove={() => void remove(ann)} />
+        <EditPdfHighlight key={ann.id} ann={ann} resourceId={resource.id} focus={editing!.focus} onRemove={() => void remove(ann)} onCard={cards ? () => { setCard(pdfRefText(resource.id, ann)); close(); } : undefined} />
       ) : null}
     </Floating>
+    </>
   );
 }
 
-function EditPdfHighlight({ ann, resourceId, focus, onRemove }: { ann: PdfAnnotation; resourceId: string; focus: boolean; onRemove: () => void }) {
+function EditPdfHighlight({ ann, resourceId, focus, onRemove, onCard }: { ann: PdfAnnotation; resourceId: string; focus: boolean; onRemove: () => void; onCard?: (() => void) | undefined }) {
   const t = useT();
   const qc = useQueryClient();
   const [draft, setDraft] = useState(ann.comment);
@@ -246,6 +290,12 @@ function EditPdfHighlight({ ann, resourceId, focus, onRemove }: { ann: PdfAnnota
             <RotateCcw size={15} />
           </IconAction>
         )}
+        <CopyRefButton resource={resourceId} a={ann} />
+        {onCard ? (
+          <IconAction onClick={onCard} label={`${t.annMakeCard} (a)`}>
+            <Layers size={15} />
+          </IconAction>
+        ) : null}
         <button type="button" onClick={onRemove} aria-label={t.annRemove} title={`${t.annRemove} (d)`} className="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-sunk hover:text-danger">
           <Trash2 size={15} />
         </button>

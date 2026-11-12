@@ -46,6 +46,7 @@ import {
 } from '@/lib/routes';
 import { typstContext } from '@/lib/typstContext';
 import { AnnotationLayer } from '@/components/AnnotationLayer';
+import { PdfRefPicker } from '@/components/PdfRefPicker';
 import { useRewards } from '@/lib/rewards';
 import { THREAD_KINDS, type ThreadKind } from '@wb/shared';
 
@@ -123,8 +124,8 @@ function flashcardRoutes() {
       {(p) => <StrugglingPage key={p.deck} deckId={p.deck} />}
     </Route>,
     <Route key="library" path="/library" component={LibraryPage} />,
-    <Route key="pdf" path="/resources/:id">
-      {(p) => <PdfPage id={decodeURIComponent(p.id)} />}
+    <Route key="pdf" path="/resources/:id/:highlight?">
+      {(p) => <PdfPage id={decodeURIComponent(p.id)} highlight={p.highlight ? decodeURIComponent(p.highlight) : undefined} />}
     </Route>,
     <Route key="help" path="/help">
       {() => <HelpPage />}
@@ -433,6 +434,7 @@ function CourseShell() {
 
       <SearchDialog open={searching} onClose={() => setSearching(false)} />
       <AnnotationLayer />
+      <PdfRefPicker />
       {achievementsOn ? <Celebration /> : null}
       <CourseDialog open={switching} onClose={() => setSwitching(false)} />
       <SetupDialog />

@@ -10,6 +10,8 @@ export type PdfLayout = 'notes' | 'slides';
 export interface Marks {
   byPage: Map<number, PdfAnnotation[]>;
   active: string | null;
+  /** One that was just jumped to: it pulses. */
+  flash?: string | null;
 }
 
 export interface Size {
@@ -161,7 +163,7 @@ const PageView = memo(function PageView({ doc, n, fit, guess, near, hidden, cach
               key={i}
               data-mark={a.id}
               {...markStyle(a.color)}
-              className={`wb-pdf-mark absolute${a.review === 'open' ? ' wb-pdf-mark-review' : a.comment.trim() ? ' wb-pdf-mark-comment' : ''}${a.id === marks.active ? ' wb-pdf-mark-active' : ''}`}
+              className={`wb-pdf-mark absolute${a.review === 'open' ? ' wb-pdf-mark-review' : a.comment.trim() ? ' wb-pdf-mark-comment' : ''}${a.id === marks.active ? ' wb-pdf-mark-active' : ''}${a.id === marks.flash ? ' wb-pdf-mark-flash' : ''}`}
               style={{ ...markStyle(a.color).style, left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` }}
             />
           )),

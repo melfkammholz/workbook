@@ -106,3 +106,15 @@ export function rememberPdfPosition(a: Pick<PdfAnnotation, 'resource' | 'pageInd
     /* it then opens where it was */
   }
 }
+
+/** Text as a Typst string literal, on one line and at most `max` characters. */
+export function typstString(s: string, max = 100): string {
+  const flat = s.replace(/\s+/g, ' ').trim();
+  const cut = flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat;
+  return `"${cut.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+/** The reference to a highlight (or to the whole file) as the student writes it in Typst. The quote stays if the file goes. */
+export function pdfRefText(resource: string, a?: Pick<PdfAnnotation, 'id' | 'quote'>): string {
+  return a ? `#pdf-ref(${typstString(resource)}, ${typstString(a.id)}, quote: ${typstString(a.quote)})` : `#pdf-ref(${typstString(resource)})`;
+}
