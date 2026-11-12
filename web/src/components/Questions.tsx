@@ -1,5 +1,5 @@
 import * as Popover from '@radix-ui/react-popover';
-import { Check, Circle, CircleCheck, HelpCircle, Pencil, Trash2, X } from 'lucide-react';
+import { HelpCircle, Pencil, Trash2, X } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { type Question } from '@wb/shared';
 import { askQuestion, deleteQuestion, updateQuestion, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
@@ -209,17 +209,14 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
                 </span>
               ))}
               <span className="min-w-[5.2rem] text-right tabular-nums" title={new Date(q.createdAt).toLocaleString()}>{t.questionAge(days)}</span>
-              <button
-                type="button"
-                role="checkbox"
-                aria-checked={done}
+              <input
+                type="checkbox"
+                checked={done}
                 aria-label={done ? t.questionReopen : t.questionDone}
                 title={done ? t.questionReopen : t.questionDone}
-                onClick={() => void updateQuestion(item, q.id, { status: done ? 'open' : 'done' })}
-                className={clsx('inline-flex size-5 items-center justify-center rounded-full', done ? 'text-done' : 'text-ink-3/50 hover:text-done')}
-              >
-                <CircleCheck size={16} />
-              </button>
+                onChange={() => void updateQuestion(item, q.id, { status: done ? 'open' : 'done' })}
+                className="wb-check shrink-0"
+              />
             </div>
           </div>
         )}
@@ -228,17 +225,14 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
   }
   return (
     <li className="group flex items-start gap-1.5 py-1.5">
-      <button
-        type="button"
-        role="checkbox"
-        aria-checked={done}
+      <input
+        type="checkbox"
+        checked={done}
         aria-label={done ? t.questionReopen : t.questionDone}
         title={done ? t.questionReopen : t.questionDone}
-        onClick={() => void updateQuestion(item, q.id, { status: done ? 'open' : 'done' })}
-        className={clsx('mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full', done ? 'text-done' : 'text-ink-3 hover:text-ink')}
-      >
-        {done ? <Check size={16} /> : <Circle size={16} />}
-      </button>
+        onChange={() => void updateQuestion(item, q.id, { status: done ? 'open' : 'done' })}
+        className="wb-check mt-1 shrink-0"
+      />
       {draft !== null ? (
         <div className="min-w-0 flex-1">
           <textarea
