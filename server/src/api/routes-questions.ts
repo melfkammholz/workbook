@@ -84,6 +84,16 @@ export function questionRoutes(app: FastifyInstance, d: Deps): void {
   // The assistant inbox: what the assistant proposed, and what was decided.
   app.get('/api/changes', async () => d.store.listChanges());
   app.get('/api/changes/pending', async () => ({ pending: d.store.hasPendingChanges() }));
+  app.post('/api/changes/accept', async (req, reply) => {
+    const r = z.object({ ids: z.array(z.string().max(100)).min(1).max(200) }).safeParse(req.body ?? {});
+    if (!r.success) return fail(reply, r.error);
+    const out = d.store.acceptBatch(r.data.ids);
+    return 'error' in out ? reply.code(409).send(out) : out;
+  });
+  app.post<{ Params: { batch: string } }>('/api/changes/batch/:batch/undo', async (req, reply) => {
+    const out = d.store.undoBatch(req.params.batch);
+    return 'error' in out ? reply.code(409).send(out) : out;
+  });
   app.post<{ Params: { id: string; decision: string } }>('/api/changes/:id/:decision', async (req, reply) => {
     const r = z.object({ feedback: z.string().max(500).optional(), after: z.union([z.string().max(8000), z.array(z.string().max(60)).max(12), z.null()]).optional() }).safeParse(req.body ?? {});
     if (!r.success) return fail(reply, r.error);

@@ -2,7 +2,7 @@ import { Check, Pencil, Undo2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { QUESTION_KINDS, type Change, type Question, type QuestionKind } from '@wb/shared';
 import { Button, Empty, Spinner, clsx } from '@/components/ui';
-import { decideChange, useChanges, useQuestions } from '@/lib/api';
+import { acceptChanges, decideChange, undoBatch, useChanges, useQuestions } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { isTyping } from '@/lib/keys';
@@ -17,6 +17,7 @@ export function InboxPage() {
   const [cursor, setCursor] = useState(0);
   const [error, setError] = useState(false);
   const [edit, setEdit] = useState<{ id: string; value: Value } | null>(null);
+  const [marked, setMarked] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState<Record<string, string>>({});
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
 
@@ -41,6 +42,24 @@ export function InboxPage() {
     }
   };
 
+  const acceptMany = async (ids: string[]) => {
+    setError(false);
+    try {
+      if (ids.length === 1) await decideChange(ids[0]!, 'accept', {});
+      else await acceptChanges(ids);
+      setMarked(new Set());
+    } catch {
+      setError(true);
+    }
+  };
+  const toggle = (id: string) =>
+    setMarked((m) => {
+      const n = new Set(m);
+      if (!n.delete(id)) n.add(id);
+      return n;
+    });
+  const markedIds = flat.filter((c) => marked.has(c.id)).map((c) => c.id);
+
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target) || !current) return;
@@ -48,6 +67,8 @@ export function InboxPage() {
       else if (e.key === 'ArrowUp') setCursor((n) => Math.max(n - 1, 0));
       else if (e.key === 'a') void act(current, 'accept');
       else if (e.key === 'x') void act(current, 'reject');
+      else if (e.key === ' ') toggle(current.id);
+      else if (e.key === 'A') void acceptMany(markedIds.length ? markedIds : flat.filter((c) => c.group === current.group).map((c) => c.id));
       else return;
       e.preventDefault();
     };
@@ -69,7 +90,7 @@ export function InboxPage() {
   const question = (id: string) => questions.find((q) => q.id === id);
   const kindName = (k: Value) => (typeof k === 'string' && (QUESTION_KINDS as readonly string[]).includes(k) ? t.questionKinds[k as QuestionKind] : t.inboxNone);
   const show = (c: Change, v: Value) => (c.field === 'kind' ? kindName(v) : c.field === 'labels' ? (Array.isArray(v) && v.length ? v.join(', ') : t.inboxNone) : typeof v === 'string' ? v : t.inboxNone);
-  const fieldName = (c: Change) => (c.field === 'kind' ? t.inboxFieldKind : c.field === 'labels' ? t.inboxFieldLabels : t.inboxFieldAnswer);
+  const fieldName = (c: Change) => (c.field === 'kind' ? t.inboxFieldKind : c.field === 'labels' ? t.inboxFieldLabels : c.field === 'text' ? t.inboxFieldText : t.inboxFieldAnswer);
 
   const editor = (c: Change) => {
     const value = edit?.id === c.id ? edit.value : c.after;
@@ -108,6 +129,16 @@ export function InboxPage() {
         ) : (
           <>
             <p className="mt-3 text-[13px] text-ink-3">{t.inboxKeys}</p>
+            {markedIds.length ? (
+              <div className="mt-3 flex items-center gap-2">
+                <Button size="sm" variant="primary" onClick={() => void acceptMany(markedIds)}>
+                  <Check size={14} aria-hidden /> {t.inboxAcceptMarked}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setMarked(new Set())}>
+                  {t.inboxClearMarks}
+                </Button>
+              </div>
+            ) : null}
             <ul className="mt-4 space-y-4">
               {byGroup.map((group) => {
                 const q = question(group[0]!.ref.id);
@@ -116,7 +147,7 @@ export function InboxPage() {
                     <div className="flex items-start gap-2">
                       <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[14px] font-medium leading-snug">{q?.text || (q && quoteOf(q)) || t.inboxNoText}</p>
                       {group.length > 1 ? (
-                        <Button size="sm" variant="ghost" onClick={() => void Promise.all(group.map((c) => act(c, 'accept')))}>
+                        <Button size="sm" variant="ghost" onClick={() => void acceptMany(group.map((c) => c.id))}>
                           {t.inboxAcceptGroup}
                         </Button>
                       ) : null}
@@ -128,10 +159,16 @@ export function InboxPage() {
                         return (
                           <li key={c.id} ref={(el) => void (el ? rowRefs.current.set(c.id, el) : rowRefs.current.delete(c.id))} onClick={() => setCursor(flat.findIndex((x) => x.id === c.id))} className={clsx('py-2', here && 'rounded-md bg-sunk px-2 -mx-2')}>
                             <div className="flex items-start gap-2">
+                              <input type="checkbox" checked={marked.has(c.id)} onChange={() => toggle(c.id)} aria-label={t.inboxMark} className="mt-1 shrink-0" />
                               <div className="min-w-0 flex-1 text-[13.5px]">
                                 <span className="font-medium text-ink-2">{fieldName(c)}: </span>
                                 {editing ? (
                                   editor(c)
+                                ) : c.field === 'text' ? (
+                                  <>
+                                    <p className="mt-0.5 whitespace-pre-wrap break-words text-ink-3 line-through decoration-ink-3/50">{show(c, c.before)}</p>
+                                    <p className="mt-1 whitespace-pre-wrap break-words">{show(c, c.after)}</p>
+                                  </>
                                 ) : c.field === 'answer' ? (
                                   <p className="mt-0.5 whitespace-pre-wrap break-words">{show(c, c.after)}</p>
                                 ) : (
@@ -185,7 +222,11 @@ export function InboxPage() {
                     {show(c, c.after)}
                     {c.feedback ? <span className="text-ink-3"> · {c.feedback}</span> : null}
                   </span>
-                  {c.status === 'applied' ? (
+                  {c.status === 'applied' && c.batch && (changes ?? []).filter((x) => x.batch === c.batch && x.status === 'applied').length > 1 ? (
+                    <Button size="sm" variant="ghost" onClick={() => void undoBatch(c.batch!).catch(() => setError(true))}>
+                      <Undo2 size={13} aria-hidden /> {t.inboxUndoBatch}
+                    </Button>
+                  ) : c.status === 'applied' ? (
                     <Button size="sm" variant="ghost" onClick={() => void act(c, 'undo')}>
                       <Undo2 size={13} aria-hidden /> {t.inboxUndo}
                     </Button>

@@ -629,6 +629,13 @@ export const MIGRATIONS: Migration[] = [
   CREATE INDEX changes_status ON changes (status, created_at);
   CREATE INDEX changes_ref ON changes (ref_kind, ref_id);
   `,
+  /*
+   * 23: one undo per batch. Proposals accepted together (the "accept all" of the inbox) share a `batch_id`; undoing
+   * the batch puts all of them back. The field `text` (a rewrite of the question) needs no column.
+   */ `
+  ALTER TABLE changes ADD COLUMN batch_id TEXT;
+  CREATE INDEX changes_batch ON changes (batch_id);
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

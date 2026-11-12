@@ -534,7 +534,7 @@ export class Store {
    * An assistant proposes changes to one question; they wait in the inbox. A pending proposal for the same field is
    * replaced. Returns what was filed, or why not.
    */
-  propose(who: string, questionId: string, p: { kind?: QuestionKind | null; labels?: string[]; answer?: string; reason?: string }): { ids: string[] } | { error: string } {
+  propose(who: string, questionId: string, p: { kind?: QuestionKind | null; labels?: string[]; answer?: string; text?: string; reason?: string }): { ids: string[] } | { error: string } {
     const q = this.getQuestion(questionId);
     if (!q) return { error: 'unknown question' };
     const wanted: [ChangeField, string | string[] | null, string | string[] | null][] = [];
@@ -549,6 +549,7 @@ export class Store {
       if (next.length !== cur.length) wanted.push(['labels', cur, next]);
     }
     if (p.answer !== undefined && p.answer.trim()) wanted.push(['answer', q.answer, p.answer.trim().slice(0, 8000)]);
+    if (p.text !== undefined && p.text.trim() && p.text.trim() !== q.text) wanted.push(['text', q.text, p.text.trim().slice(0, MAX_QUESTION)]);
     if (!wanted.length) return { error: 'nothing to change' };
     const pending = Number(this.get("SELECT COUNT(*) AS n FROM changes WHERE status = 'pending'")!.n);
     const replaced = wanted.filter(([f]) => this.get("SELECT 1 FROM changes WHERE status = 'pending' AND ref_kind = 'question' AND ref_id = ? AND field = ?", questionId, f)).length;
@@ -588,7 +589,7 @@ export class Store {
   private expireStale(): void {
     const t = this.now();
     this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE status = 'pending' AND ref_kind = 'question' AND NOT EXISTS (SELECT 1 FROM questions q WHERE q.id = changes.ref_id)", t);
-    this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE status = 'pending' AND field = 'answer' AND EXISTS (SELECT 1 FROM questions q WHERE q.id = changes.ref_id AND q.updated_at <> changes.base_version)", t);
+    this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE status = 'pending' AND field IN ('answer','text') AND EXISTS (SELECT 1 FROM questions q WHERE q.id = changes.ref_id AND q.updated_at <> changes.base_version)", t);
   }
 
   /** Applies a proposal (`after` replaces the proposed value, for accept after editing) or turns it down. */
@@ -636,6 +637,51 @@ export class Store {
     return rowToChange(this.get('SELECT * FROM changes WHERE id = ?', id)!);
   }
 
+  /** Accepts several proposals as one batch (one undo). All or none: if one cannot be applied, nothing changes. */
+  acceptBatch(ids: string[]): { batch: string; changes: Change[] } | { error: string } {
+    this.expireStale();
+    const unique = [...new Set(ids)];
+    if (!unique.length) return { error: 'nothing to accept' };
+    const batch = `b-${randomUUID()}`;
+    try {
+      this.tx(() => {
+        for (const id of unique) {
+          const r = this.get('SELECT * FROM changes WHERE id = ?', id);
+          if (!r) throw new ChangeError('unknown change');
+          const c = rowToChange(r);
+          if (c.status !== 'pending') throw new ChangeError(`already ${c.status}`);
+          const err = this.applyField(c.ref.id, c.field, c.after);
+          if (err) throw new ChangeError(err);
+          this.run("UPDATE changes SET status = 'applied', batch_id = ?, decided_at = ? WHERE id = ?", batch, this.now(), id);
+        }
+      });
+    } catch (e) {
+      if (e instanceof ChangeError) return { error: e.message };
+      throw e;
+    }
+    return { batch, changes: unique.map((id) => rowToChange(this.get('SELECT * FROM changes WHERE id = ?', id)!)) };
+  }
+
+  /** Undoes every applied change of a batch, newest first. All or none. */
+  undoBatch(batch: string): Change[] | { error: string } {
+    const rows = this.all("SELECT * FROM changes WHERE batch_id = ? AND status = 'applied' ORDER BY decided_at DESC, rowid DESC", batch);
+    if (!rows.length) return { error: 'nothing to undo in this batch' };
+    try {
+      this.tx(() => {
+        for (const r of rows) {
+          const c = rowToChange(r);
+          const err = this.applyField(c.ref.id, c.field, c.before, true);
+          if (err) throw new ChangeError(err);
+          this.run("UPDATE changes SET status = 'undone', decided_at = ? WHERE id = ?", this.now(), c.id);
+        }
+      });
+    } catch (e) {
+      if (e instanceof ChangeError) return { error: e.message };
+      throw e;
+    }
+    return rows.map((r) => rowToChange(this.get('SELECT * FROM changes WHERE id = ?', r.id as string)!));
+  }
+
   /** Kind and labels leave `updated_at` alone, so a proposal for the answer is not made stale by another one of the group. */
   private applyField(questionId: string, field: ChangeField, value: string | string[] | null, undo = false): string | null {
     const q = this.getQuestion(questionId);
@@ -645,9 +691,17 @@ export class Store {
       this.run('UPDATE questions SET kind = ? WHERE id = ?', (value as string | null) ?? null, questionId);
     } else if (field === 'labels') {
       this.setQuestionLabels(questionId, Array.isArray(value) ? value : []);
+    } else if (field === 'text') {
+      if (typeof value !== 'string' || !value.trim()) return 'the question needs text';
+      this.updateQuestion(questionId, { text: value });
     } else {
       if (undo) this.updateQuestion(questionId, { answer: (value as string | null) ?? null, status: 'open' });
       else this.updateQuestion(questionId, { answer: typeof value === 'string' ? value : null, status: 'done' });
+    }
+    if (field === 'answer' || field === 'text') {
+      // Another waiting proposal for the same question (answer and rewrite come in one group) stays current.
+      const now = this.getQuestion(questionId)!.updatedAt;
+      this.run("UPDATE changes SET base_version = ? WHERE status = 'pending' AND ref_kind = 'question' AND ref_id = ? AND field IN ('answer','text')", now, questionId);
     }
     return null;
   }
@@ -1104,6 +1158,7 @@ function rowToChange(r: Row): Change {
     before: parse(r.before),
     after: parse(r.after),
     group: r.group_id as string,
+    batch: (r.batch_id as string | null) ?? null,
     status: r.status as ChangeStatus,
     reason: r.reason as string,
     feedback: r.feedback as string,

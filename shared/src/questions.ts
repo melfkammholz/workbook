@@ -38,8 +38,8 @@ export type QuestionKind = (typeof QUESTION_KINDS)[number];
 /** At most this many proposals wait in the inbox; beyond that the assistant is told it is full. */
 export const MAX_PENDING_CHANGES = 100;
 
-/** What a proposal changes about a question: its type, its labels (all names it should carry) or an answer. */
-export type ChangeField = 'kind' | 'labels' | 'answer';
+/** What a proposal changes about a question: its type, its labels (all names it should carry), an answer or a rewrite of its text. */
+export type ChangeField = 'kind' | 'labels' | 'answer' | 'text';
 export type ChangeStatus = 'pending' | 'applied' | 'rejected' | 'expired' | 'undone';
 
 /**
@@ -62,6 +62,8 @@ export interface Change {
   reason: string;
   /** What the student told the assistant when deciding. Visible to it. */
   feedback: string;
+  /** Proposals accepted together share a batch; undoing it undoes them all. */
+  batch: string | null;
   createdAt: number;
   decidedAt: number | null;
 }

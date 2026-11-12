@@ -48,10 +48,10 @@ const TOOLS = [
   { name: 'list_labels', description: "The student's own labels (topics). Reuse these names in propose before inventing new ones.", inputSchema: { type: 'object', properties: {} } },
   {
     name: 'propose',
-    description: `Propose changes to ONE question; they wait in the student's inbox and change nothing until accepted. Give any of: type (one of ${QUESTION_KINDS.join(', ')}; null clears), labels (names to add; a name that is new becomes a label, so prefer existing ones), answer (a short answer; accepting it closes the question), reason (one line). Never re-propose what was rejected: read list_proposals first.`,
+    description: `Propose changes to ONE question; they wait in the student's inbox and change nothing until accepted. Give any of: type (one of ${QUESTION_KINDS.join(', ')}; null clears), labels (names to add; a name that is new becomes a label, so prefer existing ones), answer (a short answer; accepting it closes the question), text (a clearer rewording of the question itself; the student sees the original next to it and can undo, so keep the meaning), reason (one line). Never re-propose what was rejected: read list_proposals first.`,
     inputSchema: {
       type: 'object',
-      properties: { question: { type: 'string' }, type: { type: ['string', 'null'], enum: [...QUESTION_KINDS, null] }, labels: { type: 'array', items: { type: 'string' } }, answer: { type: 'string' }, reason: { type: 'string' } },
+      properties: { question: { type: 'string' }, type: { type: ['string', 'null'], enum: [...QUESTION_KINDS, null] }, labels: { type: 'array', items: { type: 'string' } }, answer: { type: 'string' }, text: { type: 'string' }, reason: { type: 'string' } },
       required: ['question'],
     },
   },
@@ -210,6 +210,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
           ...(type !== undefined ? { kind: type as QuestionKind | null } : {}),
           ...(labels ? { labels } : {}),
           ...(typeof a.answer === 'string' ? { answer: a.answer } : {}),
+          ...(typeof a.text === 'string' ? { text: a.text } : {}),
           ...(typeof a.reason === 'string' ? { reason: a.reason } : {}),
         });
         if ('error' in r) throw new ToolError(r.error);

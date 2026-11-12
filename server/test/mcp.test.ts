@@ -135,6 +135,26 @@ describe('assistant bridge', () => {
     expect(mine[0]).toMatchObject({ field: 'kind', after: 'example', studentSaid: 'kein Beispiel' });
   });
 
+  it('rewrites a question and accepts and undoes several proposals as one batch', async () => {
+    const q = JSON.parse((await tool('list_questions')).text)[0];
+    const before = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.id);
+    const filed = await tool('propose', { question: q.id, type: 'check', text: 'Wie faltet foldr eine Liste?', answer: 'Von rechts.' });
+    expect(JSON.parse(filed.text).filed).toBe(3);
+    const pending = ((await app.inject({ method: 'GET', url: '/api/changes' })).json() as { id: string; field: string; status: string; before: unknown }[]).filter((c) => c.status === 'pending');
+    expect(pending.find((c) => c.field === 'text')!.before).toBe(before.text);
+    const ids = pending.map((c) => c.id);
+    const accepted = (await app.inject({ method: 'POST', url: '/api/changes/accept', payload: { ids } })).json() as { batch: string; changes: { status: string }[] };
+    expect(accepted.changes.every((c) => c.status === 'applied')).toBe(true);
+    const now = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.id);
+    expect(now).toMatchObject({ text: 'Wie faltet foldr eine Liste?', kind: 'check', answer: 'Von rechts.', status: 'done' });
+    // accepting again fails and changes nothing
+    expect((await app.inject({ method: 'POST', url: '/api/changes/accept', payload: { ids } })).statusCode).toBe(409);
+    expect((await app.inject({ method: 'POST', url: `/api/changes/batch/${accepted.batch}/undo` })).statusCode).toBe(200);
+    const undone = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.id);
+    expect(undone).toMatchObject({ text: before.text, kind: before.kind, answer: before.answer, status: before.status });
+    expect((await app.inject({ method: 'POST', url: `/api/changes/batch/${accepted.batch}/undo` })).statusCode).toBe(409);
+  });
+
   it('expires an answer proposal when the question was edited, and caps the inbox', async () => {
     const q = JSON.parse((await tool('list_questions')).text)[0];
     await tool('propose', { question: q.id, answer: 'Antwort' });

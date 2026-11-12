@@ -457,6 +457,27 @@ export const decideChange = async (id: string, decision: 'accept' | 'reject' | '
     void queryClient.invalidateQueries({ queryKey: ['work'] });
   }
 };
+const changesSettled = () => {
+  void queryClient.invalidateQueries({ queryKey: changesKey });
+  void queryClient.invalidateQueries({ queryKey: questionsKey });
+  void queryClient.invalidateQueries({ queryKey: keys.settings });
+  void queryClient.invalidateQueries({ queryKey: ['work'] });
+};
+/** Accepts several proposals as one batch; undoing the batch puts all of them back. */
+export const acceptChanges = async (ids: string[]) => {
+  try {
+    await api.post('/api/changes/accept', { ids });
+  } finally {
+    changesSettled();
+  }
+};
+export const undoBatch = async (batch: string) => {
+  try {
+    await api.post(`/api/changes/batch/${encodeURIComponent(batch)}/undo`, {});
+  } finally {
+    changesSettled();
+  }
+};
 export const saveChecklistAnswer = (id: string, question: string, confidence: number | null, note: string) =>
   api.put(`/api/checklists/${encodeURIComponent(id)}/${encodeURIComponent(question)}`, { confidence, note });
 export const markLandingSeen = () => api.post('/api/landing/seen');
