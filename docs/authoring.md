@@ -1,6 +1,6 @@
-# Writing course content
+# Writing workbook content
 
-A course is a plain folder, usually a git repository. Students mount it into the
+A workbook is a plain folder, usually a git repository. Students mount it into the
 container and update it with `git pull`; the workbook notices changes by itself
 (the page refreshes when students switch back to its tab).
 
@@ -37,14 +37,14 @@ text with Typst, and runs every test program against your reference solution.
 
 ```yaml
 title: Deklarative Programmierung
-id: deklprog            # optional: stable name of the course, see below
+id: deklprog            # optional: stable name of the workbook, see below
 exams:                  # optional: suggested to students as the date their flashcards should be ready by
   - title: Erster Prüfungszeitraum
     date: 2027-02-12
   - title: Zweiter Prüfungszeitraum
     date: 2027-04-01
 language: de            # language of the texts (hyphenation, "Abbildung 1", ...)
-landing: landing.typ    # optional: introduces the course, see below
+landing: landing.typ    # optional: introduces the workbook, see below
 issues: https://github.com/you/course/issues   # optional, see "Reporting problems"
 defaults:               # optional, applies to every exercise
   level: 1
@@ -52,11 +52,11 @@ chapters: [01-basics, 02-types]   # optional; default is the sorted folder names
 ```
 
 Students' flashcards point back to the exercise they came from as `from: "<course id>/<exercise id>"`. Without
-`id:`, the course id is made from the title ("Deklarative Programmierung" becomes `deklarative-programmierung`), so
+`id:`, the workbook id is made from the title ("Deklarative Programmierung" becomes `deklarative-programmierung`), so
 set it before students start making cards if the title may change. Renaming an exercise id breaks the link too: the
 card stays, but the app warns that it points nowhere.
 
-A long course can be divided into **parts**. The order of the parts then sets the
+A long workbook can be divided into **parts**. The order of the parts then sets the
 order of the chapters, and `chapters:` is not needed. The outline becomes
 part → chapter → section → exercise. Chapter numbers continue across parts.
 
@@ -72,20 +72,20 @@ parts:
     chapters: [woche-03]
 ```
 
-A part with `numbered: false` suits material that runs alongside the course, such as the exercises of each week's
+A part with `numbered: false` suits material that runs alongside the workbook, such as the exercises of each week's
 session: adding a chapter there does not move the numbers of the others.
 
 ### The landing page
 
-`landing:` is a Typst file that introduces the course: what it is for, how to work with it, how to reach you
-(for example a Mattermost channel). It opens by itself the first time a student opens the course, and stays one click
+`landing:` is a Typst file that introduces the workbook: what it is for, how to work with it, how to reach you
+(for example a Mattermost channel). It opens by itself the first time a student opens the workbook, and stays one click
 away on the home page. It does not replace the home page, which is where students pick up their work.
 
 ### Reporting problems
 
 Every exercise, page and checklist has a link that opens a new issue with its title and id filled in, never the
-student's work. For a course from a GitHub or GitLab repository this works by itself. `issues:` sets the address
-if the course is mounted, or lives elsewhere; on other hosts the link just opens that address. Without either there
+student's work. For a workbook from a GitHub or GitLab repository this works by itself. `issues:` sets the address
+if the workbook is mounted, or lives elsewhere; on other hosts the link just opens that address. Without either there
 is no link.
 
 ## tags.yml
@@ -146,7 +146,7 @@ items:
 
 * **`start-here`** marks the exercises you want students to do first so the long
   list does not overwhelm them. Without an emoji, a stable animal is picked per exercise.
-* **`extra: true`** marks extra material: what goes beyond the course, for those who want all of it.
+* **`extra: true`** marks extra material: what goes beyond the workbook, for those who want all of it.
   Together with `start-here` it decides what a student's **focus** shows (see below). An exercise is
   never both; `lint` reports that as an error.
 * **Next up** links are computed: if B lists A under `after`, A shows B as "next up".
@@ -156,10 +156,10 @@ items:
 * `intro: intro.typ` next to `title:` adds text to the chapter's start page, for example `#refs[…]` with references.
   Every chapter has a start page with its progress and contents, with or without this.
 
-### Focus: how much of the course a student sees
+### Focus: how much of the workbook a student sees
 
-When students open a course, they choose how much of it they want in sight, and they can change it any time
-in the course menu (next to the course's name). The course states the facts, the app decides what the choices do:
+When students open a workbook, they choose how much of it they want in sight, and they can change it any time
+in the workbook menu (next to the workbook's name). The workbook states the facts, the app decides what the choices do:
 
 | Focus | Shows |
 | --- | --- |
@@ -170,10 +170,10 @@ in the course menu (next to the course's name). The course states the facts, the
 Exercises outside a student's focus fold into one quiet line at the end of their section ("2 more")
 and open with a click. Nothing is renumbered, search finds everything, and
 exercises a student already worked on stay in place. Pages, checklists and chapter texts are always shown, and
-an adventure shows all of its steps (those outside the focus faded). A course without `start-here` does not offer
-Essentials; a course without `extra` offers no difference between Thorough and Everything, which `lint` mentions
+an adventure shows all of its steps (those outside the focus faded). A workbook without `start-here` does not offer
+Essentials; a workbook without `extra` offers no difference between Thorough and Everything, which `lint` mentions
 as a note. A chapter without any `start-here` exercise shows none of its exercises under Essentials, so `lint`
-warns about it once the course marks `start-here` anywhere.
+warns about it once the workbook marks `start-here` anywhere.
 
 Signal tags such as Deep Dive stay labels for students; they do not decide the focus.
 
@@ -237,9 +237,9 @@ A `cetz` canvas works as it is, and a `box` or `block` with a size, fill or stro
 
 For anything else that draws and comes out in pieces, wrap it in `#diagram(…)`, which turns all of it into one picture.
 
-Typst packages are downloaded on first use (the container needs internet then) and cached in the data volume. Course text is rendered with Typst's HTML export, which drops what is laid out like a page: put the output of drawing packages (cetz, fletcher, lovelace, …) inside `#diagram[…]`, which draws it as a picture. fletcher exports a `diagram` of its own, so import it with `as fletcher`. (Students' own notes, answers and cards fall back to a picture automatically when something would be lost; course text does not, so a missing `#diagram` shows up as a warning in `lint --render`.)
+Typst packages are downloaded on first use (the container needs internet then) and cached in the data volume. Workbook text is rendered with Typst's HTML export, which drops what is laid out like a page: put the output of drawing packages (cetz, fletcher, lovelace, …) inside `#diagram[…]`, which draws it as a picture. fletcher exports a `diagram` of its own, so import it with `as fletcher`. (Students' own notes, answers and cards fall back to a picture automatically when something would be lost; workbook text does not, so a missing `#diagram` shows up as a warning in `lint --render`.)
 
-**Editor:** for writing a course, [Tinymist](https://github.com/Myriad-Dreamin/tinymist) in VS Code (or another editor) gives completion, hover docs and errors on the course repository as it is. Open the repository folder; `prelude.typ` and the workbook helpers are not in it, so Tinymist will mark `#hint`, `#remark` and friends as unknown, which is expected. `lint` is still what checks a course the way the app renders it.
+**Editor:** for writing a workbook, [Tinymist](https://github.com/Myriad-Dreamin/tinymist) in VS Code (or another editor) gives completion, hover docs and errors on the workbook repository as it is. Open the repository folder; `prelude.typ` and the workbook helpers are not in it, so Tinymist will mark `#hint`, `#remark` and friends as unknown, which is expected. `lint` is still what checks a workbook the way the app renders it.
 Run `lint --render` to see Typst warnings such as "… was ignored during HTML export".
 
 Not supported: page-level things (`#set page`, headers, page breaks), `image` sizing beyond what the browser does.
@@ -547,7 +547,7 @@ steps:
 
 That is a simple **path** on the home page. The "next up" suggestions use `after` and `similar` on the exercises themselves.
 
-A path can also be one of the course's building blocks rather than a topic: a session's exercises, a homework
+A path can also be one of the workbook's building blocks rather than a topic: a session's exercises, a homework
 sheet, an old exam. Say which with `kind:` (`session`, `homework` or `exam`). Each kind has a page of its own,
 linked at the top of the outline, that lists its groups in the order of their file names (`woche-03.yml`,
 `woche-04.yml`, …) with their progress. The exercises themselves live in the chapters they belong to by topic;
@@ -563,7 +563,7 @@ steps: [falten-ohne-rekursion, fold-maybe-either, falten-mit-rekursion, fold-lab
 Give it a page and it becomes an **adventure**: highlighted on the home page, with a page of its own (your text and
 diagrams, a map of the route, the progress), a badge on its exercises and a filter in the outline. The map is drawn
 from `steps`. Nothing is locked: every stop stays clickable. `finale:` optionally marks one step as the big finish.
-In each chapter, put the exercises of an adventure together in a section named after it, after the chapter's other exercises. `lint` warns otherwise. A simple path may cut across sections. A section whose exercises all belong to one adventure links to that adventure's page from the outline and the chapter page. Side notes that go beyond the course fit in a page of their own, in a last section such as "Vertiefung", with a short remark linking there from the exercise.
+In each chapter, put the exercises of an adventure together in a section named after it, after the chapter's other exercises. `lint` warns otherwise. A simple path may cut across sections. A section whose exercises all belong to one adventure links to that adventure's page from the outline and the chapter page. Side notes that go beyond the workbook fit in a page of their own, in a last section such as "Vertiefung", with a short remark linking there from the exercise.
 
 ```yaml
 title: Ein kleiner Taschenrechner
@@ -613,7 +613,7 @@ eval (Add a b) = eval a + eval b
 `lint --solutions` runs each exercise's tests against the complete solution, so tests can rely on any part of it.
 
 Status, notes, hints and time stay per exercise. "Start over" resets the open file for all exercises that share it, with
-a warning, and the old version stays in the history. When you update a course, students keep what they wrote in these
+a warning, and the old version stays in the history. When you update a workbook, students keep what they wrote in these
 files, so changes to the template only reach those who have not edited that file yet.
 
 ## What students tell you
@@ -627,7 +627,7 @@ number of test runs, hints opened and whether the solution was viewed, that is w
 Students can opt in to achievements, animal friends from the recommended exercises they finish, a plant per chapter and small celebrations. There is nothing to set up. A chapter's
 plant follows the student's focus, so every focus can feel finished: it is 🌱 once started, 🌿 at half of the
 exercises in the focus, and 🌳 with all of them done and its checklists answered (with nothing of a chapter in the
-focus, the answered checklists grow it). In a course without `extra`, Thorough and Everything keep the older rule:
+focus, the answered checklists grow it). In a workbook without `extra`, Thorough and Everything keep the older rule:
 the recommended exercises, or half of all exercises in a chapter without recommended ones. Plants never depend on
 ratings. Animals always come from the `start-here` exercises, whatever the focus.
 

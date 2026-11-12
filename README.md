@@ -3,7 +3,7 @@
 You learn by doing. Reading lecture notes and following along in class help, but they only take you so far.
 Understanding sinks in once you try something yourself, get it wrong and find out why.
 
-The workbook is meant to make that step as small as possible. A course's exercises sit right next to the place where
+The workbook is meant to make that step as small as possible. A workbook's exercises sit right next to the place where
 you work on them, so there is nothing to set up before you can start. Open an exercise, write your answer, check it, and
 move on. The workbook keeps track of what you have done and what you were unsure about, so you can come back to it
 later.
@@ -11,9 +11,9 @@ later.
 Exercises can ask for a written answer on any subject. Programming exercises currently work in Haskell and Prolog,
 with an editor, a live interpreter and tests, and SLD trees can be drawn as text and are checked by
 [sldcheck](https://github.com/melfkammholz/sldcheck). The workbook runs on your own computer from one Docker container, and a
-course is a git repository that you add in the app.
+workbook is a git repository that you add in the app.
 
-**Example course:** [workbook-deklprog](https://github.com/melfkammholz/workbook-deklprog), the exercises for
+**Example workbook:** [workbook-deklprog](https://github.com/melfkammholz/workbook-deklprog), the exercises for
 "Deklarative Programmierung" at Kiel University, in Haskell and Prolog.
 
 ## For students
@@ -30,15 +30,15 @@ course is a git repository that you add in the app.
 * **Hints and reference solutions.** You open hints one by one, and the solution only when you ask for it.
 * **An overview of where you stand.** It shows a status per exercise (to do, in progress, done, review later), a filter
   in the outline, and suggestions for what to do next. Exercises marked as recommended show where to start, and a focus
-  (essentials, thorough, everything) decides how much of the course is in sight.
+  (essentials, thorough, everything) decides how much of the workbook is in sight.
 * **Self-evaluation and review.** When you finish an exercise, you can say how confident you are and what is still
   open. The **Review** page collects everything you were unsure about, together with your self-evaluations per chapter.
 * **Notes and history.** You can keep notes per exercise and see all of them on one page. Every answer has a version
   history.
-* **Highlights.** Highlight passages of the course text, write a comment, and mark what you want to come back to. A
+* **Highlights.** Highlight passages of the workbook text, write a comment, and mark what you want to come back to. A
   page lists them all, and a chapter's checklist shows what is still open in it. Optional, like flashcards.
 * **Flashcards you write yourself.** Decks of cards in your own words, reviewed with spaced repetition (FSRS). A card
-  can be made right from an exercise, and decks belong to you, not to a course. See [Flashcards](#flashcards).
+  can be made right from an exercise, and decks belong to you, not to a workbook. See [Flashcards](#flashcards).
 * **Adventures.** These are longer stories that lead through several exercises, some with code that grows from one
   exercise to the next.
 * **Feedback from your own AI chat.** You can copy a prompt with the task, your answer and the test results into the
@@ -71,22 +71,22 @@ You need [Docker](https://docs.docker.com/get-docker/), which is Docker Desktop 
    The first start downloads the image, which includes GHC, SWI-Prolog, sldcheck and Typst. That takes a while and a few
    gigabytes of disk space. Later starts are quick.
 
-Open <http://localhost:8080> and paste the address of your course into the welcome dialog, for example
+Open <http://localhost:8080> and paste the address of your workbook into the welcome dialog, for example
 `https://github.com/melfkammholz/workbook-deklprog`. The page is only reachable from your own computer.
 
 ### Day to day
 
 * **Start and stop:** in the folder with `compose.yaml`, `docker compose up -d` starts the workbook, and
   `docker compose down` stops it. Your work stays.
-* **Course updates:** the top bar tells you when your course has new or changed exercises. You decide when to apply an
+* **Workbook updates:** the top bar tells you when your workbook has new or changed exercises. You decide when to apply an
   update, and your work stays, even for an exercise the update removes.
 * **App updates:** `docker compose pull && docker compose up -d`.
-* **More courses:** the arrows next to the course title switch between courses and add more. Each course keeps its own
+* **More workbooks:** the arrows next to the workbook title switch between workbooks and add more. Each workbook keeps its own
   answers, notes and progress.
 * **Your work** lives only in the Docker volume `workbook-data`, on your computer. There is no other copy, and nobody
-  else can see it. `docker compose down -v` deletes it, and so does resetting a course in the courses dialog.
+  else can see it. `docker compose down -v` deletes it, and so does resetting a workbook in the workbooks dialog.
 
-A course runs its tests on your computer, inside the container. So only add courses from people you trust. Only public
+A workbook runs its tests on your computer, inside the container. So only add workbooks from people you trust. Only public
 repositories can be added for now.
 
 ### Feedback from an AI chat
@@ -99,7 +99,7 @@ the same tab, using the placeholders `{title}`, `{task}`, `{language}`, `{answer
 ### Flashcards
 
 Flashcards are optional: turn them on in the settings. How to write good cards is on the help page. The cards icon in the top bar then opens your decks. Decks are
-yours, not a course's: they work across courses and before any course is added, and a deck can belong to courses so
+yours, not a workbook's: they work across workbooks and before any workbook is added, and a deck can belong to workbooks so
 it is listed with them. *Make a card*, at the top of an exercise's workspace, writes a card with a preview, and the card
 remembers the exercise, its tags and its language for code.
 
@@ -132,13 +132,13 @@ Ratings are Again, Hard, Good and Easy. A session is one deck, or a few picked t
 want to be, how many new cards a day may come, how many cards make it "big", and optionally the date to be ready by
 (the course's examination periods are suggested). Reviewing early or late does no harm, and *Not today* puts a card
 off without a rating. Cards you keep forgetting are offered to be rewritten, split, dropped or kept as they are. How
-well you know a deck shows as solid, shaky and new, and on a course's Review page beside your self-evaluations.
+well you know a deck shows as solid, shaky and new, and on a workbook's Review page beside your self-evaluations.
 
-## For course authors
+## For workbook authors
 
-A course is a git repository with Typst files for the texts and YAML for the structure: chapters, sections, exercises,
+A workbook is a git repository with Typst files for the texts and YAML for the structure: chapters, sections, exercises,
 tests, adventures and self-evaluations. [docs/authoring.md](docs/authoring.md) describes the format, and
-[workbook-deklprog](https://github.com/melfkammholz/workbook-deklprog) is a complete course to look at.
+[workbook-deklprog](https://github.com/melfkammholz/workbook-deklprog) is a complete workbook to look at.
 
 To see your changes while you write, mount your working copy into the container. Put this into a file
 `compose.override.yaml` next to `compose.yaml`, and Docker Compose picks it up by itself:
@@ -150,7 +150,7 @@ services:
       - ../my-course:/content:ro
 ```
 
-Your folder shows up as one more course. It reloads when you save, and the app never updates or removes it.
+Your folder shows up as one more workbook. It reloads when you save, and the app never updates or removes it.
 
 Before you publish a change, check it:
 
@@ -158,7 +158,7 @@ Before you publish a change, check it:
 docker compose run --rm workbook node server/dist/cli.js lint --render --solutions
 ```
 
-This validates the course and renders every text with Typst. It also runs the tests against your reference solutions,
+This validates the workbook and renders every text with Typst. It also runs the tests against your reference solutions,
 and against the starter code, to see that a student's first test run works. It also shows the Typst warnings and
 content problems that students are not shown.
 
@@ -196,7 +196,7 @@ npm run watch                                  # rebuilds server/dist and web/di
 docker compose -f compose.dev.yaml up -d       # http://localhost:8090, with its own data volume
 ```
 
-The server restarts by itself when its build changes; after a web change, reload the page. The course is the tests'
+The server restarts by itself when its build changes; after a web change, reload the page. The workbook is the tests'
 small course unless you set `COURSE_DIR` (for example in `.env`). Build the image again (`up -d --build`) only when the
 Dockerfile changes. Building needs BuildKit, which comes with Docker's `buildx` plugin.
 
@@ -224,9 +224,9 @@ which publishes a tag named after the branch, such as `main`, and leaves `latest
 | Path | |
 | --- | --- |
 | `shared/` | Types shared by the server and the web app |
-| `server/src/content` | Loading and checking a course, Typst rendering, the preprocessor for starter and solution in one file, search |
+| `server/src/content` | Loading and checking a workbook, Typst rendering, the preprocessor for starter and solution in one file, search |
 | `server/src/runners` | Warm `ghci` and `swipl` sessions, the test runners, the session pool |
-| `server/src/courses` | Adding, downloading and updating courses, one copy per course; all work in one database |
+| `server/src/workbooks` | Adding, downloading and updating workbooks, one copy per workbook; all work in one database |
 | `server/src/db` | SQLite with migrations: progress, answers and their history, notes, self-evaluations, statistics |
 | `server/src/api` | HTTP and WebSocket routes, and the guards against requests from other sites |
 | `server/src/ai` | The prompt students copy into their own chat |
@@ -244,7 +244,7 @@ Environment variables: `PORT`, `HOST`, `CONTENT_DIR`, `DATA_DIR`, `WEB_DIR`, `TY
   cannot talk to it.
 * **Student code:** it runs inside the container as an unprivileged user, with the memory and process limits from
   `compose.yaml`. Like any program in a container, it can reach the network.
-* **Course repositories:** they are fetched over http(s) without a login, and an address containing a login is
+* **Workbook repositories:** they are fetched over http(s) without a login, and an address containing a login is
   refused.
 
 ### Status
@@ -252,6 +252,6 @@ Environment variables: `PORT`, `HOST`, `CONTENT_DIR`, `DATA_DIR`, `WEB_DIR`, `TY
 Not built yet:
 
 * notes in Markdown with KaTeX (notes are written in Typst for now),
-* private course repositories.
+* private workbook repositories.
 
 Messages from the compilers and test libraries are shown as they are, mostly in English.
