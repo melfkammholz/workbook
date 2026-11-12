@@ -86,7 +86,7 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
     return null;
   }
   const fail = (e: unknown, reply: FastifyReply) => {
-    if (e instanceof ResourceError) return reply.code(404).send({ error: e.code });
+    if (e instanceof ResourceError) return reply.code(e.code === 'same-file' || e.code === 'page-taken' ? 409 : e.code === 'no-file' ? 400 : 404).send({ error: e.code });
     throw e;
   };
 
@@ -214,16 +214,68 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
     return reply.send(fs.createReadStream(file));
   });
 
+  // New versions: which items still sit on an older file, where the browser found them on the new one, and what is left to fix.
+  app.get<{ Params: { id: string } }>('/api/resources/:id/stale', async (req, reply) => {
+    try {
+      return r().listStale(req.params.id);
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+  const placed = z.object({ pageIndex: z.number().int().min(0).max(1_000_000), rects: z.array(z.object({ x: frac, y: frac, w: frac, h: frac })).min(1).max(MAX_RECTS) });
+  const movedPage = z.object({ id: z.string().min(1).max(100), pageIndex: z.number().int().min(0).max(1_000_000).nullable(), fingerprint: z.string().min(1).max(400).optional() });
+  const reanchored = z.object({
+    version: z.string().regex(/^[0-9a-f]{64}$/),
+    highlights: z.array(z.object({ id: z.string().min(1).max(100), place: placed.nullable() })).max(100_000),
+    pages: z.array(movedPage).max(100_000),
+    toc: z.array(movedPage).max(100_000),
+  });
+  app.post<{ Params: { id: string } }>('/api/resources/:id/reanchor', async (req, reply) => {
+    const b = parse(reanchored, req.body, reply);
+    if (!b) return;
+    try {
+      return r().reanchor(req.params.id, b);
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+  app.get<{ Params: { id: string } }>('/api/resources/:id/unplaced', async (req, reply) => {
+    try {
+      return r().listUnplaced(req.params.id);
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+  const kind = z.enum(['highlight', 'page', 'toc']);
+  app.put<{ Params: { id: string; kind: string; item: string } }>('/api/resources/:id/unplaced/:kind/:item', async (req, reply) => {
+    const k = parse(kind, req.params.kind, reply);
+    const b = parse(z.object({ pageIndex: z.number().int().min(0).max(1_000_000), rects: placed.shape.rects.optional(), fingerprint: z.string().min(1).max(400).optional() }), req.body, reply);
+    if (!k || !b) return;
+    try {
+      r().placeUnplaced(req.params.id, k, req.params.item, b);
+      return r().listUnplaced(req.params.id);
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+  app.delete<{ Params: { id: string; kind: string; item: string } }>('/api/resources/:id/unplaced/:kind/:item', async (req, reply) => {
+    const k = parse(kind, req.params.kind, reply);
+    if (!k) return;
+    try {
+      r().dropUnplaced(req.params.id, k, req.params.item);
+      return r().listUnplaced(req.params.id);
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+
   // The upload is a raw body, streamed to disk while it is hashed. The parser lives in its own scope, so no other
   // route sees an octet-stream body.
   void app.register(async (scope) => {
     scope.addContentTypeParser('application/octet-stream', (_req, payload, done) => done(null, payload));
-    scope.post('/api/resources/upload', { bodyLimit: MAX_FILE_BYTES }, async (req, reply) => {
-      const q = parse(upload, req.query, reply);
-      if (!q) {
-        req.raw.resume();
-        return;
-      }
+
+    /** Streams the body to `<data>/files/<sha256>`; null once the reply is sent (an error). */
+    async function receive(req: { body?: unknown }, reply: FastifyReply): Promise<{ sha256: string; size: number } | null> {
       const dir = r().filesDir;
       fs.mkdirSync(dir, { recursive: true });
       const tmp = path.join(dir, `.upload-${crypto.randomBytes(6).toString('hex')}`);
@@ -241,21 +293,58 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
         await pipeline(req.body as NodeJS.ReadableStream, meter, fs.createWriteStream(tmp));
       } catch (e) {
         fs.rmSync(tmp, { force: true });
-        return reply.code(e instanceof Error && e.message === 'too-large' ? 413 : 400).send({ error: e instanceof Error && e.message === 'too-large' ? 'too-large' : 'upload-failed' });
+        const big = e instanceof Error && e.message === 'too-large';
+        void reply.code(big ? 413 : 400).send({ error: big ? 'too-large' : 'upload-failed' });
+        return null;
       }
       if (size === 0) {
         fs.rmSync(tmp, { force: true });
-        return reply.code(400).send({ error: 'empty-file' });
+        void reply.code(400).send({ error: 'empty-file' });
+        return null;
       }
       const sha256 = hash.digest('hex');
       const final = path.join(dir, sha256);
       if (fs.existsSync(final)) fs.rmSync(tmp, { force: true });
       else fs.renameSync(tmp, final);
+      return { sha256, size };
+    }
+
+    scope.post('/api/resources/upload', { bodyLimit: MAX_FILE_BYTES }, async (req, reply) => {
+      const q = parse(upload, req.query, reply);
+      if (!q) {
+        req.raw.resume();
+        return;
+      }
+      const got = await receive(req, reply);
+      if (!got) return;
       try {
         const { filename, ...rest } = q;
-        return r().create(rest, { sha256, filename, size });
+        return r().create(rest, { sha256: got.sha256, filename, size: got.size });
       } catch (e) {
-        r().removeIfUnused(sha256);
+        r().removeIfUnused(got.sha256);
+        return fail(e, reply);
+      }
+    });
+
+    /** A new file for a resource: the highlights and notes are placed on it by the browser afterwards. */
+    scope.post<{ Params: { id: string } }>('/api/resources/:id/version', { bodyLimit: MAX_FILE_BYTES }, async (req, reply) => {
+      const q = parse(z.object({ filename: z.string().trim().min(1).max(300) }), req.query, reply);
+      if (!q) {
+        req.raw.resume();
+        return;
+      }
+      try {
+        r().get(req.params.id);
+      } catch (e) {
+        req.raw.resume();
+        return fail(e, reply);
+      }
+      const got = await receive(req, reply);
+      if (!got) return;
+      try {
+        return r().addVersion(req.params.id, { sha256: got.sha256, filename: q.filename, size: got.size });
+      } catch (e) {
+        r().removeIfUnused(got.sha256);
         return fail(e, reply);
       }
     });

@@ -16,7 +16,8 @@ export const useResources = (course: string | null, enabled = true) =>
     enabled,
   });
 
-export const fileUrl = (r: Resource) => `/api/resources/${encodeURIComponent(r.id)}/file`;
+/** The hash is in the URL: the browser keeps a file for good, so a replaced file needs another address. */
+export const fileUrl = (r: Resource) => `/api/resources/${encodeURIComponent(r.id)}/file?v=${r.file.sha256.slice(0, 16)}`;
 
 export const MAX_FILE_BYTES = 500 * 1024 * 1024;
 

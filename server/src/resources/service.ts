@@ -1,12 +1,12 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
+import type { Placed, Reanchored, StaleItems, UnplacedItems, AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
 import { MAX_TOC_LEVEL, MAX_TOC_TITLE } from '@wb/shared';
 import type { Store } from '../db/store.js';
 
 export class ResourceError extends Error {
-  constructor(readonly code: 'unknown-resource' | 'unknown-series') {
+  constructor(readonly code: 'unknown-resource' | 'unknown-series' | 'unknown-item' | 'same-file' | 'page-taken' | 'no-file') {
     super(code);
   }
 }
@@ -33,7 +33,14 @@ export function mimeOf(filename: string): string {
 
 const COLUMNS = `r.id, r.title, r.type, r.author, r.date, r.series, r.position, r.last_page, r.created_at, r.updated_at,
   v.sha256, v.filename, v.mime, v.size, v.uploaded_at,
-  (SELECT group_concat(course, char(31)) FROM resource_courses WHERE resource = r.id) AS courses`;
+  (SELECT group_concat(course, char(31)) FROM resource_courses WHERE resource = r.id) AS courses,
+  (SELECT COUNT(*) FROM resource_versions WHERE resource = r.id) AS versions,
+  (SELECT COUNT(*) FROM pdf_annotations WHERE resource = r.id AND version <> v.sha256)
+    + (SELECT COUNT(*) FROM pdf_pages WHERE resource = r.id AND version <> v.sha256)
+    + (SELECT COUNT(*) FROM pdf_toc WHERE resource = r.id AND embedded_key IS NULL AND version <> v.sha256) AS stale,
+  (SELECT COUNT(*) FROM pdf_annotations WHERE resource = r.id AND unplaced = 1)
+    + (SELECT COUNT(*) FROM pdf_pages WHERE resource = r.id AND unplaced = 1)
+    + (SELECT COUNT(*) FROM pdf_toc WHERE resource = r.id AND unplaced = 1) AS unplaced`;
 
 type Row = Record<string, unknown>;
 
@@ -49,6 +56,9 @@ function toResource(r: Row): Resource {
     lastPage: r.last_page === null ? null : Number(r.last_page),
     courses: r.courses ? (r.courses as string).split('\x1f').sort() : [],
     file: { sha256: r.sha256 as string, filename: r.filename as string, mime: r.mime as string, size: Number(r.size), uploadedAt: Number(r.uploaded_at) },
+    versions: Number(r.versions),
+    stale: Number(r.stale),
+    unplaced: Number(r.unplaced),
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
   };
@@ -212,8 +222,8 @@ export class Resources {
   /** Every highlight of one resource, or of all of them, in the order they are on the page. */
   listHighlights(resource?: string): PdfAnnotation[] {
     const rows = resource
-      ? this.sql.all('SELECT * FROM pdf_annotations WHERE resource = ? ORDER BY page_index, created_at, id', resource)
-      : this.sql.all('SELECT * FROM pdf_annotations ORDER BY resource, page_index, created_at, id');
+      ? this.sql.all('SELECT * FROM pdf_annotations WHERE resource = ? AND unplaced = 0 ORDER BY page_index, created_at, id', resource)
+      : this.sql.all('SELECT * FROM pdf_annotations WHERE unplaced = 0 ORDER BY resource, page_index, created_at, id');
     return rows.map(toHighlight);
   }
 
@@ -251,7 +261,7 @@ export class Resources {
 
   /** Every page item of one resource, or of all of them. */
   listPages(resource?: string): PdfPageItem[] {
-    const rows = resource ? this.sql.all('SELECT * FROM pdf_pages WHERE resource = ? ORDER BY page_index', resource) : this.sql.all('SELECT * FROM pdf_pages ORDER BY resource, page_index');
+    const rows = resource ? this.sql.all('SELECT * FROM pdf_pages WHERE resource = ? AND unplaced = 0 ORDER BY page_index', resource) : this.sql.all('SELECT * FROM pdf_pages WHERE unplaced = 0 ORDER BY resource, page_index');
     return rows.map(toPage);
   }
 
@@ -267,7 +277,7 @@ export class Resources {
   savePage(resource: string, pageIndex: number, f: Partial<PdfPageFields> & Pick<PdfPageFields, 'version' | 'fingerprint'>): PdfPageItem {
     this.get(resource);
     const t = this.now();
-    const prev = this.sql.get('SELECT * FROM pdf_pages WHERE resource = ? AND page_index = ?', resource, pageIndex);
+    const prev = this.sql.get('SELECT * FROM pdf_pages WHERE resource = ? AND page_index = ? AND unplaced = 0', resource, pageIndex);
     if (!prev) {
       const id = f.id ?? crypto.randomUUID();
       this.sql.run(
@@ -302,7 +312,7 @@ export class Resources {
 
   /** The student's entries and changes to the embedded outline, of one resource. */
   listToc(resource: string): TocEdit[] {
-    return this.sql.all('SELECT * FROM pdf_toc WHERE resource = ? ORDER BY page_index, created_at, id', resource).map(toToc);
+    return this.sql.all('SELECT * FROM pdf_toc WHERE resource = ? AND unplaced = 0 ORDER BY page_index, created_at, id', resource).map(toToc);
   }
 
   /**
@@ -346,6 +356,104 @@ export class Resources {
     return true;
   }
 
+  // ───────────────────────── new versions of a file ─────────────────────────
+
+  /**
+   * A new file for the resource: it becomes the current one. The old file goes unless some resource still uses it
+   * (snapshots keep their own copies). The student's highlights and page items are placed on the new file afterwards,
+   * by the browser (`reanchor`).
+   */
+  addVersion(id: string, file: { sha256: string; filename: string; size: number }): Resource {
+    const before = this.get(id);
+    if (before.file.sha256 === file.sha256) throw new ResourceError('same-file');
+    const now = this.now();
+    this.sql.tx(() => {
+      this.sql.run('INSERT INTO resource_versions (resource, sha256, filename, mime, size, uploaded_at) VALUES (?,?,?,?,?,?)', id, file.sha256, file.filename, mimeOf(file.filename), file.size, now);
+      const version = Number(this.sql.get('SELECT last_insert_rowid() AS id')!.id);
+      this.sql.run('UPDATE resources SET current_version = ?, updated_at = ? WHERE id = ?', version, now, id);
+    });
+    this.removeIfSuperseded(before.file.sha256);
+    return this.get(id);
+  }
+
+  /** Items made on an older file than the current one. */
+  listStale(id: string): StaleItems {
+    const version = this.get(id).file.sha256;
+    return {
+      version,
+      highlights: this.sql.all('SELECT id, page_index, quote, prefix, suffix FROM pdf_annotations WHERE resource = ? AND version <> ?', id, version).map((r) => ({ id: r.id as string, pageIndex: Number(r.page_index), quote: r.quote as string, prefix: r.prefix as string, suffix: r.suffix as string })),
+      pages: this.sql.all('SELECT id, page_index, fingerprint FROM pdf_pages WHERE resource = ? AND version <> ?', id, version).map((r) => ({ id: r.id as string, pageIndex: Number(r.page_index), fingerprint: r.fingerprint as string })),
+      toc: this.sql.all('SELECT id, page_index, fingerprint FROM pdf_toc WHERE resource = ? AND embedded_key IS NULL AND version <> ?', id, version).map((r) => ({ id: r.id as string, pageIndex: Number(r.page_index), fingerprint: r.fingerprint as string })),
+    };
+  }
+
+  /**
+   * What the browser found out about the stale items: placed ones move to their new page and file, the rest are
+   * `unplaced` (and on the new file, so nobody looks again). Returns what is left to fix.
+   */
+  reanchor(id: string, found: Reanchored): UnplacedItems {
+    if (this.get(id).file.sha256 !== found.version) throw new ResourceError('no-file');
+    const t = this.now();
+    this.sql.tx(() => {
+      // Page items first leave the one-per-page key, so moving them onto each other's pages cannot collide.
+      for (const p of found.pages) this.sql.run('UPDATE pdf_pages SET unplaced = 1 WHERE id = ? AND resource = ?', p.id, id);
+      for (const h of found.highlights) {
+        if (h.place) this.sql.run('UPDATE pdf_annotations SET version = ?, page_index = ?, rects = ?, unplaced = 0, updated_at = ? WHERE id = ? AND resource = ?', found.version, h.place.pageIndex, JSON.stringify(h.place.rects), t, h.id, id);
+        else this.sql.run('UPDATE pdf_annotations SET version = ?, unplaced = 1 WHERE id = ? AND resource = ?', found.version, h.id, id);
+      }
+      for (const p of found.pages) {
+        if (p.pageIndex === null) {
+          this.sql.run('UPDATE pdf_pages SET version = ? WHERE id = ? AND resource = ?', found.version, p.id, id);
+          continue;
+        }
+        try {
+          this.sql.run('UPDATE pdf_pages SET version = ?, page_index = ?, fingerprint = COALESCE(?, fingerprint), unplaced = 0, updated_at = ? WHERE id = ? AND resource = ?', found.version, p.pageIndex, p.fingerprint ?? null, t, p.id, id);
+        } catch {
+          // A page item made on the new file is already there: this one is left to the student.
+          this.sql.run('UPDATE pdf_pages SET version = ? WHERE id = ? AND resource = ?', found.version, p.id, id);
+        }
+      }
+      for (const e of found.toc) {
+        if (e.pageIndex === null) this.sql.run('UPDATE pdf_toc SET version = ?, unplaced = 1 WHERE id = ? AND resource = ?', found.version, e.id, id);
+        else this.sql.run('UPDATE pdf_toc SET version = ?, page_index = ?, fingerprint = COALESCE(?, fingerprint), unplaced = 0, updated_at = ? WHERE id = ? AND resource = ?', found.version, e.pageIndex, e.fingerprint ?? null, t, e.id, id);
+      }
+    });
+    return this.listUnplaced(id);
+  }
+
+  /** What the new file could not place, to fix or drop. */
+  listUnplaced(id: string): UnplacedItems {
+    this.get(id);
+    return {
+      highlights: this.sql.all('SELECT * FROM pdf_annotations WHERE resource = ? AND unplaced = 1 ORDER BY page_index, created_at', id).map(toHighlight),
+      pages: this.sql.all('SELECT * FROM pdf_pages WHERE resource = ? AND unplaced = 1 ORDER BY page_index', id).map(toPage),
+      toc: this.sql.all('SELECT * FROM pdf_toc WHERE resource = ? AND unplaced = 1 ORDER BY page_index', id).map(toToc),
+    };
+  }
+
+  /** Puts an unplaced item on a page of the current file. A page that has its own item already says no. */
+  placeUnplaced(id: string, kind: 'highlight' | 'page' | 'toc', item: string, where: { pageIndex: number; rects?: Placed['rects']; fingerprint?: string }): void {
+    const version = this.get(id).file.sha256;
+    const t = this.now();
+    this.unplacedRow(id, kind, item);
+    if (kind === 'highlight') {
+      if (!where.rects?.length) throw new ResourceError('unknown-item');
+      this.sql.run('UPDATE pdf_annotations SET version = ?, page_index = ?, rects = ?, unplaced = 0, updated_at = ? WHERE id = ? AND resource = ? AND unplaced = 1', version, where.pageIndex, JSON.stringify(where.rects), t, item, id);
+    } else if (kind === 'page') {
+      if (this.sql.get('SELECT 1 AS x FROM pdf_pages WHERE resource = ? AND page_index = ? AND unplaced = 0', id, where.pageIndex)) throw new ResourceError('page-taken');
+      this.sql.run('UPDATE pdf_pages SET version = ?, page_index = ?, fingerprint = COALESCE(?, fingerprint), unplaced = 0, updated_at = ? WHERE id = ? AND resource = ? AND unplaced = 1', version, where.pageIndex, where.fingerprint ?? null, t, item, id);
+    } else {
+      this.sql.run('UPDATE pdf_toc SET version = ?, page_index = ?, fingerprint = COALESCE(?, fingerprint), unplaced = 0, updated_at = ? WHERE id = ? AND resource = ? AND unplaced = 1', version, where.pageIndex, where.fingerprint ?? null, t, item, id);
+    }
+  }
+
+  /** Throws an unplaced item away. */
+  dropUnplaced(id: string, kind: 'highlight' | 'page' | 'toc', item: string): void {
+    const table = kind === 'highlight' ? 'pdf_annotations' : kind === 'page' ? 'pdf_pages' : 'pdf_toc';
+    this.unplacedRow(id, kind, item);
+    this.sql.run(`DELETE FROM ${table} WHERE id = ?`, item);
+  }
+
   /** Starts over: every resource and every file. Snapshots keep their own copies. */
   reset(): void {
     this.sql.tx(() => {
@@ -356,6 +464,18 @@ export class Resources {
 
   removeIfUnused(sha256: string): void {
     if (this.sql.get('SELECT 1 AS x FROM resource_versions WHERE sha256 = ? LIMIT 1', sha256)) return;
+    const file = this.filePath(sha256);
+    if (file) fs.rmSync(file, { force: true });
+  }
+
+  private unplacedRow(id: string, kind: 'highlight' | 'page' | 'toc', item: string): void {
+    const table = kind === 'highlight' ? 'pdf_annotations' : kind === 'page' ? 'pdf_pages' : 'pdf_toc';
+    if (!this.sql.get(`SELECT 1 AS x FROM ${table} WHERE id = ? AND resource = ? AND unplaced = 1`, item, id)) throw new ResourceError('unknown-item');
+  }
+
+  /** The file of a replaced version goes, unless some resource has it as its current file. */
+  private removeIfSuperseded(sha256: string): void {
+    if (this.sql.get('SELECT 1 AS x FROM resources r JOIN resource_versions v ON v.id = r.current_version WHERE v.sha256 = ? LIMIT 1', sha256)) return;
     const file = this.filePath(sha256);
     if (file) fs.rmSync(file, { force: true });
   }

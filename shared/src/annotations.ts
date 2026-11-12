@@ -121,6 +121,12 @@ function shared(a: string, b: string, fromEnd: boolean): number {
  * occurrences, the one whose surroundings agree best with the stored context wins; the first on a tie.
  */
 export function locateQuote(text: string, q: TextQuote): { start: number; end: number } | null {
+  const found = locateQuoteScored(text, q);
+  return found && { start: found.start, end: found.end };
+}
+
+/** `locateQuote` with how well the surroundings agree (characters of context shared), to compare pages. */
+export function locateQuoteScored(text: string, q: TextQuote): { start: number; end: number; score: number } | null {
   if (!q.quote) return null;
   const c = collapse(text);
   let best: { at: number; score: number } | null = null;
@@ -131,5 +137,5 @@ export function locateQuote(text: string, q: TextQuote): { start: number; end: n
     if (!best || score > best.score) best = { at: i, score };
   }
   if (!best) return null;
-  return { start: c.at[best.at]!, end: c.at[best.at + q.quote.length - 1]! + 1 };
+  return { start: c.at[best.at]!, end: c.at[best.at + q.quote.length - 1]! + 1, score: best.score };
 }

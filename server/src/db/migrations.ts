@@ -384,6 +384,31 @@ export const MIGRATIONS: Migration[] = [
   CREATE INDEX pdf_toc_resource ON pdf_toc (resource);
   CREATE UNIQUE INDEX pdf_toc_embedded ON pdf_toc (resource, embedded_key) WHERE embedded_key IS NOT NULL;
   `,
+  /*
+   * 15: new versions of a file. A highlight, page item or own TOC entry the new file could not place keeps its old
+   * page and is `unplaced` until the student fixes or drops it; such rows are out of every list. Page items lose their
+   * one-per-page key for the same reason: it holds for placed ones only.
+   */ `
+  ALTER TABLE pdf_annotations ADD COLUMN unplaced INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE pdf_toc ADD COLUMN unplaced INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE pdf_pages_new (
+    id          TEXT PRIMARY KEY,
+    resource    TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+    version     TEXT NOT NULL,
+    page_index  INTEGER NOT NULL,
+    fingerprint TEXT NOT NULL,
+    note        TEXT NOT NULL DEFAULT '',
+    marks       TEXT NOT NULL DEFAULT '[]',
+    review      TEXT CHECK (review IN ('open','resolved')),
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL,
+    unplaced    INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT INTO pdf_pages_new SELECT id, resource, version, page_index, fingerprint, note, marks, review, created_at, updated_at, 0 FROM pdf_pages;
+  DROP TABLE pdf_pages;
+  ALTER TABLE pdf_pages_new RENAME TO pdf_pages;
+  CREATE UNIQUE INDEX pdf_pages_place ON pdf_pages (resource, page_index) WHERE unplaced = 0;
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

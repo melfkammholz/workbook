@@ -426,6 +426,12 @@ export interface Resource {
   /** Ids of the courses (`workbook.yml`'s id) it is listed under. Empty: only in the library. */
   courses: string[];
   file: { sha256: string; filename: string; mime: string; size: number; uploadedAt: number };
+  /** How many files it has had (1: never replaced). */
+  versions: number;
+  /** Highlights and page items still on an older file: the viewer places them on the new one. */
+  stale: number;
+  /** Highlights and page items the new file could not place: the student fixes or drops them. */
+  unplaced: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -918,3 +924,4 @@ export * from './sld';
 export * from './pdfAnnotations';
 export * from './pdfPages';
 export * from './pdfToc';
+export * from './pdfReanchor';

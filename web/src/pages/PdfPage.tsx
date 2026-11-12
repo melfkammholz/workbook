@@ -7,6 +7,7 @@ import { FoldSection } from '@/components/FoldSection';
 import { MakeCardDialog } from '@/components/MakeCardDialog';
 import { CopyRefButton, PdfHighlightLayer, type Editing } from '@/components/PdfHighlights';
 import { PagesWithNotes, PdfPageNotes } from '@/components/PdfPageNotes';
+import { PdfUnplaced } from '@/components/PdfUnplaced';
 import { PdfToc, type TocActions } from '@/components/PdfToc';
 import { NotesView, SlidesView, type Marks, type PdfLayout, type Size } from '@/components/PdfViewer';
 import { IconButton, Segmented, Spinner, Empty } from '@/components/ui';
@@ -20,6 +21,8 @@ import { usePdfAnnotations, usePdfAnnotationsOn } from '@/lib/pdfAnnotations';
 import { pdfPageRefText, savePdfPage, usePdfPages, type PagePatch } from '@/lib/pdfPages';
 import { deleteTocEdit, readOutline, saveTocEdit, usePdfToc } from '@/lib/pdfToc';
 import { fileUrl, formatSize, resourceKeys, useResources } from '@/lib/resources';
+import { placeStale } from '@/lib/pdfVersions';
+import { NewVersionButton } from '@/components/NewVersionButton';
 
 const ZOOM_STEP = 1.25;
 const ZOOM_MIN = 0.4;
@@ -163,11 +166,12 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   const marksOn = usePdfAnnotationsOn();
   const highlights = usePdfAnnotations(resource.id).data;
   const marks: Marks | undefined = useMemo(() => {
-    if (!marksOn || !highlights) return undefined;
+    // Highlights made on an older file wait until they are placed on this one.
+    if (!marksOn || !highlights || resource.stale > 0) return undefined;
     const byPage = new Map<number, PdfAnnotation[]>();
     for (const a of highlights) (byPage.get(a.pageIndex) ?? byPage.set(a.pageIndex, []).get(a.pageIndex)!).push(a);
     return { byPage, active: editing?.id ?? null, flash };
-  }, [marksOn, highlights, editing?.id, flash]);
+  }, [marksOn, highlights, resource.stale, editing?.id, flash]);
   const [outline, setOutline] = useState<EmbeddedTocEntry[] | null | undefined>(undefined);
   const tocEdits = usePdfToc(resource.id).data;
   const [typed, setTyped] = useState<string | null>(null);
@@ -177,6 +181,10 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   const [pageCard, setPageCard] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const count = doc?.numPages ?? 0;
+  // A file replaced since the highlights and notes were made: they are placed on it as it opens.
+  useEffect(() => {
+    if (doc && resource.stale > 0) void placeStale(qc, resource, doc).catch(() => undefined);
+  }, [doc, resource, qc]);
 
   useEffect(() => {
     let live = true;
@@ -530,6 +538,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
               <p className="mt-1 text-[13px] text-ink-2">
                 {resource.file.filename} · {formatSize(resource.file.size)}
               </p>
+              <NewVersionButton resource={resource} className="mt-2" />
               {doc && toc ? <PdfToc entries={toc} current={current} currentKey={chapter?.key ?? null} labelOf={labelOf} onGo={goto} actions={tocActions} hasOutline={!!outline?.length} /> : null}
             </aside>
             <ColumnHandle side="left" width={leftW} onWidth={setLeftW} label={t.pdfResizeToc} />
@@ -546,6 +555,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
               {chapter ? <p className="font-medium">{chapter.title}</p> : null}
               {doc ? <p className={chapter ? 'text-ink-2' : 'font-medium'}>{t.pdfPageInfo(current, count, labelOf(current))}</p> : null}
               {marks && doc ? <AllHighlights resource={resource.id} list={highlights ?? []} current={current} labelOf={labelOf} chapterAt={chapterAt} editing={editing?.id ?? null} onJump={(a) => jumpTo(a, true)} /> : null}
+              {doc ? <PdfUnplaced resource={resource} current={current} pageInfo={pageInfo} /> : null}
               {marksOn && doc && pages ? (
                 <>
                   <PagesWithNotes items={pages} marks={settings?.pdfPageMarks ?? []} current={notePage} labelOf={labelOf} onGo={goto} chapterAt={chapterAt} />

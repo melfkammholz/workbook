@@ -54,7 +54,7 @@ const MAX_LINE = 0.08;
 const pageOf = (n: Node | null): HTMLElement | null => (n instanceof Element ? n : n?.parentElement)?.closest<HTMLElement>('[data-page]') ?? null;
 
 /** The selected passage as the browser shows it on one page: line rectangles (fractions of the page) and the quote. */
-function readSelection(range: Range): { page: number; rects: PageRect[]; quote: TextQuote } | 'crossed' | null {
+export function readSelection(range: Range): { page: number; rects: PageRect[]; quote: TextQuote } | 'crossed' | null {
   const el = pageOf(range.startContainer);
   if (!el || el !== pageOf(range.endContainer)) return el || pageOf(range.endContainer) ? 'crossed' : null;
   const layer = el.querySelector('.textLayer');

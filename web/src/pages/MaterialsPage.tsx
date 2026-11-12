@@ -2,6 +2,7 @@ import type { Resource, ResourceSeries, ResourceType } from '@wb/shared';
 import { Download, FileText, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'wouter';
+import { NewVersionButton } from '@/components/NewVersionButton';
 import { DeleteDialog, EditDialog, UploadDialog } from '@/components/ResourceDialogs';
 import { Button, Empty, IconButton, Spinner } from '@/components/ui';
 import { useOutline } from '@/lib/api';
@@ -60,6 +61,12 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
   for (const type of TYPES) sections.push({ key: type, title: t.resourceTypes[type], type, items: asked.filter((r) => r.type === type) });
   if (!course) sections.push({ key: 'none', title: t.resourceNoCourse, type: null, items: data.resources.filter((r) => r.courses.length === 0) });
 
+  /** "new version 3 days ago, 2 notes to fix": for a month after a replacement, and as long as something is left to fix. */
+  const versionNote = (r: Resource) => {
+    if (r.versions < 2) return '';
+    const days = Math.floor((Date.now() - r.file.uploadedAt) / 86_400_000);
+    return days <= 30 || r.unplaced > 0 ? t.resourceVersionNote(days, r.unplaced) : '';
+  };
   const row = (r: Resource, label?: string) => (
     <li key={r.id} className="group flex items-center gap-3 py-2.5">
       <FileText size={18} className="shrink-0 text-ink-3" />
@@ -76,13 +83,14 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
           </a>
         )}
         <div className="truncate text-[13px] text-ink-2">
-          {[r.author, dateText(r.date), formatSize(r.file.size), r.lastPage ? t.resourceOpenedAt(r.lastPage) : '', !course && r.courses.length ? `${t.resourceInCourses} ${r.courses.map(titleOfCourse).join(', ')}` : ''].filter(Boolean).join(' · ')}
+          {[r.author, dateText(r.date), formatSize(r.file.size), r.lastPage ? t.resourceOpenedAt(r.lastPage) : '', versionNote(r), !course && r.courses.length ? `${t.resourceInCourses} ${r.courses.map(titleOfCourse).join(', ')}` : ''].filter(Boolean).join(' · ')}
         </div>
       </div>
       <div className="flex shrink-0 gap-0.5">
         <a href={fileUrl(r)} download={r.file.filename} aria-label={t.resourceDownload} title={t.resourceDownload} className="inline-flex size-8 items-center justify-center rounded-md text-ink-2 hover:bg-sunk hover:text-ink">
           <Download size={16} />
         </a>
+        <NewVersionButton resource={r} icon />
         <IconButton label={t.resourceEdit} onClick={() => setEditing(r)}>
           <Pencil size={16} />
         </IconButton>
