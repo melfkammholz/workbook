@@ -3,7 +3,7 @@ import { BookOpen } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Panel, usePanelRef } from 'react-resizable-panels';
 import { useLocation } from 'wouter';
-import type { HowSolved, Status } from '@wb/shared';
+import type { HowSolved, Reflection, Status } from '@wb/shared';
 import { ConfirmDialog } from '@/components/Dialogs';
 import { CardInvitation, ContinueBanner, ExerciseBar, HelpPrompt } from '@/components/ExerciseBar';
 import { ExerciseView } from '@/components/ExerciseView';
@@ -12,8 +12,9 @@ import { ReflectionDialog, type ReflectionInput, type ReflectionMode } from '@/c
 import { TaskColumn } from '@/components/TaskColumn';
 import { Button, Empty, IconButton, Spinner, clsx } from '@/components/ui';
 import { ResizeHandle } from '@/components/ResizeHandle';
-import { api, indexItems, itemHref, keys, neighbours, postReflection, recordHints, recordOpen, resetTimer, saveOpenQuestion, statusOf, useItem, useOutline, useSetStatus, useSettings, useState_, useWork, whatsNext, type Work } from '@/lib/api';
+import { api, indexItems, itemHref, keys, neighbours, patchWork, postReflection, recordHints, recordOpen, resetTimer, saveOpenQuestion, statusOf, useItem, useOutline, useSetStatus, useSettings, useState_, useWork, whatsNext, type Work } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { reportSaveFailed } from '@/lib/saveNotice';
 import { useActiveTime, useMediaQuery } from '@/lib/useActiveTime';
 import { useWorkLayout } from '@/lib/workLayout';
 import { plainTitle } from '@/components/Title';
@@ -241,14 +242,25 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
 
   const submitReflection = async ({ confidence, how, comment }: ReflectionInput) => {
     const review = reflecting === 'review';
+    const before = qc.getQueryData<Work>(keys.work(id));
     const writes: Promise<unknown>[] = [];
-    if (confidence !== null) writes.push(postReflection(id, confidence, review ? (lastReflection?.how ?? []) : how, review ? '' : comment));
+    if (confidence !== null) {
+      const reflectionHow = review ? (lastReflection?.how ?? []) : how;
+      // Shown at once (the rating in the bar); the server's copy replaces it below.
+      patchWork(id, (x) => ({ ...x, reflections: [...x.reflections, { id: -1, exerciseId: id, confidence: confidence as Reflection['confidence'], how: reflectionHow, comment: review ? '' : comment, createdAt: Date.now() }] }));
+      writes.push(postReflection(id, confidence, reflectionHow, review ? '' : comment));
+    }
     // What is unclear stays open until the student says otherwise, whichever way it was asked.
     if (comment !== (w.openQuestion?.content ?? '')) writes.push(saveOpenQuestion(id, comment));
-    await Promise.all(writes);
     if (flashcardsOn && !invited.current && confidence !== null && (confidence <= 2 || !review)) {
       invited.current = true;
       setInvite(confidence <= 2 ? 'low' : 'done');
+    }
+    try {
+      await Promise.all(writes);
+    } catch {
+      if (before) qc.setQueryData(keys.work(id), before);
+      reportSaveFailed();
     }
     void qc.invalidateQueries({ queryKey: keys.work(id) });
     void qc.invalidateQueries({ queryKey: keys.state });

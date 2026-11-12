@@ -138,6 +138,12 @@ describe('student data API', () => {
     const gone = (await api('POST', '/api/annotations', { target: id, part: 'task', quote: 'steht nirgends im Text', prefix: '', suffix: '', color: 'blue' })).json;
     expect((await api('POST', '/api/annotations', { target: 'nope', part: 'task', ...sel, color: 'yellow' })).status).toBe(404);
     expect((await api('POST', '/api/annotations', { target: id, part: 'solution', ...sel, color: 'yellow' })).status).toBe(400);
+    // The client may choose the id, so that it can show the highlight before the server has answered.
+    const own = '6f1c2b8e-3d4a-4b5c-9e7f-0a1b2c3d4e5f';
+    expect((await api('POST', '/api/annotations', { id: own, target: id, part: 'task', ...sel, color: 'pink' })).json).toMatchObject({ id: own });
+    expect((await api('POST', '/api/annotations', { id: own, target: id, part: 'task', ...sel, color: 'pink' })).status).toBe(409);
+    expect((await api('POST', '/api/annotations', { id: 'not-a-uuid', target: id, part: 'task', ...sel, color: 'pink' })).status).toBe(400);
+    expect((await api('DELETE', `/api/annotations/${own}`)).status).toBe(200);
 
     const patched = await api('PATCH', `/api/annotations/${add.json.id}`, { review: 'open', color: 'green' });
     expect(patched.json).toMatchObject({ review: 'open', color: 'green', comment: 'Warum gerade so herum?' });

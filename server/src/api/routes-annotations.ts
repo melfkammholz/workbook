@@ -9,6 +9,8 @@ const review = z.enum(['open', 'resolved']).nullable();
 
 const bodies = {
   add: z.object({
+    /** Made by the client, so that a new highlight can be shown (and changed) before the server has answered. */
+    id: z.string().uuid().optional(),
     target: z.string().min(1).max(300),
     part: z.string().refine(isPart, 'task, remark-<n> or hint-<n>'),
     quote: z.string().min(1).max(MAX_QUOTE),
@@ -39,6 +41,7 @@ export function annotationRoutes(app: FastifyInstance, d: Deps): void {
     const r = bodies.add.safeParse(req.body);
     if (!r.success) return reply.code(400).send({ error: r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') });
     if (!textOf(r.data.target)) return reply.code(404).send({ error: 'unknown text' });
+    if (r.data.id && d.store.getAnnotation(r.data.id)) return reply.code(409).send({ error: 'annotation exists' });
     return d.store.addAnnotation(r.data);
   });
 

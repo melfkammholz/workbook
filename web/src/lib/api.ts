@@ -1,4 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryClient } from './queryClient';
+import { reportSaveFailed } from './saveNotice';
 import type {
   AchievementsResponse,
   AnswerVersion,
@@ -132,8 +134,26 @@ export const useDoc = (url: string) => {
   return useQuery({ queryKey: ['doc', url, version ?? ''], queryFn: () => api.get<RenderedItem>(url), enabled: version !== undefined, staleTime: Infinity });
 };
 
+/**
+ * Kept for the session, so a second visit shows the work at once; it is asked for again behind it. Editors only read
+ * it when they open, so a refetch never overwrites what is being typed. The app's own writes keep it current
+ * (`patchWork`), so the cached copy is never older than what was typed before.
+ */
 export const useWork = (id: string) =>
-  useQuery({ queryKey: keys.work(id), queryFn: () => api.get<Work>(`/api/work/${encodeURIComponent(id)}`), staleTime: 0, gcTime: 0 });
+  useQuery({ queryKey: keys.work(id), queryFn: () => api.get<Work>(`/api/work/${encodeURIComponent(id)}`), staleTime: 0, gcTime: Infinity });
+
+/**
+ * Changes the cached work of an exercise, if there is any. A fetch still on its way carries what the server had
+ * before this write, so it is called off rather than allowed to land after it.
+ */
+export function patchWork(id: string, f: (w: Work) => Work) {
+  if (!queryClient.getQueryData(keys.work(id))) return;
+  void queryClient.cancelQueries({ queryKey: keys.work(id) });
+  queryClient.setQueryData<Work>(keys.work(id), (w) => (w ? f(w) : w));
+}
+
+/** A shared file is in the work of other exercises too: their cached copies are no longer right. */
+export const forgetOtherWork = (id: string) => queryClient.removeQueries({ queryKey: ['work'], predicate: (q) => q.queryKey[1] !== id });
 
 export const useSettings = () => useQuery({ queryKey: keys.settings, queryFn: () => api.get<Settings>('/api/settings'), staleTime: Infinity });
 
@@ -217,6 +237,7 @@ export const useSaveSettings = () => {
     },
     onError: (_e, _patch, ctx) => {
       if (ctx?.prev) qc.setQueryData(keys.settings, ctx.prev);
+      reportSaveFailed();
     },
     onSuccess: (data) => qc.setQueryData(keys.settings, data),
   });
@@ -239,31 +260,51 @@ export const useSetStatus = () => {
       }
       return { prev };
     },
-    onError: (_e, _v, ctx) => ctx?.prev && qc.setQueryData(keys.state, ctx.prev),
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(keys.state, ctx.prev);
+      reportSaveFailed();
+    },
     onSettled: () => void qc.invalidateQueries({ queryKey: keys.state }),
   });
 };
 
-export const saveAnswer = (id: string, slot: string, content: string, reason: 'autosave' | 'run' | 'check' | 'done' | 'reset' | 'restore' | 'retry' = 'autosave') =>
-  api.put(`/api/work/${encodeURIComponent(id)}/answer`, { slot, content, reason });
-export const saveNote = (id: string, format: NoteFormat, content: string) => api.put(`/api/work/${encodeURIComponent(id)}/note`, { format, content });
+export const saveAnswer = (id: string, slot: string, content: string, reason: 'autosave' | 'run' | 'check' | 'done' | 'reset' | 'restore' | 'retry' = 'autosave') => {
+  patchWork(id, (w) => ({ ...w, answers: { ...w.answers, [slot]: content } }));
+  return api.put(`/api/work/${encodeURIComponent(id)}/answer`, { slot, content, reason });
+};
+export const saveNote = (id: string, format: NoteFormat, content: string) => {
+  patchWork(id, (w) => ({ ...w, note: { format, content, updatedAt: Date.now() } }));
+  return api.put(`/api/work/${encodeURIComponent(id)}/note`, { format, content });
+};
 export const fetchVersions = (id: string, slot: string) => api.get<AnswerVersion[]>(`/api/work/${encodeURIComponent(id)}/versions?slot=${encodeURIComponent(slot)}`);
 export const runChecks = (id: string, files: Record<string, string>) => api.post<CheckRun>(`/api/work/${encodeURIComponent(id)}/check`, { files });
 export const stopChecks = (id: string) => api.post<{ ok: boolean }>(`/api/work/${encodeURIComponent(id)}/check/stop`);
 export const fetchSolution = (id: string) => api.post<{ files: Record<string, string> }>(`/api/work/${encodeURIComponent(id)}/solution`);
 export const fetchSample = (id: string) => api.post<{ samples: string[]; css: string }>(`/api/work/${encodeURIComponent(id)}/sample`);
-export const recordHints = (id: string, count: number) => api.post(`/api/work/${encodeURIComponent(id)}/hints`, { count });
+export const recordHints = (id: string, count: number) => {
+  patchWork(id, (w) => ({ ...w, stats: { ...w.stats, hintsRevealed: Math.max(w.stats.hintsRevealed, count) } }));
+  return api.post(`/api/work/${encodeURIComponent(id)}/hints`, { count });
+};
 export const recordOpen = (id: string) => api.post(`/api/work/${encodeURIComponent(id)}/open`);
 /** `keepalive`, so that it still arrives when it is sent while the page is closing. */
-export const recordTick = (id: string, seconds: number) =>
-  fetch(`/api/work/${encodeURIComponent(id)}/tick`, { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ seconds }) });
+export const recordTick = (id: string, seconds: number) => {
+  // Cached work shows the next visit's time, so it counts this visit too.
+  patchWork(id, (w) => ({ ...w, stats: { ...w.stats, activeSeconds: w.stats.activeSeconds + seconds } }));
+  return fetch(`/api/work/${encodeURIComponent(id)}/tick`, { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ seconds }) });
+};
 export const postReflection = (id: string, confidence: number, how: HowSolved[], comment: string) =>
   api.post<Reflection>(`/api/work/${encodeURIComponent(id)}/reflection`, { confidence, how, comment });
-export const saveOpenQuestion = (id: string, content: string) => api.put(`/api/work/${encodeURIComponent(id)}/question`, { content });
+export const saveOpenQuestion = (id: string, content: string) => {
+  patchWork(id, (w) => ({ ...w, openQuestion: content.trim() ? { content: content.trim(), updatedAt: Date.now() } : null }));
+  return api.put(`/api/work/${encodeURIComponent(id)}/question`, { content });
+};
 export const saveChecklistAnswer = (id: string, question: string, confidence: number | null, note: string) =>
   api.put(`/api/checklists/${encodeURIComponent(id)}/${encodeURIComponent(question)}`, { confidence, note });
 export const markLandingSeen = () => api.post('/api/landing/seen');
-export const resetTimer = (id: string) => api.post(`/api/work/${encodeURIComponent(id)}/timer/reset`);
+export const resetTimer = (id: string) => {
+  patchWork(id, (w) => ({ ...w, stats: { ...w.stats, activeSeconds: 0 } }));
+  return api.post(`/api/work/${encodeURIComponent(id)}/timer/reset`);
+};
 export interface PromptRequest {
   answer: string;
   tests: { name: string; status: string; message: string }[] | null;

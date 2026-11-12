@@ -430,8 +430,8 @@ export class Store {
     return r ? rowToAnnotation(r) : null;
   }
 
-  addAnnotation(a: AnnotationPlace & TextQuote & { color: AnnotationColor; label?: string | null; comment?: string; review?: AnnotationReview | null }): Annotation {
-    const id = randomUUID();
+  addAnnotation(a: AnnotationPlace & TextQuote & { id?: string; color: AnnotationColor; label?: string | null; comment?: string; review?: AnnotationReview | null }): Annotation {
+    const id = a.id ?? randomUUID();
     const t = this.now();
     this.tx(() => {
       this.run(

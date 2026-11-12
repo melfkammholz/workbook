@@ -8,6 +8,7 @@ import { CourseMenu, FocusQuestion } from '@/components/Focus';
 import { OutlinePanel } from '@/components/Outline';
 import { SearchDialog } from '@/components/SearchDialog';
 import { QuickSettings } from '@/components/QuickMenus';
+import { SaveNotice } from '@/components/SaveNotice';
 import { SetupDialog } from '@/components/SetupDialog';
 import { Empty, IconButton, Spinner, clsx } from '@/components/ui';
 import { useQueryClient } from '@tanstack/react-query';
@@ -53,6 +54,7 @@ export function App() {
   return (
     <Router hook={useAppLocation}>
       <Shell />
+      <SaveNotice />
     </Router>
   );
 }

@@ -145,7 +145,7 @@ function Layer() {
     };
   }, []);
 
-  const create = async (color: AnnotationColor, then?: 'comment' | 'review' | 'card', label: string | null = null) => {
+  const create = (color: AnnotationColor, then?: 'comment' | 'review' | 'card', label: string | null = null) => {
     if (pop?.kind !== 'new') return;
     try {
       localStorage.setItem(LAST_COLOR, color);
@@ -153,7 +153,7 @@ function Layer() {
       /* only a convenience */
     }
     getSelection()?.removeAllRanges();
-    const made = await addAnnotation(qc, { target: pop.target, part: pop.part, ...pop.quote, color, label, review: then === 'review' ? 'open' : null });
+    const made = addAnnotation(qc, { target: pop.target, part: pop.part, ...pop.quote, color, label, review: then === 'review' ? 'open' : null });
     if (then === 'card') setCard({ exerciseId: itemOfTarget(made.target), highlightId: made.id });
     setPop(then === 'comment' || then === 'review' ? { kind: 'edit', id: made.id, focus: then === 'comment' } : null);
   };
@@ -215,9 +215,9 @@ function Layer() {
             <p className="max-w-xs px-3 py-2 text-[13px] text-ink-2">{pop.text}</p>
           ) : pop.kind === 'removed' ? (
             <Removed
-              onUndo={async () => {
+              onUndo={() => {
                 const { ann } = pop;
-                const back = await addAnnotation(qc, { target: ann.target, part: ann.part, quote: ann.quote, prefix: ann.prefix, suffix: ann.suffix, color: ann.color, label: ann.label, comment: ann.comment, review: ann.review });
+                const back = addAnnotation(qc, { target: ann.target, part: ann.part, quote: ann.quote, prefix: ann.prefix, suffix: ann.suffix, color: ann.color, label: ann.label, comment: ann.comment, review: ann.review });
                 setPop({ kind: 'edit', id: back.id, focus: false });
               }}
               onGone={close}

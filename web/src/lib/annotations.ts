@@ -2,6 +2,7 @@ import { useQuery, type QueryClient } from '@tanstack/react-query';
 import type { CSSProperties } from 'react';
 import { isCustomColor, locateQuote, type Annotation, type AnnotationColor, type AnnotationEntry, type AnnotationReview, type TextQuote } from '@wb/shared';
 import { api, useSettings } from './api';
+import { reportSaveFailed } from './saveNotice';
 
 // ───────────────────────── data ─────────────────────────
 
@@ -18,27 +19,63 @@ export type AnnotationPatch = Partial<Pick<Annotation, 'color' | 'label' | 'comm
 
 const setList = (qc: QueryClient, f: (list: AnnotationEntry[]) => AnnotationEntry[]) => qc.setQueryData<AnnotationEntry[]>(annotationKey, (l) => f(l ?? []));
 
-/** It was just made from the text on screen, so it is found. */
-export async function addAnnotation(qc: QueryClient, a: NewAnnotation): Promise<AnnotationEntry> {
-  const made = { ...(await api.post<Annotation>('/api/annotations', a)), found: true };
+/** `crypto.randomUUID` needs a secure context; the workbook may be opened over plain http from another machine. */
+function uuid(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6]! & 0x0f) | 0x40;
+  b[8] = (b[8]! & 0x3f) | 0x80;
+  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+/** Highlights still on their way to the server: a change to one waits for it to arrive. */
+const arriving = new Map<string, Promise<unknown>>();
+const arrived = (id: string) => arriving.get(id)?.catch(() => undefined);
+
+/**
+ * Shown at once, with an id made here, and saved behind it. It was just made from the text on screen, so it is found.
+ * On failure it disappears again and the student is told.
+ */
+export function addAnnotation(qc: QueryClient, a: NewAnnotation): AnnotationEntry {
+  const t = Date.now();
+  // Only the fields of a new one: an undo passes the removed highlight, whose id may still be on its way out.
+  const body = { target: a.target, part: a.part, quote: a.quote, prefix: a.prefix, suffix: a.suffix, color: a.color, label: a.label ?? null, comment: a.comment ?? '', review: a.review ?? null, id: uuid() };
+  const made: AnnotationEntry = { ...body, createdAt: t, updatedAt: t, found: true };
   setList(qc, (l) => [...l, made]);
+  const saving = api.post<Annotation>('/api/annotations', body).then(
+    (saved) => setList(qc, (l) => l.map((x) => (x.id === made.id ? { ...saved, ...x, createdAt: saved.createdAt } : x))),
+    (e: unknown) => {
+      setList(qc, (l) => l.filter((x) => x.id !== made.id));
+      reportSaveFailed();
+      throw e;
+    },
+  );
+  arriving.set(made.id, saving);
+  void saving.finally(() => arriving.delete(made.id)).catch(() => undefined);
   return made;
 }
 
-/** Shown at once, saved behind it; on failure the list is fetched again. */
+/** Shown at once, saved behind it; on failure the list is fetched again and the student is told. */
 export async function updateAnnotation(qc: QueryClient, id: string, patch: AnnotationPatch): Promise<void> {
   setList(qc, (l) => l.map((a) => (a.id === id ? { ...a, ...patch } : a)));
   try {
+    await arrived(id);
     await api.patch<Annotation>(`/api/annotations/${encodeURIComponent(id)}`, patch);
   } catch (e) {
     void qc.invalidateQueries({ queryKey: annotationKey });
+    reportSaveFailed();
     throw e;
   }
 }
 
 export async function deleteAnnotation(qc: QueryClient, id: string): Promise<void> {
   setList(qc, (l) => l.filter((a) => a.id !== id));
-  await api.delete(`/api/annotations/${encodeURIComponent(id)}`).catch(() => qc.invalidateQueries({ queryKey: annotationKey }));
+  await arrived(id);
+  await api.delete(`/api/annotations/${encodeURIComponent(id)}`).catch(() => {
+    void qc.invalidateQueries({ queryKey: annotationKey });
+    reportSaveFailed();
+  });
 }
 
 // ───────────────────────── the text ─────────────────────────

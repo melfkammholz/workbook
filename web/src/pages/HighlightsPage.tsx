@@ -143,7 +143,10 @@ export function HighlightsPage({ filter: asked }: { filter?: string }) {
         // The last one removed can come back, until the next one is removed or the page is left.
         <div role="status" className="wb-pop fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-line-strong bg-sheet py-1.5 pl-4 pr-1.5 text-[13px] shadow-[var(--shadow)]">
           <span className="text-ink-2">{t.annRemoved}</span>
-          <Button size="sm" variant="ghost" onClick={() => void addAnnotation(qc, removed).then(() => setRemoved(null))}>
+          <Button size="sm" variant="ghost" onClick={() => {
+              addAnnotation(qc, removed);
+              setRemoved(null);
+            }}>
             <Undo2 size={14} /> {t.undo}
           </Button>
         </div>

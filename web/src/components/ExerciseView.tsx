@@ -5,7 +5,7 @@ import { EditorView } from '@codemirror/view';
 import { Group, Panel, usePanelRef } from 'react-resizable-panels';
 import { SLD_TREE_TEST, type CheckRun, type ExerciseMeta, type ItemDetail } from '@wb/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { fetchSample, fetchSolution, fetchVersions, keys, runChecks, saveAnswer, stopChecks, useSettings, type Work } from '@/lib/api';
+import { fetchSample, fetchSolution, fetchVersions, forgetOtherWork, keys, runChecks, saveAnswer, stopChecks, useSettings, type Work } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { readPref, writePref } from '@/lib/shell';
 import { useMediaQuery } from '@/lib/useActiveTime';
@@ -135,8 +135,10 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
   );
   const touched = useRef(false);
 
+  const shared = !!code?.shared;
   const save = useDebouncedCallback((file: string, value: string) => {
     setSaved('saving');
+    if (shared) forgetOtherWork(meta.id);
     saveAnswer(meta.id, file, value).then(
       () => setSaved('saved'),
       () => setSaved('error'),
@@ -188,6 +190,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
   const replaceText = (value: string, reason: 'reset' | 'restore') => {
     // What is about to be saved is what is being replaced. It must not arrive after the new text.
     save.cancel();
+    if (shared) forgetOtherWork(meta.id);
     // The version being replaced stays in the history.
     void saveAnswer(meta.id, slot, text, 'reset').then(() => saveAnswer(meta.id, slot, value, reason));
     latest.current = { ...latest.current, [slot]: value };
@@ -212,6 +215,8 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
       if (allPass && celebrating && !passedBefore.current) confetti();
       if (allPass) passedBefore.current = true;
       void qc.invalidateQueries({ queryKey: keys.state });
+      // The counts of runs and passes changed; the editor does not read the work again, so this is safe.
+      void qc.invalidateQueries({ queryKey: keys.work(meta.id) });
     } catch (e) {
       setRunError((e as Error).message);
     } finally {
