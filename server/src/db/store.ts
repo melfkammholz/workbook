@@ -719,6 +719,50 @@ export class Store {
     return this.getSettings();
   }
 
+  // ───────────────────────── assistant digests ─────────────────────────
+
+  listDigests(): { id: string; resource: string | null; course: string | null; title: string; content: string; updatedAt: number }[] {
+    return this.all('SELECT * FROM assistant_digests ORDER BY updated_at DESC').map((r) => ({
+      id: r.id as string,
+      resource: (r.resource as string | null) ?? null,
+      course: (r.course as string | null) ?? null,
+      title: r.title as string,
+      content: r.content as string,
+      updatedAt: Number(r.updated_at),
+    }));
+  }
+
+  /** One digest per id: writing again replaces it. */
+  writeDigest(d: { id?: string; resource?: string | null; course?: string | null; title: string; content: string }): string {
+    const id = d.id ?? `dg-${randomUUID()}`;
+    this.run(
+      'INSERT INTO assistant_digests (id, resource, course, title, content, updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET resource=excluded.resource, course=excluded.course, title=excluded.title, content=excluded.content, updated_at=excluded.updated_at',
+      id,
+      d.resource ?? null,
+      d.course ?? null,
+      d.title,
+      d.content,
+      Date.now(),
+    );
+    return id;
+  }
+
+  deleteDigest(id: string): boolean {
+    const had = this.all('SELECT 1 FROM assistant_digests WHERE id = ?', id).length > 0;
+    this.run('DELETE FROM assistant_digests WHERE id = ?', id);
+    return had;
+  }
+
+  /** The text of one page (0-based) of the current file of a material, once it has been read. */
+  resourcePageText(resource: string, pageIndex: number): string | null {
+    const r = this.all(
+      `SELECT t.text FROM resource_text t JOIN resources r ON r.id = t.resource JOIN resource_versions v ON v.id = r.current_version AND v.sha256 = t.version WHERE t.resource = ? AND t.page_index = ?`,
+      resource,
+      pageIndex,
+    )[0];
+    return r ? (r.text as string) : null;
+  }
+
   // ───────────────────────── labels ─────────────────────────
 
   /** The student's names for highlights (`any`, with a color) or for kinds of PDF pages (`page`), in their order. */

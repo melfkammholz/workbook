@@ -585,6 +585,19 @@ export const MIGRATIONS: Migration[] = [
       `);
     }
   },
+  /*
+   * 21: what an assistant (through the bridge) keeps for itself: digests per material or workbook. Never shown as
+   * the student's content; the student can read and delete them in settings.
+   */ `
+  CREATE TABLE assistant_digests (
+    id         TEXT PRIMARY KEY,
+    resource   TEXT,
+    course     TEXT,
+    title      TEXT NOT NULL,
+    content    TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

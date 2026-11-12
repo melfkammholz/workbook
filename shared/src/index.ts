@@ -351,6 +351,12 @@ export interface Settings {
   showMaterials: boolean;
   /** Opt-in. While false, nothing offers a prompt for an AI chat. */
   showAi: boolean;
+  /** Opt-in, under `showAi`. While false, `/mcp` answers 404. */
+  assistantBridge: boolean;
+  /** Whether the bridge may read solutions and author notes. */
+  bridgeIncludeSolutions: boolean;
+  /** The bearer token of the bridge; empty until it is turned on. Never sent anywhere by the app. */
+  bridgeToken: string;
   /** Language of the app itself. Exercises are not translated. `auto` follows the course. */
   uiLanguage: UiLanguage;
   /** False until the first-run dialog was finished or skipped. */
@@ -396,6 +402,9 @@ export const DEFAULT_SETTINGS: Settings = {
   pdfPageMarks: [],
   showMaterials: false,
   showAi: false,
+  assistantBridge: false,
+  bridgeIncludeSolutions: true,
+  bridgeToken: '',
   editorFontSize: 13.5,
   editorKeys: 'default',
   aiPromptTemplate: '',

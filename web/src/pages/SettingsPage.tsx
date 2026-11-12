@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { ANNOTATION_COLORS, DUSK_COLORS, isCustomColor, normalizeColor, type AnnotationColor, type HighlightLabel, type PdfPageMark, type Settings, type SnapshotInfo, type UiLanguage } from '@wb/shared';
 import { Plus, X } from 'lucide-react';
@@ -40,6 +40,68 @@ function Toggle({ checked, onChange, title, body }: { checked: boolean; onChange
         {body ? <span className="block text-[13px] text-ink-2">{body}</span> : null}
       </span>
     </label>
+  );
+}
+
+/** The bridge to an assistant (MCP): a copy-ready command with the token, and what the assistant has noted. */
+function AssistantBridge({ settings, set }: { settings: Settings; set: (p: Partial<Settings>) => void }) {
+  const t = useT();
+  const qc = useQueryClient();
+  const [copied, setCopied] = useState(false);
+  const digests = useQuery({ queryKey: ['bridge-digests'], queryFn: () => api.get<{ id: string; title: string; content: string }[]>('/api/bridge/digests'), staleTime: 0, enabled: settings.assistantBridge });
+  const newToken = async () => qc.setQueryData(keys.settings, await api.post<Settings>('/api/bridge/token', {}));
+  useEffect(() => {
+    if (settings.assistantBridge && !settings.bridgeToken) void newToken();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.assistantBridge, settings.bridgeToken]);
+  const command = `claude mcp add --transport http workbook ${window.location.origin}/mcp --header "Authorization: Bearer ${settings.bridgeToken}"`;
+  return (
+    <div className="space-y-3">
+      <Toggle checked={settings.assistantBridge} onChange={(v) => set({ assistantBridge: v })} title={t.bridgeTitle} body={t.bridgeBody} />
+      {settings.assistantBridge ? (
+        <div className="ml-7 space-y-3">
+          <Toggle checked={settings.bridgeIncludeSolutions} onChange={(v) => set({ bridgeIncludeSolutions: v })} title={t.bridgeSolutions} body={t.bridgeSolutionsBody} />
+          <div>
+            <p className="mb-1 text-[13px] text-ink-2">{t.bridgeCommand}</p>
+            <pre className="overflow-x-auto wb-field px-3 py-2 text-xs">{settings.bridgeToken ? command : ''}</pre>
+            <div className="mt-2 flex items-center gap-3">
+              <Button
+                onClick={() => {
+                  void navigator.clipboard?.writeText(command).then(() => {
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                  });
+                }}
+              >
+                {copied ? t.bridgeCopied : t.bridgeCopy}
+              </Button>
+              <Button onClick={() => void newToken()}>{t.bridgeNewToken}</Button>
+              <span className="text-xs text-ink-3">{t.bridgeNewTokenBody}</span>
+            </div>
+          </div>
+          <div>
+            <p className="mb-1 text-sm font-medium">{t.bridgeDigestsTitle}</p>
+            {digests.data?.length ? (
+              <ul className="space-y-1">
+                {digests.data.map((d) => (
+                  <li key={d.id} className="flex items-start justify-between gap-3 text-[13px]">
+                    <details className="min-w-0">
+                      <summary className="cursor-pointer">{d.title}</summary>
+                      <pre className="mt-1 whitespace-pre-wrap text-xs text-ink-2">{d.content}</pre>
+                    </details>
+                    <button className="shrink-0 text-xs text-ink-3 hover:text-ink" onClick={() => void api.delete(`/api/bridge/digests/${encodeURIComponent(d.id)}`).then(() => digests.refetch())}>
+                      {t.bridgeDeleteDigest}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[13px] text-ink-3">{t.bridgeNoDigests}</p>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -431,6 +493,7 @@ export function SettingsPage({ section }: { section?: string }) {
           <Toggle checked={settings.showMaterials} onChange={(v) => set({ showMaterials: v })} title={t.showMaterials} body={t.showMaterialsBody} />
           {settings.showMaterials && settings.showAnnotations ? <PageMarksEditor marks={settings.pdfPageMarks} onChange={(m) => set({ pdfPageMarks: m })} /> : null}
           <Toggle checked={settings.showAi} onChange={(v) => set({ showAi: v })} title={t.showAi} body={t.showAiBody} />
+          {settings.showAi ? <AssistantBridge settings={settings} set={set} /> : null}
         </div>
       ),
     },

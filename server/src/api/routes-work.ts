@@ -43,6 +43,8 @@ const bodies = {
       pdfPageMarks: z.array(z.object({ id: z.string().min(1).max(100), name: z.string().max(60) })).max(30),
       showMaterials: z.boolean(),
       showAi: z.boolean(),
+      assistantBridge: z.boolean(),
+      bridgeIncludeSolutions: z.boolean(),
       safeColors: z.boolean(),
       warmPaper: z.boolean(),
       editorFontSize: z.number().min(10).max(24),
