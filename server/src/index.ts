@@ -32,6 +32,17 @@ const courses = new CourseManager({
 // The open course is loaded now, not by the first request, and its texts start warming.
 void courses.active;
 
+// A backup on the first start of each day; a server that runs for days takes its next one when the day changes.
+const snapshot = () => {
+  try {
+    courses.snapshots.daily();
+  } catch (e) {
+    console.error('Could not take the daily snapshot.', e);
+  }
+};
+snapshot();
+setInterval(snapshot, 60 * 60_000).unref();
+
 const app = await buildApp(makeDeps({ config, courses, pool, haskellLib: path.join(assets, 'haskell'), prologLib: path.join(assets, 'prolog') }));
 await app.listen({ port: config.port, host: config.host });
 console.log(`Workbook running on http://localhost:${config.port}`);

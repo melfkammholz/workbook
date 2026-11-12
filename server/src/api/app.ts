@@ -49,8 +49,9 @@ export async function buildApp(d: Deps): Promise<FastifyInstance> {
     });
   }
 
-  // Before the first course is added, only what it takes to add one works, and flashcards, which belong to no course.
-  const WITHOUT_COURSE = ['/api/courses', '/api/settings', '/api/info', '/api/flashcards', '/api/reset-all'];
+  // Before the first course is added, only what it takes to add one works, flashcards, which belong to no course, and
+  // the backups, which may bring courses back.
+  const WITHOUT_COURSE = ['/api/courses', '/api/settings', '/api/info', '/api/flashcards', '/api/reset-all', '/api/snapshots'];
   app.addHook('onRequest', async (req, reply) => {
     if (d.courses.active || !(req.url.startsWith('/api/') || req.url.startsWith('/ws/'))) return;
     if (!WITHOUT_COURSE.some((p) => req.url.startsWith(p))) return reply.code(409).send({ error: 'no course yet' });

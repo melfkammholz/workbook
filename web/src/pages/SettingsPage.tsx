@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { ANNOTATION_COLORS, DUSK_COLORS, isCustomColor, normalizeColor, type AnnotationColor, type HighlightLabel, type Settings, type UiLanguage } from '@wb/shared';
+import { ANNOTATION_COLORS, DUSK_COLORS, isCustomColor, normalizeColor, type AnnotationColor, type HighlightLabel, type Settings, type SnapshotInfo, type UiLanguage } from '@wb/shared';
 import { Plus, X } from 'lucide-react';
 import { api, keys, useSaveSettings, useSettings } from '@/lib/api';
 import { swatchProps } from '@/lib/annotations';
-import { useT } from '@/lib/i18n';
+import { useLang, useT } from '@/lib/i18n';
 import { applyTheme } from '@/lib/theme';
 import { Button, Segmented, clsx } from '@/components/ui';
 import { SectionedPage, type PageSection } from '@/components/SectionedPage';
@@ -137,6 +137,79 @@ function LabelsEditor({ labels, onChange }: { labels: HighlightLabel[]; onChange
         <Button onClick={() => onChange([...labels, { id: crypto.randomUUID().slice(0, 8), name: '', color: free as AnnotationColor }])}>
           <Plus size={14} /> {t.annLabelAdd}
         </Button>
+      ) : null}
+    </div>
+  );
+}
+
+const megabytes = (bytes: number, lang: string) => `${(bytes / 1_000_000).toLocaleString(lang, { maximumFractionDigits: bytes < 10_000_000 ? 1 : 0 })} MB`;
+
+/** The automatic snapshots, newest first; restoring one asks in place and then starts the app again from it. */
+function Backups() {
+  const t = useT();
+  const lang = useLang();
+  const list = useQuery({ queryKey: ['snapshots'], queryFn: () => api.get<{ snapshots: SnapshotInfo[] }>('/api/snapshots'), staleTime: 0 });
+  const [asking, setAsking] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const when = (s: SnapshotInfo) => new Date(s.takenAt).toLocaleString(lang, { dateStyle: 'full', ...(s.reason === 'before-restore' ? { timeStyle: 'short' } : {}) });
+  const snapshots = list.data?.snapshots;
+  return (
+    <div className="space-y-3">
+      <p className="text-[13px] text-ink-2">{t.backupsBody}</p>
+      {snapshots && !snapshots.length ? <p className="text-sm text-ink-3">{t.backupsNone}</p> : null}
+      {snapshots?.length ? (
+        <ul className="divide-y divide-line rounded-lg border border-line">
+          {snapshots.map((s) => (
+            <li key={s.id} className="px-3 py-2">
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">{when(s)}</p>
+                  <p className="text-xs text-ink-3">
+                    {megabytes(s.bytes, lang)}
+                    {s.reason === 'before-restore' ? ` · ${t.backupBeforeRestore}` : ''}
+                  </p>
+                </div>
+                {asking !== s.id ? (
+                  <Button size="sm" disabled={busy} onClick={() => (setAsking(s.id), setFailed(false))}>
+                    {t.backupRestore}
+                  </Button>
+                ) : null}
+              </div>
+              {asking === s.id ? (
+                <div className="mt-2 rounded-md border border-line-strong bg-sunk px-3 py-2.5 text-sm">
+                  <p>{t.backupRestoreConfirm(when(s))}</p>
+                  <div className="mt-2 flex justify-end gap-2">
+                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => setAsking(null)}>
+                      {t.cancel}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        setFailed(false);
+                        try {
+                          await api.post(`/api/snapshots/${encodeURIComponent(s.id)}/restore`, { confirm: 'restore' });
+                          // Everything the app holds is out of date; a fresh start is simplest.
+                          location.hash = '#/';
+                          location.reload();
+                        } catch {
+                          setFailed(true);
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      {busy ? t.backupRestoring : t.backupRestore}
+                    </Button>
+                  </div>
+                  {failed ? <p className="mt-2 text-danger">{t.couldNotSave}</p> : null}
+                </div>
+              ) : null}
+            </li>
+          ))}
+        </ul>
       ) : null}
     </div>
   );
@@ -334,6 +407,7 @@ export function SettingsPage({ section }: { section?: string }) {
         </div>
       ),
     },
+    { id: 'backups', title: t.backupsTitle, body: <Backups /> },
     { id: 'start-over', title: t.resetAllTitle, body: <StartOver /> },
   ];
 

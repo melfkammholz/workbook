@@ -9,7 +9,7 @@ async function answer<T>(reply: FastifyReply, work: () => Promise<T>): Promise<T
     return await work();
   } catch (e) {
     if (e instanceof CourseError) {
-      void reply.code(e.code === 'unknown-course' ? 404 : 400).send({ error: e.code });
+      void reply.code(e.code === 'unknown-course' || e.code === 'unknown-snapshot' ? 404 : 400).send({ error: e.code });
       return undefined;
     }
     throw e;
@@ -42,6 +42,13 @@ export function courseRoutes(app: FastifyInstance, d: Deps): void {
   app.post<{ Params: { id: string } }>('/api/courses/:id/delete', async (req, reply) => {
     if ((req.body as { confirm?: unknown } | undefined)?.confirm !== 'delete') return reply.code(400).send({ error: 'confirm with "delete"' });
     return answer(reply, async () => d.courses.deleteData(req.params.id));
+  });
+  /** The automatic backups, newest first. */
+  app.get('/api/snapshots', async () => ({ snapshots: d.courses.snapshots.list() }));
+  /** Everything the student has goes back to a snapshot (one more is taken first). Asks for the word. */
+  app.post<{ Params: { id: string } }>('/api/snapshots/:id/restore', async (req, reply) => {
+    if ((req.body as { confirm?: unknown } | undefined)?.confirm !== 'restore') return reply.code(400).send({ error: 'confirm with "restore"' });
+    return answer(reply, () => d.courses.restoreSnapshot(req.params.id));
   });
   /** Removing hides the course; its work stays for when it is added again. */
   app.delete<{ Params: { id: string } }>('/api/courses/:id', async (req, reply) => answer(reply, async () => d.courses.remove(req.params.id)));

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
+import { backup, DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import {
   DEFAULT_SETTINGS,
   type AchievementEvent,
@@ -49,7 +49,7 @@ class Db {
   private readonly optimizer: NodeJS.Timeout;
   inTx = false;
 
-  constructor(file: string) {
+  constructor(readonly file: string) {
     if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
     this.raw = new DatabaseSync(file);
     this.raw.exec(`PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;
@@ -125,6 +125,27 @@ export class Store {
   /** The work of one course. Settings and other global values stay shared with this store. */
   forCourse(course: string): Store {
     return new Store(this.db, this.now, course);
+  }
+
+  /** A consistent copy of the whole file (every course), written while the app keeps running. */
+  snapshotTo(file: string): void {
+    this.db.raw.prepare('VACUUM INTO ?').run(file);
+  }
+
+  /**
+   * Replaces the whole database with a copy made by `snapshotTo`, in place: this connection and its views stay open
+   * and see the copy's rows. A copy from an older version is brought up to date.
+   */
+  async restoreFrom(file: string): Promise<void> {
+    const source = new DatabaseSync(file, { readOnly: true });
+    try {
+      // In one step, so no write of the running app lands in between.
+      await backup(source, this.db.file, { rate: 1_000_000_000 });
+    } finally {
+      source.close();
+    }
+    this.db.raw.exec('PRAGMA journal_mode = WAL');
+    migrate(this.db.raw);
   }
 
   /** Closes the file; a course's view leaves it to the store it came from. */

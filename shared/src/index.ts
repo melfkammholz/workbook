@@ -515,7 +515,18 @@ export interface CoursesResponse {
   activeId: string | null;
 }
 
-export type CourseErrorCode = 'bad-url' | 'has-credentials' | 'clone-failed' | 'not-a-course' | 'git-missing' | 'update-failed' | 'unknown-course' | 'mounted';
+/** An automatic backup of the database and the uploaded files, in `<data>/snapshots/<id>/`. */
+export interface SnapshotInfo {
+  /** `YYYY-MM-DD` for the daily one, `YYYY-MM-DD-HHMMSS` for one taken just before a restore. */
+  id: string;
+  /** When it was taken (ms). */
+  takenAt: number;
+  /** The database plus the files it holds. */
+  bytes: number;
+  reason: 'daily' | 'before-restore';
+}
+
+export type CourseErrorCode = 'bad-url' | 'has-credentials' | 'clone-failed' | 'not-a-course' | 'git-missing' | 'update-failed' | 'unknown-course' | 'mounted' | 'unknown-snapshot';
 
 // ───────────────────────── running code ─────────────────────────
 

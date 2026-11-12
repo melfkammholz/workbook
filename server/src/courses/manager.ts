@@ -9,6 +9,7 @@ import { TypstRenderer } from '../content/typst.js';
 import { MOUNTED_COURSE } from '../db/migrations.js';
 import { Store } from '../db/store.js';
 import { Flashcards } from '../flashcards/service.js';
+import { Snapshots } from '../snapshots.js';
 import * as git from './git.js';
 
 export class CourseError extends Error {
@@ -98,6 +99,8 @@ export class CourseManager {
   readonly global: Store;
   /** The student's decks. They belong to no course. */
   readonly flashcards: Flashcards;
+  /** Backups of the one database and the uploaded files; the daily one is taken by whoever runs the app. */
+  readonly snapshots: Snapshots;
   private deckRenderer: TypstRenderer | null = null;
   private readonly open = new Map<string, OpenCourse>();
   private readonly updates = new Map<string, CourseUpdate>();
@@ -106,6 +109,7 @@ export class CourseManager {
 
   constructor(private readonly o: Options) {
     this.global = new Store(path.join(o.config.dataDir, 'workbook.db'));
+    this.snapshots = new Snapshots(o.config.dataDir, this.global);
     this.hasMount = isCourse(o.config.contentDir);
     this.importLegacy();
     const known = this.ids();
@@ -340,6 +344,27 @@ export class CourseManager {
   exerciseRef(itemId: string): string | null {
     const course = this.active;
     return course ? `${course.content.current.outline.id}/${itemId}` : null;
+  }
+
+  /**
+   * Puts all student data back as it was in a snapshot (after taking one of how it is now) and starts over from it:
+   * the course list, the open course and everything loaded come from the restored database. A course in it whose
+   * copy is gone since counts as removed, so adding it again downloads it with that work.
+   */
+  async restoreSnapshot(id: string): Promise<CoursesResponse> {
+    if (!this.snapshots.list().some((s) => s.id === id)) throw new CourseError('unknown-snapshot');
+    await this.snapshots.restore(id);
+    for (const c of this.open.values()) c.renderer.stopWarming();
+    this.open.clear();
+    this.updates.clear();
+    this.saveRecords(this.records().map((r) => (r.hidden || isCourse(this.repo(r.id)) ? r : { ...r, hidden: true })));
+    const known = this.ids();
+    const saved = this.global.getValue<string | null>(ACTIVE_KEY, null);
+    this.activeId = saved && known.includes(saved) ? saved : (known[0] ?? null);
+    this.global.setValue(ACTIVE_KEY, this.activeId);
+    this.o.onSwitch?.();
+    void this.active;
+    return this.list();
   }
 
   close(): void {
