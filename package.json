@@ -17,6 +17,7 @@
     "shot": "node scripts/shot.mjs",
     "start": "node server/dist/index.js",
     "test": "npm run test -w server",
+    "test:docker": "scripts/docker-test.sh",
     "typecheck": "npm run typecheck -w shared -w server -w web",
     "lint:content": "node server/dist/cli.js lint"
   },

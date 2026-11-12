@@ -170,6 +170,7 @@ for SLD trees, [`sldcheck`](https://github.com/melfkammholz/sldcheck) 0.2 or new
 ```sh
 npm install
 npm test                      # server tests; Typst, GHC, Prolog and sldcheck tests are skipped when the tool is missing
+npm run test:docker           # the same in the toolchain image, which has every tool
 npm run typecheck
 npm run build
 
