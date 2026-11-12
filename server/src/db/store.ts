@@ -18,6 +18,13 @@ import {
   type NoteFormat,
   type Question,
   type Anchor,
+  type Change,
+  type ChangeField,
+  type ChangeStatus,
+  type QuestionKind,
+  QUESTION_KINDS,
+  MAX_PENDING_CHANGES,
+  ANNOTATION_COLORS,
   MAX_QUESTION,
   PASS_GAP_MS,
   type ProgressEntry,
@@ -404,12 +411,14 @@ export class Store {
       params.push(filter.resource);
     }
     const rows = this.all(`SELECT * FROM questions ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at, rowid`, ...params);
-    return rows.map(rowToQuestion);
+    const labels = new Map<string, string[]>();
+    for (const l of this.all('SELECT question_id, label_id FROM question_labels ORDER BY rowid')) (labels.get(l.question_id as string) ?? labels.set(l.question_id as string, []).get(l.question_id as string)!).push(l.label_id as string);
+    return rows.map((r) => rowToQuestion(r, labels.get(r.id as string) ?? []));
   }
 
   getQuestion(id: string): Question | null {
     const r = this.get('SELECT * FROM questions WHERE id = ?', id);
-    return r ? rowToQuestion(r) : null;
+    return r ? rowToQuestion(r, this.all('SELECT label_id FROM question_labels WHERE question_id = ? ORDER BY rowid', id).map((l) => l.label_id as string)) : null;
   }
 
   /** The pass a capture now belongs to: the running one, or a new one after a pause. */
@@ -491,8 +500,156 @@ export class Store {
 
   deleteQuestion(id: string): boolean {
     const had = this.getQuestion(id) !== null;
-    if (had) this.run('DELETE FROM questions WHERE id = ?', id);
+    if (had) {
+      this.run('DELETE FROM questions WHERE id = ?', id);
+      this.run('DELETE FROM question_labels WHERE question_id = ?', id);
+    }
     return had;
+  }
+
+  // ───────────────────────── changes (the assistant inbox) ─────────────────────────
+
+  private labelNames(ids: string[]): string[] {
+    const names = new Map(this.listLabels('any').map((l) => [l.id, l.name]));
+    return ids.flatMap((i) => (names.has(i) ? [names.get(i)!] : []));
+  }
+
+  /** The student's label of this name (any case), made if there is none. */
+  private ensureLabel(name: string): string {
+    const found = this.listLabels('any').find((l) => l.name.toLowerCase() === name.toLowerCase());
+    if (found) return found.id;
+    const all = this.listLabels('any');
+    const t = this.now();
+    const id = `lb-${randomUUID()}`;
+    this.run('INSERT INTO labels (id, name, color, scope, sort, created_at, updated_at) VALUES (?,?,?,?,?,?,?)', id, name, ANNOTATION_COLORS[all.length % ANNOTATION_COLORS.length]!, 'any', all.length, t, t);
+    return id;
+  }
+
+  private setQuestionLabels(id: string, names: string[]): void {
+    this.run('DELETE FROM question_labels WHERE question_id = ?', id);
+    for (const n of new Set(names.map((x) => x.trim()).filter(Boolean))) this.run('INSERT OR IGNORE INTO question_labels (question_id, label_id) VALUES (?,?)', id, this.ensureLabel(n));
+  }
+
+  /**
+   * An assistant proposes changes to one question; they wait in the inbox. A pending proposal for the same field is
+   * replaced. Returns what was filed, or why not.
+   */
+  propose(who: string, questionId: string, p: { kind?: QuestionKind | null; labels?: string[]; answer?: string; reason?: string }): { ids: string[] } | { error: string } {
+    const q = this.getQuestion(questionId);
+    if (!q) return { error: 'unknown question' };
+    const wanted: [ChangeField, string | string[] | null, string | string[] | null][] = [];
+    if (p.kind !== undefined) {
+      if (p.kind !== null && !QUESTION_KINDS.includes(p.kind)) return { error: `type must be one of ${QUESTION_KINDS.join(', ')}` };
+      if (p.kind !== q.kind) wanted.push(['kind', q.kind, p.kind]);
+    }
+    if (p.labels !== undefined) {
+      const names = [...new Set(p.labels.map((x) => x.trim().slice(0, 60)).filter(Boolean))].slice(0, 8);
+      const cur = this.labelNames(q.labels);
+      const next = [...new Set([...cur, ...names])];
+      if (next.length !== cur.length) wanted.push(['labels', cur, next]);
+    }
+    if (p.answer !== undefined && p.answer.trim()) wanted.push(['answer', q.answer, p.answer.trim().slice(0, 8000)]);
+    if (!wanted.length) return { error: 'nothing to change' };
+    const pending = Number(this.get("SELECT COUNT(*) AS n FROM changes WHERE status = 'pending'")!.n);
+    const replaced = wanted.filter(([f]) => this.get("SELECT 1 FROM changes WHERE status = 'pending' AND ref_kind = 'question' AND ref_id = ? AND field = ?", questionId, f)).length;
+    if (pending - replaced + wanted.length > MAX_PENDING_CHANGES) return { error: 'inbox full: the student has to go through what is waiting first' };
+    const t = this.now();
+    const group = `g-${randomUUID()}`;
+    const ids: string[] = [];
+    this.tx(() => {
+      for (const [field, before, after] of wanted) {
+        this.run("DELETE FROM changes WHERE status = 'pending' AND ref_kind = 'question' AND ref_id = ? AND field = ?", questionId, field);
+        const id = `ch-${randomUUID()}`;
+        this.run(
+          `INSERT INTO changes (id, who, ref_kind, ref_id, field, before, after, base_version, group_id, status, reason, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?,?)`,
+          id, who, 'question', questionId, field, JSON.stringify(before), JSON.stringify(after), q.updatedAt, group, (p.reason ?? '').slice(0, 500), t,
+        );
+        ids.push(id);
+      }
+    });
+    return { ids };
+  }
+
+  /** Pending ones first, then the latest decided ones. Proposals that no longer fit (question gone, answer edited) expire. */
+  listChanges(opts: { limit?: number } = {}): Change[] {
+    this.expireStale();
+    const rows = [
+      ...this.all("SELECT * FROM changes WHERE status = 'pending' ORDER BY created_at, rowid"),
+      ...this.all("SELECT * FROM changes WHERE status <> 'pending' ORDER BY COALESCE(decided_at, created_at) DESC, rowid DESC LIMIT ?", opts.limit ?? 60),
+    ];
+    return rows.map(rowToChange);
+  }
+
+  hasPendingChanges(): boolean {
+    this.expireStale();
+    return this.get("SELECT 1 FROM changes WHERE status = 'pending' LIMIT 1") !== undefined;
+  }
+
+  private expireStale(): void {
+    const t = this.now();
+    this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE status = 'pending' AND ref_kind = 'question' AND NOT EXISTS (SELECT 1 FROM questions q WHERE q.id = changes.ref_id)", t);
+    this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE status = 'pending' AND field = 'answer' AND EXISTS (SELECT 1 FROM questions q WHERE q.id = changes.ref_id AND q.updated_at <> changes.base_version)", t);
+  }
+
+  /** Applies a proposal (`after` replaces the proposed value, for accept after editing) or turns it down. */
+  decideChange(id: string, decision: 'accept' | 'reject', opts: { feedback?: string; after?: string | string[] | null } = {}): Change | { error: string } {
+    this.expireStale();
+    const r = this.get('SELECT * FROM changes WHERE id = ?', id);
+    if (!r) return { error: 'unknown change' };
+    const c = rowToChange(r);
+    if (c.status !== 'pending') return { error: `already ${c.status}` };
+    const t = this.now();
+    const feedback = (opts.feedback ?? '').slice(0, 500);
+    if (decision === 'reject') this.run("UPDATE changes SET status = 'rejected', feedback = ?, decided_at = ? WHERE id = ?", feedback, t, id);
+    else {
+      const after = opts.after === undefined ? c.after : opts.after;
+      try {
+        this.tx(() => {
+          const err = this.applyField(c.ref.id, c.field, after);
+          if (err) throw new ChangeError(err);
+          this.run("UPDATE changes SET status = 'applied', after = ?, feedback = ?, decided_at = ? WHERE id = ?", JSON.stringify(after), feedback, t, id);
+        });
+      } catch (e) {
+        if (e instanceof ChangeError) return { error: e.message };
+        throw e;
+      }
+    }
+    return rowToChange(this.get('SELECT * FROM changes WHERE id = ?', id)!);
+  }
+
+  /** Puts back what an applied change replaced. */
+  undoChange(id: string): Change | { error: string } {
+    const r = this.get('SELECT * FROM changes WHERE id = ?', id);
+    if (!r) return { error: 'unknown change' };
+    const c = rowToChange(r);
+    if (c.status !== 'applied') return { error: `is ${c.status}, not applied` };
+    try {
+      this.tx(() => {
+        const err = this.applyField(c.ref.id, c.field, c.before, true);
+        if (err) throw new ChangeError(err);
+        this.run("UPDATE changes SET status = 'undone', decided_at = ? WHERE id = ?", this.now(), id);
+      });
+    } catch (e) {
+      if (e instanceof ChangeError) return { error: e.message };
+      throw e;
+    }
+    return rowToChange(this.get('SELECT * FROM changes WHERE id = ?', id)!);
+  }
+
+  /** Kind and labels leave `updated_at` alone, so a proposal for the answer is not made stale by another one of the group. */
+  private applyField(questionId: string, field: ChangeField, value: string | string[] | null, undo = false): string | null {
+    const q = this.getQuestion(questionId);
+    if (!q) return 'the question is gone';
+    if (field === 'kind') {
+      if (value !== null && !(QUESTION_KINDS as readonly string[]).includes(value as string)) return 'unknown type';
+      this.run('UPDATE questions SET kind = ? WHERE id = ?', (value as string | null) ?? null, questionId);
+    } else if (field === 'labels') {
+      this.setQuestionLabels(questionId, Array.isArray(value) ? value : []);
+    } else {
+      if (undo) this.updateQuestion(questionId, { answer: (value as string | null) ?? null, status: 'open' });
+      else this.updateQuestion(questionId, { answer: typeof value === 'string' ? value : null, status: 'done' });
+    }
+    return null;
   }
 
   // ───────────────────────── checklists ─────────────────────────
@@ -935,7 +1092,27 @@ export class Store {
 
 // ───────────────────────── row mapping ─────────────────────────
 
-function rowToQuestion(r: Row): Question {
+class ChangeError extends Error {}
+
+function rowToChange(r: Row): Change {
+  const parse = (v: unknown) => (typeof v === 'string' ? (JSON.parse(v) as string | string[] | null) : null);
+  return {
+    id: r.id as string,
+    who: r.who as string,
+    ref: { kind: 'question', id: r.ref_id as string },
+    field: r.field as ChangeField,
+    before: parse(r.before),
+    after: parse(r.after),
+    group: r.group_id as string,
+    status: r.status as ChangeStatus,
+    reason: r.reason as string,
+    feedback: r.feedback as string,
+    createdAt: Number(r.created_at),
+    decidedAt: r.decided_at === null ? null : Number(r.decided_at),
+  };
+}
+
+function rowToQuestion(r: Row, labels: string[] = []): Question {
   return {
     id: r.id as string,
     text: r.text as string,
@@ -946,6 +1123,8 @@ function rowToQuestion(r: Row): Question {
     unplaced: Number(r.unplaced) === 1,
     status: r.status as 'open' | 'done',
     answer: (r.answer as string | null) ?? null,
+    kind: (r.kind as QuestionKind | null) ?? null,
+    labels,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
     doneAt: r.done_at === null ? null : Number(r.done_at),

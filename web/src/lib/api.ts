@@ -11,6 +11,7 @@ import type {
   ItemDetail,
   NoteDoc,
   NoteFormat,
+  Change,
   Question,
   Outline,
   RenderedItem,
@@ -422,7 +423,7 @@ export const askQuestion = (where: QuestionPlace, text: string, continuePass = f
       : where.material
         ? { kind: 'material', resource: where.material }
         : { kind: 'none' };
-  const q: Question = { id, text, anchor, course: '', highlightId: null, passId: null, unplaced: false, status: 'open', answer: null, createdAt: t, updatedAt: t, doneAt: null };
+  const q: Question = { id, text, anchor, course: '', highlightId: null, passId: null, unplaced: false, status: 'open', answer: null, kind: null, labels: [], createdAt: t, updatedAt: t, doneAt: null };
   const item = where.item ?? null;
   if (item) patchWork(item, (w) => ({ ...w, questions: [...w.questions, q] }));
   patchQuestions((qs) => [...qs, q]);
@@ -441,6 +442,20 @@ export const deleteQuestion = (item: string | null, id: string) => {
   if (item) patchWork(item, (w) => ({ ...w, questions: w.questions.filter((q) => q.id !== id) }));
   patchQuestions((qs) => qs.filter((q) => q.id !== id));
   return saved(item, api.delete(`/api/questions/${encodeURIComponent(id)}`));
+};
+/** The assistant inbox: proposals waiting, and what was decided lately. Only asked for while the bridge is on. */
+export const changesKey = ['changes'] as const;
+export const useChanges = (enabled = true) => useQuery({ queryKey: changesKey, queryFn: () => api.get<Change[]>('/api/changes'), staleTime: 20_000, refetchInterval: 60_000, enabled });
+/** Accepts (maybe with an edited value), rejects or undoes one proposal; the questions and labels may have changed. */
+export const decideChange = async (id: string, decision: 'accept' | 'reject' | 'undo', body: { feedback?: string; after?: string | string[] | null } = {}) => {
+  try {
+    await api.post(`/api/changes/${encodeURIComponent(id)}/${decision}`, body);
+  } finally {
+    void queryClient.invalidateQueries({ queryKey: changesKey });
+    void queryClient.invalidateQueries({ queryKey: questionsKey });
+    void queryClient.invalidateQueries({ queryKey: keys.settings });
+    void queryClient.invalidateQueries({ queryKey: ['work'] });
+  }
 };
 export const saveChecklistAnswer = (id: string, question: string, confidence: number | null, note: string) =>
   api.put(`/api/checklists/${encodeURIComponent(id)}/${encodeURIComponent(question)}`, { confidence, note });

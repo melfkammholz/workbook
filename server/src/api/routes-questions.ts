@@ -80,4 +80,21 @@ export function questionRoutes(app: FastifyInstance, d: Deps): void {
   app.delete<{ Params: { id: string } }>('/api/questions/:id', async (req, reply) =>
     d.store.deleteQuestion(req.params.id) ? { ok: true } : reply.code(404).send({ error: 'unknown question' }),
   );
+
+  // The assistant inbox: what the assistant proposed, and what was decided.
+  app.get('/api/changes', async () => d.store.listChanges());
+  app.get('/api/changes/pending', async () => ({ pending: d.store.hasPendingChanges() }));
+  app.post<{ Params: { id: string; decision: string } }>('/api/changes/:id/:decision', async (req, reply) => {
+    const r = z.object({ feedback: z.string().max(500).optional(), after: z.union([z.string().max(8000), z.array(z.string().max(60)).max(12), z.null()]).optional() }).safeParse(req.body ?? {});
+    if (!r.success) return fail(reply, r.error);
+    const { decision, id } = req.params;
+    const out =
+      decision === 'undo'
+        ? d.store.undoChange(id)
+        : decision === 'accept' || decision === 'reject'
+          ? d.store.decideChange(id, decision, { ...(r.data.feedback !== undefined ? { feedback: r.data.feedback } : {}), ...(r.data.after !== undefined ? { after: r.data.after } : {}) })
+          : null;
+    if (!out) return reply.code(404).send({ error: 'unknown decision' });
+    return 'error' in out ? reply.code(409).send(out) : out;
+  });
 }

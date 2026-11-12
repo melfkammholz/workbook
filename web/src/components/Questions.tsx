@@ -2,7 +2,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { Check, Circle, HelpCircle, Pencil, Trash2, X } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { PASS_GAP_MS, type Question } from '@wb/shared';
-import { askQuestion, deleteQuestion, updateQuestion, useQuestions } from '@/lib/api';
+import { askQuestion, deleteQuestion, updateQuestion, useQuestions, useSettings } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Button, IconButton, clsx } from './ui';
 
@@ -160,6 +160,7 @@ export function QuestionRow({ item, q, extra }: { item: string | null; q: Questi
   const [draft, setDraft] = useState<string | null>(null);
   const ref = useAutoGrow(draft ?? '');
   const done = q.status === 'done';
+  const labelNames = new Map((useSettings().data?.highlightLabels ?? []).map((l) => [l.id, l.name]));
   const store = () => {
     const text = (draft ?? '').trim();
     setDraft(null);
@@ -204,6 +205,12 @@ export function QuestionRow({ item, q, extra }: { item: string | null; q: Questi
           <div className="min-w-0 flex-1">
             <p className={clsx('whitespace-pre-wrap break-words text-[14px] leading-snug', done && 'text-ink-3 line-through')}>{q.text}</p>
             {extra}
+            {q.kind || q.labels.length ? (
+              <p className="mt-0.5 flex flex-wrap gap-x-2 text-[12.5px] text-ink-3">
+                {q.kind ? <span>{t.questionKinds[q.kind]}</span> : null}
+                {q.labels.flatMap((l) => (labelNames.has(l) ? [<span key={l}>#{labelNames.get(l)}</span>] : []))}
+              </p>
+            ) : null}
           </div>
           <span className="flex shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
             <IconButton label={t.editQuestion} className="size-6" onClick={() => setDraft(q.text)}>

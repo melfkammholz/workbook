@@ -598,6 +598,37 @@ export const MIGRATIONS: Migration[] = [
     updated_at INTEGER NOT NULL
   );
   `,
+  /*
+   * 22: the assistant inbox. `changes` is the inbox (pending), the audit log (applied) and the undo in one; so far it
+   * reaches questions only: their type (`kind`, a small fixed set), their labels (`question_labels`, the student's
+   * own labels) and an answer. `base_version` is the `updated_at` the proposal was made against.
+   */ `
+  ALTER TABLE questions ADD COLUMN kind TEXT;
+  CREATE TABLE question_labels (
+    question_id TEXT NOT NULL,
+    label_id    TEXT NOT NULL,
+    PRIMARY KEY (question_id, label_id)
+  );
+  CREATE INDEX question_labels_label ON question_labels (label_id);
+  CREATE TABLE changes (
+    id           TEXT PRIMARY KEY,
+    who          TEXT NOT NULL,
+    ref_kind     TEXT NOT NULL,
+    ref_id       TEXT NOT NULL,
+    field        TEXT NOT NULL,
+    before       TEXT,
+    after        TEXT,
+    base_version INTEGER NOT NULL,
+    group_id     TEXT NOT NULL,
+    status       TEXT NOT NULL CHECK (status IN ('pending','applied','rejected','expired','undone')),
+    reason       TEXT NOT NULL DEFAULT '',
+    feedback     TEXT NOT NULL DEFAULT '',
+    created_at   INTEGER NOT NULL,
+    decided_at   INTEGER
+  );
+  CREATE INDEX changes_status ON changes (status, created_at);
+  CREATE INDEX changes_ref ON changes (ref_kind, ref_id);
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

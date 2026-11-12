@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import type { Question } from '@wb/shared';
+import { QUESTION_KINDS, type Question, type QuestionKind } from '@wb/shared';
 import { plainText } from '../content/search.js';
 import { searchEverything } from '../courses/search.js';
 import type { Deps } from './deps.js';
@@ -45,6 +45,17 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { question: { type: 'string' } }, required: ['question'] },
   },
   { name: 'list_digests', description: 'Your own saved digests (your memory, per material or workbook).', inputSchema: { type: 'object', properties: { resource: { type: 'string' }, course: { type: 'string' } } } },
+  { name: 'list_labels', description: "The student's own labels (topics). Reuse these names in propose before inventing new ones.", inputSchema: { type: 'object', properties: {} } },
+  {
+    name: 'propose',
+    description: `Propose changes to ONE question; they wait in the student's inbox and change nothing until accepted. Give any of: type (one of ${QUESTION_KINDS.join(', ')}; null clears), labels (names to add; a name that is new becomes a label, so prefer existing ones), answer (a short answer; accepting it closes the question), reason (one line). Never re-propose what was rejected: read list_proposals first.`,
+    inputSchema: {
+      type: 'object',
+      properties: { question: { type: 'string' }, type: { type: ['string', 'null'], enum: [...QUESTION_KINDS, null] }, labels: { type: 'array', items: { type: 'string' } }, answer: { type: 'string' }, reason: { type: 'string' } },
+      required: ['question'],
+    },
+  },
+  { name: 'list_proposals', description: 'Your proposals: waiting, applied, rejected (with what the student told you) and expired.', inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['pending', 'applied', 'rejected', 'expired', 'undone'] } } } },
   {
     name: 'write_digest',
     description: 'Save or replace a digest for yourself (for example a summary of a material). The student can read and delete it in settings. It changes nothing else.',
@@ -132,7 +143,8 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
           .filter((q) => (!status || q.status === status) && (pass === undefined || q.passId === pass))
           .sort((x, y) => y.createdAt - x.createdAt)
           .slice(0, Math.min(int(a.limit) ?? 50, 200));
-        return qs.map((q) => ({ id: q.id, text: q.text, status: q.status, answer: q.answer, where: where(q), pass: q.passId, created: new Date(q.createdAt).toISOString() }));
+        const names = new Map(g().listLabels('any').map((l) => [l.id, l.name]));
+        return qs.map((q) => ({ id: q.id, text: q.text, status: q.status, answer: q.answer, type: q.kind, labels: q.labels.flatMap((l) => (names.has(l) ? [names.get(l)!] : [])), where: where(q), pass: q.passId, created: new Date(q.createdAt).toISOString() }));
       }
       case 'search': {
         const query = str(a.query);
@@ -186,6 +198,30 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
           .filter((x) => (!resource || x.resource === resource) && (!course || x.course === course))
           .map((x) => ({ ...x, updatedAt: new Date(x.updatedAt).toISOString() }));
       }
+      case 'list_labels':
+        return g().listLabels('any').map((l) => l.name);
+      case 'propose': {
+        const q = str(a.question);
+        if (!q) throw new ToolError('question is required');
+        const type = a.type === null ? null : str(a.type);
+        if (type && !(QUESTION_KINDS as readonly string[]).includes(type)) throw new ToolError(`type must be one of ${QUESTION_KINDS.join(', ')}`);
+        const labels = Array.isArray(a.labels) ? a.labels.filter((x): x is string => typeof x === 'string') : undefined;
+        const r = g().propose('assistant', q, {
+          ...(type !== undefined ? { kind: type as QuestionKind | null } : {}),
+          ...(labels ? { labels } : {}),
+          ...(typeof a.answer === 'string' ? { answer: a.answer } : {}),
+          ...(typeof a.reason === 'string' ? { reason: a.reason } : {}),
+        });
+        if ('error' in r) throw new ToolError(r.error);
+        return { filed: r.ids.length, note: 'waiting in the inbox until the student decides' };
+      }
+      case 'list_proposals': {
+        const status = str(a.status);
+        return g()
+          .listChanges({ limit: 100 })
+          .filter((c) => !status || c.status === status)
+          .map((c) => ({ question: c.ref.id, field: c.field, before: c.before, after: c.after, status: c.status, reason: c.reason, studentSaid: c.feedback }));
+      }
       case 'write_digest': {
         const title = str(a.title);
         const content = typeof a.content === 'string' ? a.content : undefined;
@@ -211,7 +247,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
           protocolVersion: asked && PROTOCOLS.includes(asked) ? asked : PROTOCOLS[0],
           capabilities: { tools: {} },
           serverInfo: { name: 'workbook', version: '1' },
-          instructions: "The student's workbook: their open questions, their own text and the text of their materials. Read-only, except your own digests.",
+          instructions: "The student's workbook: their open questions, their own text and the text of their materials. You cannot change anything yourself: propose changes (type, labels, answers) and the student decides in their inbox. Read list_proposals first so you do not repeat a rejected one. You may also keep your own digests.",
         });
       }
       case 'ping':

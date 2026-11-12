@@ -1,4 +1,4 @@
-import { ArrowLeft, CircleHelp, ClipboardList, Highlighter, Layers, Library, Menu, MessageCircleQuestion, NotebookText, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Trophy, X } from 'lucide-react';
+import { ArrowLeft, CircleHelp, ClipboardList, Highlighter, Inbox, Layers, Library, Menu, MessageCircleQuestion, NotebookText, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Trophy, X } from 'lucide-react';
 import { Suspense, memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Route, Router, Switch, useLocation, useRoute } from 'wouter';
 import { useAppLocation } from '@/lib/history';
@@ -12,7 +12,7 @@ import { SaveNotice } from '@/components/SaveNotice';
 import { SetupDialog } from '@/components/SetupDialog';
 import { Empty, IconButton, Spinner, TipLayer, clsx } from '@/components/ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { AppQueries, checkCourseUpdates, keys, statusOf, useCourses, useOutlineQuery, useSettings, useStateQuery, useState_ } from '@/lib/api';
+import { AppQueries, checkCourseUpdates, keys, statusOf, useChanges, useCourses, useOutlineQuery, useSettings, useStateQuery, useState_ } from '@/lib/api';
 import { useFlashcards } from '@/lib/flashcards';
 import { useFilters } from '@/lib/filters';
 import { focusExercises } from '@/lib/focus';
@@ -39,6 +39,7 @@ import {
   NotesPage,
   PdfPage,
   QuestionsPage,
+  InboxPage,
   ReviewPage,
   SettingsPage,
   StrugglingPage,
@@ -203,6 +204,9 @@ function CourseShell() {
   const flashcardsOn = !!useSettings().data?.showFlashcards;
   const materialsOn = !!useSettings().data?.showMaterials;
   const annotationsOn = !!useSettings().data?.showAnnotations;
+  const settingsNow = useSettings().data;
+  const inboxOn = !!(settingsNow?.showAi && settingsNow.assistantBridge);
+  const inboxDot = !!useChanges(inboxOn).data?.some((c) => c.status === 'pending');
   const state = useState_().data?.state;
   const { filters, patch, reset } = useFilters();
   const [, params] = useRoute('/item/:id');
@@ -288,6 +292,7 @@ function CourseShell() {
     'g l': materialsOn ? () => navigate('/materials') : undefined,
     'g m': achievementsOn ? () => navigate('/achievements') : undefined,
     'g q': () => navigate('/questions'),
+    'g i': inboxOn ? () => navigate('/inbox') : undefined,
   });
 
   useEffect(() => {
@@ -403,6 +408,18 @@ function CourseShell() {
           >
             <MessageCircleQuestion size={18} />
           </Link>
+          {inboxOn ? (
+            <Link
+              href="/inbox"
+              className={clsx('relative inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk hover:text-ink', location === '/inbox' ? 'bg-sunk text-ink' : 'text-ink-2')}
+              aria-label={t.inboxTitle}
+              aria-current={location === '/inbox' ? 'page' : undefined}
+              title={t.inboxTitle}
+            >
+              <Inbox size={18} />
+              {inboxDot ? <span aria-hidden className="absolute right-1 top-1 size-2 rounded-full bg-accent" /> : null}
+            </Link>
+          ) : null}
           {annotationsOn ? (
             <Link
               href="/highlights"
@@ -493,6 +510,7 @@ const CoursePages = memo(function CoursePages() {
         <Route path="/achievements" component={AchievementsPage} />
         <Route path="/notes" component={NotesPage} />
         <Route path="/questions" component={QuestionsPage} />
+        <Route path="/inbox" component={InboxPage} />
         <Route path="/highlights">{() => <HighlightsPage />}</Route>
         <Route path="/materials" component={MaterialsPage} />
         <Route path="/highlights/:filter">{(p) => <HighlightsPage key={p.filter} filter={p.filter} />}</Route>
