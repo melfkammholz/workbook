@@ -229,7 +229,7 @@ function measure(node: SldNode, m: SldMetrics): Measured {
   });
   const kidsWidth = kids.reduce((sum, k) => sum + k.slot, 0) + m.gapX * Math.max(0, kids.length - 1);
   const tallestLabel = Math.max(0, ...kids.map((k) => k.labelH));
-  return { node, lines, w, h, kids, kidsWidth, width: Math.max(w, kidsWidth), gapY: kids.length ? Math.max(m.minGapY, tallestLabel + 16) : 0 };
+  return { node, lines, w, h, kids, kidsWidth, width: Math.max(w, kidsWidth), gapY: kids.length ? Math.max(m.minGapY, tallestLabel + 32) : 0 };
 }
 
 /** What is written on the edge of a step. */
@@ -330,6 +330,26 @@ function place(n: Measured, cx: number, y: number, key: string, m: SldMetrics, o
     });
   }
   return bottom;
+}
+
+/**
+ * Where a step's substitution is written: the `| {…}` line under its rule (or `builtin`) at `line`, at the same
+ * indentation. A rule may go on over more `|` lines; the search ends at a line that starts another step or node
+ * (`starts`), at a line that is not part of the step, and at the end. Null without a substitution of its own.
+ */
+export function substLineOf(source: string, line: number, starts: ReadonlySet<number>): number | null {
+  const lines = source.split('\n');
+  const indent = /^(\s*)\|/.exec(lines[line - 1] ?? '')?.[1];
+  if (indent === undefined) return null;
+  for (let i = line; i < lines.length; i++) {
+    const text = lines[i]!;
+    if (text.trim() === '' || text.trim().startsWith('%')) continue;
+    if (starts.has(i + 1)) return null;
+    const bar = /^(\s*)\|\s*(\{)?/.exec(text);
+    if (!bar || bar[1] !== indent) return null;
+    if (bar[2]) return i + 1;
+  }
+  return null;
 }
 
 /**

@@ -333,7 +333,7 @@ export function ExerciseView({ detail, meta, work, onActivity, onAllChecksPass, 
     v.dispatch({ selection: { anchor: at.from }, scrollIntoView: true });
     v.focus();
   };
-  const preview = isSld ? <SldTreeView tree={repl.loaded ? repl.sldTree : null} stale={repl.sldStale} problems={found} cursorLine={viewing === null ? cursorLine : 0} onSelectLine={jumpTo} onHoverLine={setHoverLine} /> : null;
+  const preview = isSld ? <SldTreeView tree={repl.loaded ? repl.sldTree : null} stale={repl.sldStale} problems={found} cursorLine={viewing === null ? cursorLine : 0} source={text} onSelectLine={jumpTo} onHoverLine={setHoverLine} /> : null;
 
   // The tabs under (or, in the wide layout, beside) the editor: what the interpreter or the reader says, and the tests.
   // For an SLD tree the picture is a tab too, unless the wide layout gives it a place of its own.

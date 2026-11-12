@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { layoutSld, sldAtLine, substText, wrapRule, wrapSubst, wrapText, type SldMetrics, type SldNode, type SldStep, type SldTree } from '@wb/shared';
+import { layoutSld, sldAtLine, substLineOf, substText, wrapRule, wrapSubst, wrapText, type SldMetrics, type SldNode, type SldStep, type SldTree } from '@wb/shared';
 
 /** Every character is 8 wide. */
 const m: SldMetrics = { measure: (t) => t.length * 8, lineHeight: 16, padX: 8, padY: 6, gapX: 20, minGapY: 28, labelPad: 3, maxChars: 40 };
@@ -136,5 +136,37 @@ describe('long labels', () => {
     const narrow = layoutSld(t, { ...m, labelChars: 24 }).edges[0]!;
     expect(narrow.label.length).toBeGreaterThan(wide.label.length);
     expect(narrow.lw).toBeLessThan(wide.lw);
+  });
+});
+
+describe('substLineOf', () => {
+  const src = [
+    '?- p(X).', //                    1
+    '  | p(Y) :-', //                 2
+    '  |   q(Y).', //                 3
+    '  | {X |-> Y}', //               4
+    '  ?- q(Y).', //                  5
+    '    | q(1).', //                 6
+    '', //                            7
+    '    | {Y |-> 1}', //             8
+    '    ?- true.', //                9
+    '  | p(Z).', //                   10
+    '  | r(Z).', //                   11
+    '  | {X |-> Z}', //               12
+  ].join('\n');
+  const starts = new Set([1, 2, 5, 6, 9, 10, 11]);
+
+  it('finds the substitution under a rule, over a rule written on more lines and blank lines', () => {
+    expect(substLineOf(src, 2, starts)).toBe(4);
+    expect(substLineOf(src, 6, starts)).toBe(8);
+  });
+
+  it('does not take the substitution of the next step', () => {
+    expect(substLineOf(src, 10, starts)).toBeNull();
+    expect(substLineOf(src, 11, starts)).toBe(12);
+  });
+
+  it('is null for a line that is not a step', () => {
+    expect(substLineOf(src, 1, starts)).toBeNull();
   });
 });

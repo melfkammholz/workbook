@@ -1,6 +1,6 @@
 import { Download, Maximize2, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { layoutSld, sldAtLine, type Diagnostic, type SldBox, type SldEdge, type SldMetrics, type SldTree } from '@wb/shared';
+import { layoutSld, sldAtLine, substLineOf, type Diagnostic, type SldBox, type SldEdge, type SldMetrics, type SldTree } from '@wb/shared';
 import { useT } from '@/lib/i18n';
 import { IconButton, clsx } from './ui';
 
@@ -24,6 +24,8 @@ interface Props {
   problems: Diagnostic[];
   /** The line of the editor's cursor. */
   cursorLine: number;
+  /** The text of the tree, to find the line of each step's substitution. */
+  source: string;
   onSelectLine: (line: number) => void;
   /** A node or edge is pointed at or focused: the line it is written at, or null when that ends. */
   onHoverLine: (line: number | null) => void;
@@ -42,7 +44,7 @@ interface View {
  * and what the tests found is marked red or amber. Pointing at a node or edge highlights its line in the editor. The
  * nodes are one tab stop (a roving tabindex): arrows walk the tree, Enter goes to the line.
  */
-export function SldTreeView({ tree, stale, problems, cursorLine, onSelectLine, onHoverLine }: Props) {
+export function SldTreeView({ tree, stale, problems, cursorLine, source, onSelectLine, onHoverLine }: Props) {
   const t = useT();
   const host = useRef<HTMLDivElement>(null);
   const svg = useRef<SVGSVGElement>(null);
@@ -78,7 +80,7 @@ export function SldTreeView({ tree, stale, problems, cursorLine, onSelectLine, o
 
   const layout = useMemo(() => {
     if (!tree || !measure || (!tree.tree && tree.negations.length === 0)) return null;
-    const metrics: SldMetrics = { measure, lineHeight: LINE, padX: PAD_X, padY: PAD_Y, gapX: 26, minGapY: 44, labelPad: LABEL_PAD, maxChars: 46, labelChars: 32 };
+    const metrics: SldMetrics = { measure, lineHeight: LINE, padX: PAD_X, padY: PAD_Y, gapX: 26, minGapY: 60, labelPad: LABEL_PAD, maxChars: 46, labelChars: 32 };
     return layoutSld(tree, metrics);
   }, [tree, measure]);
 
@@ -244,6 +246,18 @@ export function SldTreeView({ tree, stale, problems, cursorLine, onSelectLine, o
     return m;
   }, [problems]);
   const active = useMemo(() => (layout ? sldAtLine(layout, cursorLine) : new Set<string>()), [layout, cursorLine]);
+
+  // Pointing at the substitution in an edge's label goes to its own line, below the rule's.
+  const substLines = useMemo(() => {
+    const lines = new Map<string, number>();
+    if (!layout) return lines;
+    const starts = new Set([...layout.boxes, ...layout.edges].map((x) => x.line));
+    for (const e of layout.edges) {
+      const at = substLineOf(source, e.line, starts);
+      if (at !== null) lines.set(e.id, at);
+    }
+    return lines;
+  }, [layout, source]);
   // Hovering a box traces its path from the root: the boxes and edges that led to it.
   const [hovered, setHovered] = useState<string | null>(null);
   const path = useMemo(() => {
@@ -311,7 +325,7 @@ export function SldTreeView({ tree, stale, problems, cursorLine, onSelectLine, o
               </text>
             ))}
             {layout?.edges.map((e) => (
-              <Edge key={e.id} e={e} state={worst.get(e.line) ?? (active.has(e.id) ? 'active' : null)} onPath={path.has(e.id)} onHover={(on) => onHoverLine(on ? e.line : null)} />
+              <Edge key={e.id} e={e} state={worst.get(e.line) ?? (active.has(e.id) ? 'active' : null)} onPath={path.has(e.id)} substLine={substLines.get(e.id) ?? null} onHover={onHoverLine} />
             ))}
             {layout?.boxes.map((b) => (
               <Box
@@ -404,10 +418,22 @@ function edgePath(e: SldEdge): string[] {
   return bottom < e.y2 ? [curve(e.x1, e.y1, e.x2, top), `M${e.x2} ${bottom} V${e.y2}`] : [curve(e.x1, e.y1, e.x2, top)];
 }
 
-function Edge({ e, state, onPath, onHover }: { e: SldEdge; state: State; onPath: boolean; onHover: (on: boolean) => void }) {
+function Edge({ e, state, onPath, substLine, onHover }: { e: SldEdge; state: State; onPath: boolean; substLine: number | null; onHover: (line: number | null) => void }) {
   const d = edgePath(e);
+  // The substitution in the label points at its own line (and is clicked to it); the rest at the step's.
+  const subst = (text: string, key?: number) =>
+    substLine === null ? (
+      <Lifted key={key} text={text} />
+    ) : (
+      <tspan key={key} data-line={substLine} onPointerEnter={() => onHover(substLine)} onPointerLeave={() => onHover(e.line)}>
+        <Lifted text={text} />
+      </tspan>
+    );
+  // Where the substitution starts: after the tag, or at the first line in braces under a renamed rule.
+  const tagged = /^(\(\d+\)|builtin)( |$)/.test(e.label[0] ?? '');
+  const firstSubst = tagged ? 0 : e.label.findIndex((l) => l.startsWith('{'));
   return (
-    <g data-line={e.line} className="cursor-pointer" onPointerEnter={() => onHover(true)} onPointerLeave={() => onHover(false)}>
+    <g data-line={e.line} className="cursor-pointer" onPointerEnter={() => onHover(e.line)} onPointerLeave={() => onHover(null)}>
       {d.map((p, i) => (
         <path key={`h${i}`} d={p} fill="none" stroke="transparent" strokeWidth={12} />
       ))}
@@ -428,6 +454,7 @@ function Edge({ e, state, onPath, onHover }: { e: SldEdge; state: State; onPath:
           {e.label.map((line, i) => {
             // `(2)` or `builtin` first, in the accent; the substitution quieter; a renamed clause as written.
             const tag = /^(\(\d+\)|builtin)( |$)/.exec(line)?.[1];
+            const inSubst = firstSubst >= 0 && i >= firstSubst;
             return (
               <text
                 key={i}
@@ -440,8 +467,10 @@ function Edge({ e, state, onPath, onHover }: { e: SldEdge; state: State; onPath:
                 {tag ? (
                   <>
                     <tspan className="fill-accent font-semibold">{tag}</tspan>
-                    <Lifted text={line.slice(tag.length)} />
+                    {subst(line.slice(tag.length))}
                   </>
+                ) : inSubst ? (
+                  subst(line)
                 ) : (
                   <Lifted text={line} />
                 )}
