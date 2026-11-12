@@ -46,6 +46,17 @@ export function hasSldcheckClauses(bin: string): boolean {
   }
 }
 
+/**
+ * GHC that can load QuickCheck, which the Haskell tests need. Without it they would fail with the runner's "install
+ * QuickCheck" message instead of skipping. Found by trying the import, so GHC_ENVIRONMENT and GHC's default
+ * environment count like they do for the runner.
+ */
+export function hasGhcWithQuickCheck(): boolean {
+  if (!hasBinary('ghci')) return false;
+  const r = spawnSync('ghc', ['-e', 'import Test.QuickCheck', '-e', 'pure ()'], { stdio: 'ignore', timeout: 30_000 });
+  return r.status === 0;
+}
+
 export function hasBinary(bin: string): boolean {
   try {
     execFileSync(bin, ['--version'], { stdio: 'ignore' });

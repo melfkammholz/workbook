@@ -5,9 +5,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { loadContent } from '../src/content/loader.js';
 import { GhciSession } from '../src/runners/ghci.js';
 import { runHaskellChecks } from '../src/runners/haskell-check.js';
-import { EXAMPLE_CONTENT, HASKELL_LIB, hasBinary } from './helpers.js';
+import { EXAMPLE_CONTENT, HASKELL_LIB, hasBinary, hasGhcWithQuickCheck } from './helpers.js';
 
 const haveGhc = hasBinary('ghci');
+const haveQuickCheck = hasGhcWithQuickCheck();
 const content = loadContent(EXAMPLE_CONTENT);
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'wb-run-'));
 
@@ -97,7 +98,7 @@ describe.skipIf(!haveGhc)('GhciSession', () => {
   });
 });
 
-describe.skipIf(!haveGhc)('runHaskellChecks (automatic differentiation)', () => {
+describe.skipIf(!haveQuickCheck)('runHaskellChecks (automatic differentiation)', () => {
   const ad = content.exercise('automatic-differentiation')!;
   const run = (source: string) =>
     runHaskellChecks({
@@ -142,7 +143,7 @@ describe.skipIf(!haveGhc)('runHaskellChecks (automatic differentiation)', () => 
   });
 });
 
-describe.skipIf(!haveGhc)('runHaskellChecks (misc)', () => {
+describe.skipIf(!haveQuickCheck)('runHaskellChecks (misc)', () => {
   it('keeps student output separate and survives infinite loops', async () => {
     const be = content.exercise('binary-exponentiation')!;
     const looping = be.code!.starter.replace('power x n = undefined', 'power x n = trace\' `seq` power x n\n  where trace\' = ()');

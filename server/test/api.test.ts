@@ -13,11 +13,11 @@ import { makeDeps } from '../src/api/deps.js';
 import { loadConfig } from '../src/config.js';
 import { CourseManager } from '../src/courses/manager.js';
 import { SessionPool } from '../src/runners/pool.js';
-import { EXAMPLE_CONTENT, HASKELL_LIB, PROLOG_LIB, hasBinary, hasSldcheck } from './helpers.js';
+import { EXAMPLE_CONTENT, HASKELL_LIB, PROLOG_LIB, hasBinary, hasGhcWithQuickCheck, hasSldcheck } from './helpers.js';
 
 const typstBin = process.env.TYPST_BIN ?? 'typst';
 const haveTypst = hasBinary(typstBin);
-const haveGhc = hasBinary('ghci');
+const haveGhc = hasGhcWithQuickCheck();
 const sldcheckBin = process.env.SLDCHECK_BIN ?? 'sldcheck';
 const haveSldcheck = hasSldcheck(sldcheckBin);
 
