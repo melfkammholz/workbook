@@ -139,6 +139,12 @@ describe('stored bibliography', () => {
       const first = await put([e('Hutton, G. (2016). Programming in Haskell. CUP.', 0), e('Bratko, I. (2012). Prolog Programming. Pearson.', 1)]);
       expect(first.map((x) => [x.work.title, x.work.year])).toEqual([['Programming in Haskell', 2016], ['Prolog Programming', 2012]]);
       await app.inject({ method: 'PUT', url: `/api/works/${first[0]!.work.id}/want`, payload: { want: true } });
+      // Tags on a work show in the library and go when the work does.
+      const tag = (await app.inject({ method: 'POST', url: '/api/tags', payload: { name: 'Reading list' } })).json() as { id: string };
+      expect((await app.inject({ method: 'PUT', url: `/api/tags/on/work/${first[1]!.work.id}`, payload: { ids: [tag.id] } })).statusCode).toBe(200);
+      const lib = (await app.inject({ method: 'GET', url: '/api/works' })).json() as { id: string; tags: string[] }[];
+      expect(lib.find((w) => w.id === first[1]!.work.id)!.tags).toEqual([tag.id]);
+      expect(lib.find((w) => w.id === first[0]!.work.id)!.tags).toEqual([]);
       // A re-read with the same texts (a new version of the file): same works. A fixed text under a known id keeps the work too.
       const again = await put([e('Bratko, I. (2012). Prolog Programming. Pearson.', 0), e('Hutton, G. (2017). Programming in Haskell. CUP.', 1, { id: first[0]!.id })]);
       expect(again[0]!.work.id).toBe(first[1]!.work.id);

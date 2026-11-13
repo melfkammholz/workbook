@@ -377,3 +377,5 @@ export interface ImportChoice extends WorkFields {
   raw: string;
   into?: string | null | undefined;
 }
+  /** Ids of the student's tags on this work. */
+  tags: string[];

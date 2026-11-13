@@ -3,9 +3,11 @@ import { Bookmark } from 'lucide-react';
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'wouter';
-import { setWantToRead, useWorks } from '@/lib/bibliography';
+import { setWantToRead, setWorkTags, useWorks } from '@/lib/bibliography';
 import { useT } from '@/lib/i18n';
 import { Empty, Spinner, clsx } from './ui';
+import { useTagMap } from '@/lib/tags';
+import { TagDot, TagPicker } from './TagPicker';
 import { SimilarWorks, WorkHave, sure } from './WorkBits';
 
 type Filter = 'all' | 'want' | 'have' | 'missing';
@@ -16,6 +18,8 @@ export function WorksLibrary() {
   const qc = useQueryClient();
   const works = useWorks().data;
   const [filter, setFilter] = useState<Filter>('all');
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const tagMap = useTagMap();
   if (!works) {
     return (
       <div className="mt-10 grid place-items-center">
@@ -24,7 +28,8 @@ export function WorksLibrary() {
     );
   }
   if (works.length === 0) return <div className="mt-10"><Empty title={t.workNone} /></div>;
-  const shown = works.filter((w) => (filter === 'want' ? w.wantToRead : filter === 'have' ? !!w.resource : filter === 'missing' ? !w.resource : true));
+  const usedTags = [...tagMap.values()].filter((g) => works.some((w) => w.tags.includes(g.id)));
+  const shown = works.filter((w) => tagFilter.every((g) => w.tags.includes(g))).filter((w) => (filter === 'want' ? w.wantToRead : filter === 'have' ? !!w.resource : filter === 'missing' ? !w.resource : true));
   const filters: [Filter, string][] = [['all', t.workFilterAll], ['want', t.workFilterWant], ['have', t.workFilterHave], ['missing', t.workFilterMissing]];
   return (
     <>
@@ -35,6 +40,19 @@ export function WorksLibrary() {
           </button>
         ))}
       </div>
+      {usedTags.length ? (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label={t.tagFilter}>
+          {usedTags.map((g) => {
+            const on = tagFilter.includes(g.id);
+            return (
+              <button key={g.id} type="button" aria-pressed={on} onClick={() => setTagFilter(on ? tagFilter.filter((x) => x !== g.id) : [...tagFilter, g.id])} className={clsx('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[13px]', on ? 'border-accent bg-accent-soft font-medium' : 'border-line text-ink-2 hover:bg-sunk')}>
+                <TagDot color={g.color} />
+                {g.name}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
       {shown.length === 0 ? (
         <p className="mt-8 text-ink-2">{t.workNoneFilter}</p>
       ) : (
@@ -50,6 +68,7 @@ export function WorksLibrary() {
 
 function WorkRow({ work: w, onWant }: { work: LibraryWork; onWant: () => void }) {
   const t = useT();
+  const qc = useQueryClient();
   return (
     <li className="py-2.5">
       <div className="flex items-start gap-2">
@@ -72,6 +91,9 @@ function WorkRow({ work: w, onWant }: { work: LibraryWork; onWant: () => void })
           </p>
           <WorkHave work={w} />
           <SimilarWorks work={w} similar={w.similar} />
+          <div className="mt-1.5">
+            <TagPicker size="sm" value={w.tags} onChange={(v) => setWorkTags(qc, w.id, v)} />
+          </div>
         </div>
         <button type="button" aria-pressed={w.wantToRead} aria-label={w.wantToRead ? t.pdfRefWantOn : t.pdfRefWant} data-tip={w.wantToRead ? t.pdfRefWantOn : t.pdfRefWant} onClick={onWant} className={clsx('inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk', w.wantToRead ? 'text-accent' : 'text-ink-2')}>
           <Bookmark size={16} fill={w.wantToRead ? 'currentColor' : 'none'} />

@@ -557,6 +557,7 @@ export class Resources {
       this.sql.run(
         `DELETE FROM works WHERE want_to_read = 0 AND imported = 0 AND resource IS NULL AND NOT EXISTS (SELECT 1 FROM work_citations c WHERE c.work = works.id)`,
       );
+      this.sql.run("DELETE FROM tag_links WHERE kind = 'work' AND ref NOT IN (SELECT id FROM works)");
     });
     return this.listBibliography(resource);
   }
@@ -602,7 +603,8 @@ export class Resources {
     ) as Row[]) {
       (by.get(c.work as string) ?? by.set(c.work as string, []).get(c.work as string)!).push({ resource: c.resource as string, title: c.title as string, count: Number(c.n) });
     }
-    return (this.sql.all('SELECT * FROM works ORDER BY year DESC, title') as Row[]).map((r) => ({ ...toWork(r), citedBy: by.get(r.id as string) ?? [], similar: similar.get(r.id as string) ?? [] }));
+    const tags = this.store.tagLinks('work');
+    return (this.sql.all('SELECT * FROM works ORDER BY year DESC, title') as Row[]).map((r) => ({ ...toWork(r), citedBy: by.get(r.id as string) ?? [], similar: similar.get(r.id as string) ?? [], tags: tags.get(r.id as string) ?? [] }));
   }
 
   private lookupRun: Promise<void> | null = null;
@@ -681,6 +683,8 @@ export class Resources {
         this.now(),
         into,
       );
+      this.store.setTags('work', into, [...new Set([...this.store.tagsOf('work', into), ...this.store.tagsOf('work', from)])]);
+      this.store.unlinkAll('work', from);
       this.sql.run('DELETE FROM works WHERE id = ?', from);
     });
   }

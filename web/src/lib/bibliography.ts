@@ -158,6 +158,15 @@ export function setWantToRead(qc: QueryClient, resource: string, work: Work, wan
   });
 }
 
+/** The student's tags on a work of the library, shown at once. */
+export function setWorkTags(qc: QueryClient, work: string, tags: string[]): void {
+  qc.setQueryData<LibraryWork[]>(worksKey, (list) => list?.map((w) => (w.id === work ? { ...w, tags } : w)));
+  void api.put(`/api/tags/on/work/${encodeURIComponent(work)}`, { ids: tags }).catch(() => {
+    void qc.invalidateQueries({ queryKey: worksKey });
+    reportSaveFailed();
+  });
+}
+
 /**
  * Reads the bibliography once per file, in the background after the viewer is up: when nothing is stored for this
  * version of the file (and it was not read before without result). Returns nothing; the list is the query's.
