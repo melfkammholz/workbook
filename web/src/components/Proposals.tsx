@@ -1,7 +1,7 @@
 import * as Popover from '@radix-ui/react-popover';
 import { Check, Pencil, X } from 'lucide-react';
 import { useState } from 'react';
-import { QUESTION_KINDS, type CardPayload, type Change, type MergePayload, type ChangeValue as Val, type HighlightPayload, type QuestionKind, type QuestionPayload } from '@wb/shared';
+import { QUESTION_KINDS, type CardPayload, type Change, type MergePayload, type WorkPayload, type ChangeValue as Val, type HighlightPayload, type QuestionKind, type QuestionPayload } from '@wb/shared';
 import { acceptChanges, decideChange, useQuestions } from '@/lib/api';
 import { useFlashcards } from '@/lib/flashcards';
 import { useT } from '@/lib/i18n';
@@ -13,9 +13,14 @@ export type Value = Val;
 export function useChangeText() {
   const t = useT();
   const kindName = (k: Value) => (typeof k === 'string' && (QUESTION_KINDS as readonly string[]).includes(k) ? t.questionKinds[k as QuestionKind] : t.inboxNone);
-  const show = (c: Change, v: Value) => (c.field === 'merge' ? mergeSummary(v, t.inboxMergeCount) : c.field === 'create' ? createSummary(v) : c.field === 'kind' ? kindName(v) : c.field === 'labels' ? (Array.isArray(v) && v.length ? v.join(', ') : t.inboxNone) : typeof v === 'string' ? v : t.inboxNone);
-  const fieldName = (c: Change) => (c.field === 'merge' ? t.inboxFieldMerge : c.field === 'create' ? t.inboxCreate[c.ref.kind] : c.field === 'kind' ? t.inboxFieldKind : c.field === 'labels' ? t.inboxFieldLabels : c.field === 'text' ? t.inboxFieldText : t.inboxFieldAnswer);
+  const show = (c: Change, v: Value) => (c.field === 'work' ? workSummary(v) : c.field === 'merge' ? mergeSummary(v, t.inboxMergeCount) : c.field === 'create' ? createSummary(v) : c.field === 'kind' ? kindName(v) : c.field === 'labels' ? (Array.isArray(v) && v.length ? v.join(', ') : t.inboxNone) : typeof v === 'string' ? v : t.inboxNone);
+  const fieldName = (c: Change) => (c.field === 'work' ? t.inboxFieldWork : c.field === 'merge' ? t.inboxFieldMerge : c.field === 'create' ? t.inboxCreate[c.ref.kind as 'card' | 'highlight' | 'question'] : c.field === 'kind' ? t.inboxFieldKind : c.field === 'labels' ? t.inboxFieldLabels : c.field === 'text' ? t.inboxFieldText : t.inboxFieldAnswer);
   return { show, fieldName };
+}
+
+function workSummary(v: Value): string {
+  const p = v as Partial<WorkPayload> | null;
+  return p && typeof p === 'object' ? [p.authors, p.year, p.title].filter(Boolean).join(', ') : '';
 }
 
 function mergeSummary(v: Value, count: (n: number) => string): string {
@@ -102,6 +107,50 @@ function CreateEditor({ c, value, onChange }: { c: Change; value: Value; onChang
   return area(c.ref.kind === 'question' ? t.inboxCreate.question : '', 'text');
 }
 
+/** The fields a reference would get. */
+function WorkView({ c }: { c: Change }) {
+  const t = useT();
+  const p = c.after as WorkPayload;
+  const rows: [string, string][] = [
+    [t.inboxWorkTitle, p.title],
+    [t.inboxWorkAuthors, p.authors],
+    [t.inboxWorkYear, p.year === null ? '' : String(p.year)],
+    [t.inboxWorkVenue, p.venue],
+  ];
+  return (
+    <dl className="mt-0.5 space-y-0.5">
+      {rows.filter(([, v]) => v).map(([k, v]) => (
+        <div key={k} className="flex gap-2">
+          <dt className="w-24 shrink-0 text-[12.5px] text-ink-3">{k}</dt>
+          <dd className="min-w-0 break-words">{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function WorkEditor({ value, onChange }: { value: Value; onChange: (v: Value) => void }) {
+  const t = useT();
+  const p = (value && typeof value === 'object' && !Array.isArray(value) ? value : { title: '', authors: '', year: null, venue: '' }) as WorkPayload;
+  const field = (label: string, key: 'title' | 'authors' | 'venue') => (
+    <label className="mt-1 block">
+      <span className="text-[12.5px] text-ink-3">{label}</span>
+      <input value={p[key]} onChange={(e) => onChange({ ...p, [key]: e.target.value })} className="wb-field w-full px-2 py-1 text-sm" />
+    </label>
+  );
+  return (
+    <div>
+      {field(t.inboxWorkTitle, 'title')}
+      {field(t.inboxWorkAuthors, 'authors')}
+      <label className="mt-1 block">
+        <span className="text-[12.5px] text-ink-3">{t.inboxWorkYear}</span>
+        <input inputMode="numeric" value={p.year ?? ''} onChange={(e) => onChange({ ...p, year: /^\d{4}$/.test(e.target.value.trim()) ? Number(e.target.value) : null })} className="wb-field w-24 px-2 py-1 text-sm" />
+      </label>
+      {field(t.inboxWorkVenue, 'venue')}
+    </div>
+  );
+}
+
 /** The duplicates that would close, with the wording the survivor would get. */
 function MergeView({ c }: { c: Change }) {
   const t = useT();
@@ -133,6 +182,7 @@ function MergeView({ c }: { c: Change }) {
 export function ChangeEditor({ c, value, onChange }: { c: Change; value: Value; onChange: (v: Value) => void }) {
   const t = useT();
   const { fieldName } = useChangeText();
+  if (c.field === 'work') return <WorkEditor value={value} onChange={onChange} />;
   if (c.field === 'create') return <CreateEditor c={c} value={value} onChange={onChange} />;
   if (c.field === 'merge') {
     const p = value as MergePayload;
@@ -158,6 +208,7 @@ export function ChangeEditor({ c, value, onChange }: { c: Change; value: Value; 
 export function ChangeValue({ c }: { c: Change }) {
   const t = useT();
   const { show } = useChangeText();
+  if (c.field === 'work') return <WorkView c={c} />;
   if (c.field === 'create') return <CreateView c={c} />;
   if (c.field === 'merge') return <MergeView c={c} />;
   if (c.field === 'text')

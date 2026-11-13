@@ -44,10 +44,10 @@ export const MAX_PENDING_CHANGES = 100;
  * its text. `create` makes something new (see `CreatePayload`); then `after` is the payload and `before` stays empty
  * until accepted, when it holds `{ id }` of what was made, so that undo can remove it.
  */
-export type ChangeField = 'kind' | 'labels' | 'answer' | 'text' | 'create' | 'merge';
+export type ChangeField = 'kind' | 'labels' | 'answer' | 'text' | 'create' | 'merge' | 'work';
 export type ChangeStatus = 'pending' | 'applied' | 'rejected' | 'expired' | 'undone';
 /** What a proposal can make: a flashcard (in an existing or a new deck), a note on a PDF page, a question. */
-export type ChangeRefKind = 'question' | 'card' | 'highlight';
+export type ChangeRefKind = 'question' | 'card' | 'highlight' | 'work';
 
 export interface CardPayload {
   deck: { id: string } | { title: string };
@@ -90,7 +90,23 @@ export interface MergeUndo {
   survivor: { text: string; answer: string | null; status: 'open' | 'done'; doneAt: number | null; updatedAt: number; labels: string[] };
   duplicates: { id: string; status: 'open' | 'done'; doneAt: number | null; answer: string | null; labels: string[] }[];
 }
-export type ChangeValue = string | string[] | null | CreatePayload | Created | MergePayload | MergeUndo;
+/**
+ * A `work` proposal is about one entry of the reference library whose fields the parser was unsure about (`ref.id` is
+ * the work). Accepting writes these fields; the entry then counts as read. `year` null leaves the year empty.
+ */
+export interface WorkPayload {
+  title: string;
+  authors: string;
+  year: number | null;
+  venue: string;
+}
+/** What accepting a work proposal replaced, so that undo puts it back. */
+export interface WorkUndo extends WorkPayload {
+  confidence: number;
+  source: string;
+  updatedAt: number;
+}
+export type ChangeValue = string | string[] | null | CreatePayload | Created | MergePayload | MergeUndo | WorkPayload | WorkUndo;
 
 /**
  * One line of the `changes` log: the inbox (pending), the audit log (applied) and the undo. `before` and `after` are

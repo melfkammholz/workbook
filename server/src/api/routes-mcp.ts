@@ -94,6 +94,16 @@ const TOOLS = [
     description: `Propose merging duplicate questions (see list_questions for their ids). One question survives; the duplicates close as "merged into" it and stay visible in the student's list. The survivor gets the duplicates' labels and their answers joined, so nothing is lost; text is an optional clearer wording for the survivor. It waits in the inbox until the student accepts it (one undo puts everything back). Only for questions that really ask the same thing; never re-propose what was rejected (list_proposals).`,
     inputSchema: { type: 'object', properties: { survivor: { type: 'string', description: 'Id of the question that stays' }, duplicates: { type: 'array', items: { type: 'string' }, description: 'Ids of the questions that close' }, text: { type: 'string' }, reason: { type: 'string' } }, required: ['survivor', 'duplicates'] },
   },
+  {
+    name: 'list_flagged_references',
+    description: "Entries of the student's reference library whose fields the parser could not read; the app shows their raw text as it is. Each has an id, the raw text and what the parser made of it. Entries you already have a proposal waiting for are left out. Read-only.",
+    inputSchema: { type: 'object', properties: { limit: { type: 'integer', description: 'Default 30' } } },
+  },
+  {
+    name: 'propose_reference',
+    description: `Propose the fields of ONE flagged reference (see list_flagged_references); it waits in the student's inbox and changes nothing until accepted (they can edit it). Read the fields off the raw text, never invent: title is required, authors as "First Last, First Last", year a number or null, venue the journal, book or conference (may be empty). Never re-propose what was rejected: read list_proposals first.`,
+    inputSchema: { type: 'object', properties: { reference: { type: 'string', description: 'Id from list_flagged_references' }, title: { type: 'string' }, authors: { type: 'string' }, year: { type: ['integer', 'null'] }, venue: { type: 'string' }, reason: { type: 'string' } }, required: ['reference', 'title'] },
+  },
   { name: 'list_proposals', description: 'Your proposals: waiting, applied, rejected (with what the student told you) and expired.', inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['pending', 'applied', 'rejected', 'expired', 'undone'] } } } },
   {
     name: 'write_digest',
@@ -127,6 +137,13 @@ const PROMPTS = [
     arguments: [{ name: 'resource', description: 'Material id; default: the open questions', required: false }],
     text: (a: Json) =>
       `Propose flashcards for the student${str(a.resource) ? ` from the material ${str(a.resource)} (read it with read_page, page by page)` : ' from their open questions (list_questions, get_context)'}. First call list_proposals (do not repeat what was rejected) and list_decks (use an existing deck's title where the topic fits). Then call propose_card once per card: one idea per card, a clear front, a short back, and where it comes from (resource + page + an exact quote, or item). Cards you cannot ground in the text are left out. You cannot create cards yourself: the student accepts, edits or rejects each one in their inbox. Finish with a short list of what you proposed.`,
+  },
+  {
+    name: 'fix-references',
+    description: 'Propose the fields of reference entries the app could not read; the student decides in their inbox.',
+    arguments: [],
+    text: () =>
+      "Fix the flagged entries of the student's reference library. First call list_proposals (do not repeat what was rejected), then list_flagged_references. For each entry read the raw text and call propose_reference with the title, authors, year and venue exactly as the text gives them. Leave out an entry whose text you cannot read with confidence instead of guessing. You cannot change the library yourself: the student accepts, edits or rejects each one in their inbox. Finish with a short list of what you proposed and what you left out.",
   },
   {
     name: 'review-exercise',
@@ -452,6 +469,23 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         if (!text) throw new ToolError('text is required');
         return filed(g().proposeCreate('assistant', 'question', { text, anchor: anchorOf(a) }, str(a.reason)));
       }
+      case 'list_flagged_references': {
+        const limit = Math.min(int(a.limit) ?? 30, 100);
+        const waiting = new Set(g().listChanges({ limit: 0 }).filter((c) => c.status === 'pending' && c.field === 'work').map((c) => c.ref.id));
+        return g()
+          .sql.all("SELECT * FROM works WHERE imported = 0 AND raw <> '' ORDER BY created_at")
+          .filter((r) => g().isFlagged(r) && !waiting.has(r.id as string))
+          .slice(0, limit)
+          .map((r) => ({ id: r.id, raw: r.raw, parsed: { title: r.title, authors: r.authors, year: r.year, venue: r.venue } }));
+      }
+      case 'propose_reference': {
+        const reference = str(a.reference);
+        const title = str(a.title);
+        if (!reference || !title) throw new ToolError('reference and title are required');
+        const year = a.year === null || a.year === undefined ? null : int(a.year);
+        if (year === undefined) throw new ToolError('year must be an integer or null');
+        return filed(g().proposeWork('assistant', reference, { title, authors: str(a.authors) ?? '', year, venue: str(a.venue) ?? '' }, str(a.reason)));
+      }
       case 'propose_merge': {
         const survivor = str(a.survivor);
         const dups = Array.isArray(a.duplicates) ? a.duplicates.filter((x): x is string => typeof x === 'string') : [];
@@ -463,7 +497,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         return g()
           .listChanges({ limit: 100 })
           .filter((c) => !status || c.status === status)
-          .map((c) => ({ ...(c.field === 'create' ? { creates: c.ref.kind } : { question: c.ref.id }), field: c.field, before: c.field === 'create' ? undefined : c.before, after: c.after, status: c.status, reason: c.reason, studentSaid: c.feedback }));
+          .map((c) => ({ ...(c.field === 'create' ? { creates: c.ref.kind } : c.field === 'work' ? { reference: c.ref.id } : { question: c.ref.id }), field: c.field, before: c.field === 'create' || c.field === 'work' ? undefined : c.before, after: c.after, status: c.status, reason: c.reason, studentSaid: c.feedback }));
       }
       case 'write_digest': {
         const title = str(a.title);

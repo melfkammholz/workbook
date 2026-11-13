@@ -4,6 +4,7 @@ import type { Change, Question } from '@wb/shared';
 import { ChangeEditor, ChangeValue, useChangeText, type Value } from '@/components/Proposals';
 import { Button, Empty, Spinner, clsx } from '@/components/ui';
 import { acceptChanges, decideChange, undoBatch, useChanges, useQuestions } from '@/lib/api';
+import { useWorks } from '@/lib/bibliography';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { gPending, isTyping } from '@/lib/keys';
@@ -13,6 +14,7 @@ export function InboxPage() {
   const t = useT();
   const changes = useChanges().data;
   const questions = useQuestions().data;
+  const works = useWorks(true).data;
   const [cursor, setCursor] = useState(0);
   const [error, setError] = useState(false);
   const [edit, setEdit] = useState<{ id: string; value: Value } | null>(null);
@@ -87,6 +89,7 @@ export function InboxPage() {
     );
   }
   const question = (id: string) => questions.find((q) => q.id === id);
+  const raw = (id: string) => works?.find((w) => w.id === id)?.raw;
   const { show, fieldName } = useChangeText();
   const editor = (c: Change) => <ChangeEditor c={c} value={edit?.id === c.id ? edit.value : c.after} onChange={(v) => setEdit({ id: c.id, value: v })} />;
 
@@ -121,11 +124,12 @@ export function InboxPage() {
             <ul className="mt-4 space-y-4">
               {byGroup.map((group) => {
                 const making = group[0]!.field === 'create';
-                const q = making ? undefined : question(group[0]!.ref.id);
+                const isWork = group[0]!.field === 'work';
+                const q = making || isWork ? undefined : question(group[0]!.ref.id);
                 return (
                   <li key={group[0]!.group} className="rounded-lg border border-line bg-surface p-3">
                     <div className="flex items-start gap-2">
-                      <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[14px] font-medium leading-snug">{making ? t.inboxCreate[group[0]!.ref.kind] : q?.text || (q && quoteOf(q)) || t.inboxNoText}</p>
+                      <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[14px] font-medium leading-snug">{making ? t.inboxCreate[group[0]!.ref.kind as 'card' | 'highlight' | 'question'] : isWork ? (raw(group[0]!.ref.id) ?? t.inboxFieldWork) : q?.text || (q && quoteOf(q)) || t.inboxNoText}</p>
                       {group.length > 1 ? (
                         <Button size="sm" variant="ghost" onClick={() => void acceptMany(group.map((c) => c.id))}>
                           {t.inboxAcceptGroup}

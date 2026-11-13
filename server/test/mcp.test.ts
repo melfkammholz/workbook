@@ -66,7 +66,7 @@ describe('assistant bridge', () => {
     expect(init.capabilities.tools).toBeDefined();
     expect((await rpc('notifications/initialized', undefined, {}, null)).statusCode).toBe(202);
     const names = (await rpc('tools/list')).json().result.tools.map((x: { name: string }) => x.name);
-    expect([...names].sort()).toEqual(['get_context', 'get_exercise_work', 'get_progress', 'list_decks', 'list_digests', 'list_labels', 'list_proposals', 'list_questions', 'propose', 'propose_card', 'propose_highlight', 'propose_merge', 'propose_question', 'read_page', 'run_tests', 'search', 'write_digest']);
+    expect([...names].sort()).toEqual(['get_context', 'get_exercise_work', 'get_progress', 'list_decks', 'list_digests', 'list_flagged_references', 'list_labels', 'list_proposals', 'list_questions', 'propose', 'propose_card', 'propose_highlight', 'propose_merge', 'propose_question', 'propose_reference', 'read_page', 'run_tests', 'search', 'write_digest']);
     expect((await rpc('nope')).json().error.code).toBe(-32601);
   });
 
@@ -257,7 +257,7 @@ describe('assistant bridge', () => {
   it('offers prompts for the shipped workflows', async () => {
     expect((await rpc('initialize', {})).json().result.capabilities.prompts).toBeDefined();
     const names = (await rpc('prompts/list')).json().result.prompts.map((p: { name: string }) => p.name);
-    expect(names).toEqual(['triage-questions', 'answer-recent', 'draft-flashcards', 'review-exercise']);
+    expect(names).toEqual(['triage-questions', 'answer-recent', 'draft-flashcards', 'fix-references', 'review-exercise']);
     const got = (await rpc('prompts/get', { name: 'review-exercise', arguments: { exercise: 'x1' } })).json().result;
     expect(got.messages[0].content.text).toContain('x1');
     expect((await rpc('prompts/get', { name: 'review-exercise' })).json().error.code).toBe(-32602);
@@ -367,6 +367,42 @@ describe('assistant bridge', () => {
     await tool('propose_merge', { survivor: a, duplicates: [b] });
     g().deleteQuestion(b);
     expect(((await app.inject({ method: 'GET', url: '/api/changes' })).json() as { field: string; status: string }[]).filter((x) => x.field === 'merge' && x.status === 'pending')).toHaveLength(0);
+  });
+
+  it('fixes flagged references: only unsure ones, accept writes the fields, undo restores, a lookup makes it stale', async () => {
+    g().sql.run("INSERT INTO works (id, title, raw, created_at, updated_at) VALUES ('wf1', '', 'Wadler, P. Theorems for free! FPCA 1989, 347 359', 1, 1)");
+    g().sql.run("INSERT INTO works (id, title, raw, created_at, updated_at) VALUES ('wf2', '', 'Garbage entry', 1, 1)");
+    g().sql.run("INSERT INTO works (id, title, authors, year, venue, raw, imported, created_at, updated_at) VALUES ('wok', 'Fine', 'A B', 2000, 'V', 'Fine', 1, 1, 1)");
+    const decide = (id: string, what: string, payload = {}) => app.inject({ method: 'POST', url: `/api/changes/${id}/${what}`, payload });
+    const work = (id: string) => g().sql.get('SELECT * FROM works WHERE id = ?', id)!;
+    const waiting = async () => ((await app.inject({ method: 'GET', url: '/api/changes' })).json() as { id: string; field: string; status: string }[]).filter((c) => c.field === 'work' && c.status === 'pending');
+    for (const c of (await app.inject({ method: 'GET', url: '/api/changes' })).json() as { id: string; status: string }[]) if (c.status === 'pending') await decide(c.id, 'reject');
+
+    const ids = async () => (JSON.parse((await tool('list_flagged_references')).text) as { id: string }[]).map((f) => f.id);
+    expect(await ids()).toEqual(expect.arrayContaining(['wf1', 'wf2']));
+    expect(await ids()).not.toContain('wok');
+    expect((await tool('propose_reference', { reference: 'wok', title: 'X' })).error).toBe(true);
+    expect((await tool('propose_reference', { reference: 'nope', title: 'X' })).error).toBe(true);
+    expect((await tool('propose_reference', { reference: 'wf1', title: 'X', year: 5 })).error).toBe(true);
+
+    expect((await tool('propose_reference', { reference: 'wf1', title: 'Theorems for free!', authors: 'Philip Wadler', year: 1989, venue: 'FPCA', reason: 'aus dem Text' })).error).toBe(false);
+    expect(work('wf1')).toMatchObject({ title: '' }); // nothing changes yet
+    expect(await ids()).not.toContain('wf1');
+    const [p] = await waiting();
+    expect((await decide(p!.id, 'accept', { after: { title: 'Theorems for free!', authors: 'Philip Wadler', year: 1989, venue: 'FPCA 1989' } })).json().status).toBe('applied');
+    expect(work('wf1')).toMatchObject({ title: 'Theorems for free!', authors: 'Philip Wadler', year: 1989, venue: 'FPCA 1989', confidence: 1 });
+    expect((await decide(p!.id, 'undo')).statusCode).toBe(200);
+    expect(work('wf1')).toMatchObject({ title: '', authors: '', year: null, confidence: -1, updated_at: 1 });
+
+    // rejected: the assistant sees why
+    await tool('propose_reference', { reference: 'wf2', title: 'Garbage' });
+    await decide((await waiting())[0]!.id, 'reject', { feedback: 'unleserlich' });
+    expect(JSON.parse((await tool('list_proposals', { status: 'rejected' })).text)[0]).toMatchObject({ reference: 'wf2', field: 'work', studentSaid: 'unleserlich' });
+
+    // a waiting proposal goes out of date when the entry is no longer unsure
+    await tool('propose_reference', { reference: 'wf2', title: 'Garbage' });
+    g().sql.run("UPDATE works SET confidence = 1 WHERE id = 'wf2'");
+    expect(await waiting()).toHaveLength(0);
   });
 
   it('is off again when the student turns it off', async () => {

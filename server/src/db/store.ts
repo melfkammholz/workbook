@@ -29,6 +29,10 @@ import {
   type QuestionPayload,
   type MergePayload,
   type MergeUndo,
+  type WorkPayload,
+  type WorkUndo,
+  MIN_CONFIDENCE,
+  fieldsConfidence,
   type ChangeStatus,
   type QuestionKind,
   QUESTION_KINDS,
@@ -626,6 +630,62 @@ export class Store {
     return { id };
   }
 
+  /**
+   * The assistant proposes the fields of a reference the parser was unsure about (see `flaggedWork`). One waits per
+   * work; a new one replaces it.
+   */
+  proposeWorkInner(who: string, workId: string, p: WorkPayload, reason = ''): { id: string } | { error: string } {
+    const row = this.get('SELECT * FROM works WHERE id = ?', workId);
+    if (!row) return { error: 'unknown reference' };
+    if (!this.isFlagged(row)) return { error: 'this reference is not flagged: only references the parser was unsure about can be fixed' };
+    const clean = this.checkWork(p);
+    if ('error' in clean) return clean;
+    this.run("DELETE FROM changes WHERE status = 'pending' AND ref_kind = 'work' AND ref_id = ?", workId);
+    if (Number(this.get("SELECT COUNT(*) AS n FROM changes WHERE status = 'pending'")!.n) >= MAX_PENDING_CHANGES) return { error: 'inbox full: the student has to go through what is waiting first' };
+    const id = `ch-${randomUUID()}`;
+    this.run(
+      `INSERT INTO changes (id, who, ref_kind, ref_id, field, before, after, base_version, group_id, status, reason, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?,?)`,
+      id, who, 'work', workId, 'work', null, JSON.stringify(clean), 0, `g-${randomUUID()}`, reason.slice(0, 500), this.now(),
+    );
+    return { id };
+  }
+
+  /** The reference entries whose fields the parser could not read (the app shows their text as it is). Not the imported ones. */
+  isFlagged(r: Row): boolean {
+    if (Number(r.imported) === 1) return false;
+    const stored = r.confidence === undefined || r.confidence === null ? -1 : Number(r.confidence);
+    const c = stored >= 0 ? stored : fieldsConfidence({ title: r.title as string, authors: r.authors as string, year: r.year === null ? null : Number(r.year), venue: r.venue as string, doi: r.doi as string, url: r.url as string });
+    return c < MIN_CONFIDENCE;
+  }
+
+  private checkWork(p: WorkPayload): WorkPayload | { error: string } {
+    const s = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ').slice(0, max) : '');
+    const title = s(p?.title, 300);
+    const authors = s(p?.authors, 400);
+    const venue = s(p?.venue, 300);
+    const year = p?.year === null || p?.year === undefined ? null : p.year;
+    if (!title) return { error: 'a reference needs a title' };
+    if (year !== null && (!Number.isInteger(year) || year < 1000 || year > 2200)) return { error: 'year must be a four-digit number or null' };
+    return { title, authors, year, venue };
+  }
+
+  private applyWork(c: Change, value: ChangeValue, undo: boolean): string | null {
+    const row = this.get('SELECT * FROM works WHERE id = ?', c.ref.id);
+    if (undo) {
+      const u = c.before as WorkUndo | null;
+      if (!row || !u) return null;
+      this.run('UPDATE works SET title = ?, authors = ?, year = ?, venue = ?, confidence = ?, source = ?, updated_at = ? WHERE id = ?', u.title, u.authors, u.year, u.venue, u.confidence, u.source, u.updatedAt, c.ref.id);
+      return null;
+    }
+    if (!row) return 'the reference is gone';
+    const p = this.checkWork(value as WorkPayload);
+    if ('error' in p) return p.error;
+    const before: WorkUndo = { title: row.title as string, authors: row.authors as string, year: row.year === null ? null : Number(row.year), venue: row.venue as string, confidence: row.confidence === null ? -1 : Number(row.confidence), source: row.source as string, updatedAt: Number(row.updated_at) };
+    this.run('UPDATE works SET title = ?, authors = ?, year = ?, venue = ?, confidence = 1, updated_at = ? WHERE id = ?', p.title, p.authors, p.year, p.venue, this.now(), c.ref.id);
+    this.run('UPDATE changes SET before = ? WHERE id = ?', JSON.stringify(before), c.id);
+    return null;
+  }
+
   private checkMerge(survivor: string, duplicates: string[]): string | null {
     const s = this.getQuestion(survivor);
     if (!s) return 'the surviving question does not exist';
@@ -696,6 +756,11 @@ export class Store {
     announceChanges();
     return r;
   }
+  proposeWork(...a: Parameters<Store['proposeWorkInner']>): ReturnType<Store['proposeWorkInner']> {
+    const r = this.proposeWorkInner(...a);
+    announceChanges();
+    return r;
+  }
   proposeMerge(...a: Parameters<Store['proposeMergeInner']>): ReturnType<Store['proposeMergeInner']> {
     const r = this.proposeMergeInner(...a);
     announceChanges();
@@ -748,6 +813,11 @@ export class Store {
     // A creation only goes stale when what it points at (the deck, the material) is gone.
     for (const r of this.all("SELECT id, ref_kind, after FROM changes WHERE status = 'pending' AND field = 'create' AND ref_kind <> 'question'")) {
       if (this.db.creators?.gone(r.ref_kind as 'card' | 'highlight', JSON.parse(r.after as string) as CreatePayload)) this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE id = ?", t, r.id as string);
+    }
+    // A reference goes stale when it is gone or no longer unsure (looked up online, or fixed by the student).
+    for (const r of this.all("SELECT id, ref_id FROM changes WHERE status = 'pending' AND field = 'work'")) {
+      const w = this.get('SELECT * FROM works WHERE id = ?', r.ref_id as string);
+      if (!w || !this.isFlagged(w)) this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE id = ?", t, r.id as string);
     }
     for (const r of this.all("SELECT id, ref_id, after FROM changes WHERE status = 'pending' AND field = 'merge'")) {
       const p = JSON.parse(r.after as string) as MergePayload;
@@ -849,8 +919,9 @@ export class Store {
   /** Applies one change (or, with `undo`, takes it back): a field of a question, or a creation. */
   private applyChange(c: Change, value: ChangeValue, undo = false): string | null {
     if (c.field === 'merge') return this.applyMerge(c, value, undo);
+    if (c.field === 'work') return this.applyWork(c, value, undo);
     if (c.field !== 'create') return this.applyField(c.ref.id, c.field, value as string | string[] | null, undo);
-    const kind = c.ref.kind;
+    const kind = c.ref.kind as Exclude<ChangeRefKind, 'work'>;
     if (undo) {
       const made = c.before as Created | null;
       if (!made?.id) return null;

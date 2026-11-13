@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { chapterOf, embeddedKeys, mergeToc, pageFingerprint, pageQuote, rectsTop, slideGroups, slideOfPage, type Anchor, type EmbeddedTocEntry, type PdfAnnotation, type PdfPageItem, type Resource, type TocEntry } from '@wb/shared';
+import { chapterOf, embeddedKeys, mergeToc, pageFingerprint, pageQuote, rectsTop, slideGroups, slideOfPage, type Anchor, type BibEntry, type EmbeddedTocEntry, type PdfAnnotation, type PdfPageItem, type Resource, type TocEntry } from '@wb/shared';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { ChevronLeft, ChevronRight, Maximize, PanelLeft, PanelLeftClose, PanelRight, PanelRightClose, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -13,7 +13,7 @@ import { PdfToc, type TocActions } from '@/components/PdfToc';
 import { useBibImport } from '@/components/BibImport';
 import { PdfReferences } from '@/components/PdfReferences';
 import { fixEntry, rereadBibliography, setWantToRead, useBibliography, useBibliographyReader, type Fix } from '@/lib/bibliography';
-import { CitationContext } from '@/components/PdfLinks';
+import { BibliographyContext, CitationContext } from '@/components/PdfLinks';
 import { NotesView, SlidesView, type Marks, type PdfLayout, type Size } from '@/components/PdfViewer';
 import { IconButton, Segmented, Spinner, Empty } from '@/components/ui';
 import { api, useSettings } from '@/lib/api';
@@ -199,6 +199,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   const questions = usePdfQuestions(resource);
   const bibliography = useBibliography(resource.id).data;
   useBibliographyReader(qc, resource.id, resource.file.sha256, doc, bibliography);
+  const bibliographyCard = useMemo(() => (bibliography?.length ? { entries: bibliography, onWant: (e: BibEntry, want: boolean) => setWantToRead(qc, resource.id, e.work, want) } : undefined), [bibliography, qc, resource.id]);
   const bibImport = useBibImport();
   const settings = useSettings().data;
   const cards = !!settings?.showFlashcards;
@@ -680,7 +681,9 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
             </button>
           ) : null}
           <div ref={scroller} data-pdf-scroller={resource.id} className="min-h-0 flex-1 overflow-auto bg-sunk">
-            <CitationContext.Provider value={citations ? bibliography : undefined}>{view}</CitationContext.Provider>
+            <BibliographyContext.Provider value={bibliographyCard}>
+              <CitationContext.Provider value={citations ? bibliography : undefined}>{view}</CitationContext.Provider>
+            </BibliographyContext.Provider>
           </div>
           {doc ? <PdfQuestionBar resource={resource} current={current} pageInfo={pageInfo} scroller={scroller} /> : null}
         </div>

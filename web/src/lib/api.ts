@@ -483,7 +483,7 @@ export const decideChange = async (id: string, decision: 'accept' | 'reject' | '
 };
 /** Accepting or undoing a creation touches decks and materials too. */
 const madeSomething = () => {
-  for (const key of ['flashcards', 'resources', 'pdf-pages', 'pdf-annotations']) void queryClient.invalidateQueries({ queryKey: [key] });
+  for (const key of ['flashcards', 'resources', 'pdf-pages', 'pdf-annotations', 'works', 'pdf-bibliography']) void queryClient.invalidateQueries({ queryKey: [key] });
 };
 const changesSettled = () => {
   madeSomething();
