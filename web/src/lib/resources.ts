@@ -1,6 +1,7 @@
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 import type { Resource, ResourceFields, ResourcesResponse } from '@wb/shared';
 import { ApiError, api } from './api';
+import { forgetPdf } from './pdf';
 
 export const resourceKeys = {
   all: ['resources'] as const,
@@ -40,7 +41,11 @@ export async function uploadResource(file: File, f: ResourceFields): Promise<Res
 }
 
 export const updateResource = (id: string, f: ResourceFields) => api.put<Resource>(`/api/resources/${encodeURIComponent(id)}`, f);
-export const deleteResource = (id: string) => api.delete<ResourcesResponse>(`/api/resources/${encodeURIComponent(id)}`);
+export const deleteResource = (id: string) =>
+  api.delete<ResourcesResponse>(`/api/resources/${encodeURIComponent(id)}`).then((r) => {
+    forgetPdf(id);
+    return r;
+  });
 export const refreshResources = (qc: QueryClient) => qc.invalidateQueries({ queryKey: resourceKeys.all });
 
 /** `Skript 3 (final).pdf` → `Skript 3 (final)`. */

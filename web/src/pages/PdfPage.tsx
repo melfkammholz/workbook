@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { chapterOf, embeddedKeys, mergeToc, pageFingerprint, pageQuote, rectsTop, slideGroups, slideOfPage, type Anchor, type EmbeddedTocEntry, type PdfAnnotation, type PdfPageItem, type Resource, type TocEntry } from '@wb/shared';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { ChevronLeft, ChevronRight, Maximize, PanelLeft, PanelLeftClose, PanelRight, PanelRightClose, ZoomIn, ZoomOut } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FoldSection } from '@/components/FoldSection';
 import { MakeCardDialog } from '@/components/MakeCardDialog';
 import { CopyRefButton, PdfHighlightLayer, type Editing } from '@/components/PdfHighlights';
@@ -16,7 +16,7 @@ import { api, useSettings } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { usePageKeys } from '@/lib/keys';
-import { openPdf } from '@/lib/pdf';
+import { keepPdf, openedPdf } from '@/lib/pdf';
 import { swatchProps } from '@/lib/annotations';
 import { usePdfAnnotations, usePdfAnnotationsOn } from '@/lib/pdfAnnotations';
 import { pdfPageRefText, savePdfPage, usePdfPages, type PagePatch } from '@/lib/pdfPages';
@@ -32,11 +32,11 @@ const COL_MIN = 220;
 const COL_MAX = 560;
 const COL_DEFAULT = 320;
 
-/** A side column's width, kept per side in this browser. */
-function useColumnWidth(side: 'left' | 'right'): [number, (w: number) => void] {
+/** A side column's width: the file's own if it has one, else the last one set anywhere (kept per side in this browser). */
+function useColumnWidth(side: 'left' | 'right', own: unknown): [number, (w: number) => void] {
   const key = `wb-pdf-width-${side}`;
   const [w, setW] = useState(() => {
-    const n = Number(stored(key));
+    const n = typeof own === 'number' ? own : Number(stored(key));
     return Number.isFinite(n) && n >= COL_MIN && n <= COL_MAX ? n : COL_DEFAULT;
   });
   const set = (v: number) => {
@@ -105,6 +105,11 @@ interface ViewState {
   /** How far down the page the reading position is (0..1), for the scrolling notes. */
   offset: number;
   zoom: Record<PdfLayout, number>;
+  /** The contents (left) and notes (right) columns: open, and how wide. */
+  toc: boolean;
+  column: boolean;
+  left: number;
+  right: number;
 }
 const viewKey = (id: string) => `wb-pdf-view-${id}`;
 function readView(id: string): Partial<ViewState> {
@@ -144,19 +149,26 @@ const pageOfQuestion = (q: { anchor: { kind: string; pageIndex?: number } }) => 
 function Viewer({ resource, highlight }: { resource: Resource; highlight?: string | undefined }) {
   const t = useT();
   const qc = useQueryClient();
+  // A PDF opened a moment ago is still open: the first frame shows it.
+  const [opened] = useState(() => openedPdf(resource.id, resource.file.sha256));
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
-  const [labels, setLabels] = useState<string[] | null>(null);
-  const [guess, setGuess] = useState<Size | null>(null);
+  // Set before the first paint, but after the first commit: the views measure the scroller, whose ref is attached only then.
+  useLayoutEffect(() => {
+    if (opened) setDoc(opened.doc);
+  }, [opened]);
+  const [labels, setLabels] = useState<string[] | null>(opened?.labels ?? null);
+  const [guess, setGuess] = useState<Size | null>(opened?.guess ?? null);
   const [failed, setFailed] = useState(false);
   const [layout, setLayout] = useState<PdfLayout>(() => {
     const s = stored(`wb-pdf-layout-${resource.id}`);
     return s === 'notes' || s === 'slides' ? s : resource.type === 'slides' ? 'slides' : 'notes';
   });
-  const [column, setColumn] = useState(() => stored('wb-pdf-column') !== '0');
-  const [tocOpen, setTocOpen] = useState(() => stored('wb-pdf-toc') !== '0');
-  const [leftW, setLeftW] = useColumnWidth('left');
-  const [rightW, setRightW] = useColumnWidth('right');
   const [initial] = useState(() => readView(resource.id));
+  // The columns are kept per file; the last choice anywhere is what a new file starts with.
+  const [column, setColumn] = useState(() => (typeof initial.column === 'boolean' ? initial.column : stored('wb-pdf-column') !== '0'));
+  const [tocOpen, setTocOpen] = useState(() => (typeof initial.toc === 'boolean' ? initial.toc : stored('wb-pdf-toc') !== '0'));
+  const [leftW, setLeftW] = useColumnWidth('left', initial.left);
+  const [rightW, setRightW] = useColumnWidth('right', initial.right);
   const [zooms, setZooms] = useState<Record<PdfLayout, number>>(() => ({ notes: num(initial.zoom?.notes, 1, ZOOM_MIN, ZOOM_MAX), slides: num(initial.zoom?.slides, 1, ZOOM_MIN, ZOOM_MAX) }));
   const zoom = zooms[layout];
   const setZoom = useCallback((f: number | ((z: number) => number)) => setZooms((z) => ({ ...z, [layout]: typeof f === 'function' ? f(z[layout]) : f })), [layout]);
@@ -175,7 +187,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
     for (const a of highlights) (byPage.get(a.pageIndex) ?? byPage.set(a.pageIndex, []).get(a.pageIndex)!).push(a);
     return { byPage, active: editing?.id ?? null, flash };
   }, [marksOn, highlights, resource.stale, editing?.id, flash]);
-  const [outline, setOutline] = useState<EmbeddedTocEntry[] | null | undefined>(undefined);
+  const [outline, setOutline] = useState<EmbeddedTocEntry[] | null | undefined>(opened?.outline);
   const tocEdits = usePdfToc(resource.id).data;
   const [typed, setTyped] = useState<string | null>(null);
   const pages = usePdfPages(resource.id).data;
@@ -190,38 +202,42 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
     if (doc && resource.stale > 0) void placeStale(qc, resource, doc).catch(() => undefined);
   }, [doc, resource, qc]);
 
+  // The PDF stays open after leaving (`keepPdf`), the last few of them; this only marks it as used when it was open.
   useEffect(() => {
     let live = true;
-    let opened: PDFDocumentProxy | null = null;
-    openPdf(fileUrl(resource)).then(
-      async (d) => {
-        opened = d;
-        if (!live) return void d.loadingTask.destroy();
-        const [pageLabels, first] = await Promise.all([d.getPageLabels().catch(() => null), d.getPage(1)]);
-        if (!live) return void d.loadingTask.destroy();
-        const v = first.getViewport({ scale: 1 });
-        setGuess({ w: v.width, h: v.height });
-        setLabels(pageLabels && pageLabels.some(Boolean) ? pageLabels : null);
-        setCurrent((c) => Math.min(Math.max(1, c), d.numPages));
-        setDoc(d);
+    keepPdf(resource.id, resource.file.sha256, fileUrl(resource)).then(
+      (o) => {
+        if (!live) return;
+        setGuess((g) => g ?? o.guess);
+        setLabels(o.labels);
+        setCurrent((c) => Math.min(Math.max(1, c), o.doc.numPages));
+        setDoc(o.doc);
         // The outline is read behind the first paint; the contents show when it is there.
-        void readOutline(d).then((o) => live && setOutline(o), () => live && setOutline(null));
+        if (o.outline !== undefined) setOutline(o.outline);
+        else
+          void readOutline(o.doc).then(
+            (x) => {
+              o.outline = x;
+              if (live) setOutline(x);
+            },
+            () => live && setOutline(null),
+          );
       },
       () => live && setFailed(true),
     );
     return () => {
       live = false;
-      void opened?.loadingTask.destroy();
     };
-  }, [resource]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resource.id, resource.file.sha256]);
 
   // Remember the page, a moment after the student stops moving; the materials list learns of it on leaving.
   const latest = useRef(current);
   latest.current = current;
-  const zoomsRef = useRef(zooms);
-  zoomsRef.current = zooms;
+  const viewRef = useRef({ zoom: zooms, toc: tocOpen, column, left: leftW, right: rightW });
+  viewRef.current = { zoom: zooms, toc: tocOpen, column, left: leftW, right: rightW };
   const keepView = useCallback(() => {
-    store(viewKey(resource.id), JSON.stringify({ page: latest.current, offset: Math.round(offset.current * 1000) / 1000, zoom: zoomsRef.current } satisfies ViewState));
+    store(viewKey(resource.id), JSON.stringify({ page: latest.current, offset: Math.round(offset.current * 1000) / 1000, ...viewRef.current } satisfies ViewState));
   }, [resource.id]);
   const saved = useRef(resource.lastPage ?? 1);
   const save = useCallback(() => {
@@ -247,7 +263,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   }, [doc, keepView]);
   useEffect(() => {
     if (doc) keepView();
-  }, [doc, zooms, layout, current, keepView]);
+  }, [doc, zooms, layout, current, tocOpen, column, leftW, rightW, keepView]);
   useEffect(
     () => () => {
       save();
@@ -557,7 +573,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
           </>
         ) : null}
         <div className="flex min-w-0 flex-1 flex-col">
-          <div ref={scroller} className="min-h-0 flex-1 overflow-auto bg-sunk">
+          <div ref={scroller} data-pdf-scroller={resource.id} className="min-h-0 flex-1 overflow-auto bg-sunk">
             {view}
           </div>
           {doc ? <PdfQuestionBar resource={resource} current={current} pageInfo={pageInfo} scroller={scroller} /> : null}

@@ -1,8 +1,9 @@
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { flushSync } from 'react-dom';
 import type { PdfAnnotation } from '@wb/shared';
-import { loadPdfjs } from '@/lib/pdf';
+import { keepBitmap, loadPdfjs, pagesOf, takeBitmap } from '@/lib/pdf';
 import { markStyle } from '@/lib/pdfAnnotations';
 import { paintAsked, useAsked } from '@/lib/pdfAsked';
 
@@ -51,7 +52,12 @@ class PageCache {
   }
 }
 
-type Fit = { kind: 'width'; width: number; zoom: number } | { kind: 'box'; width: number; height: number; zoom: number };
+function sizeOf(p: PDFPageProxy): Size {
+  const v = p.getViewport({ scale: 1 });
+  return { w: v.width, h: v.height };
+}
+
+type Fit ={ kind: 'width'; width: number; zoom: number } | { kind: 'box'; width: number; height: number; zoom: number };
 
 function scaleFor(fit: Fit, b: Size): number {
   if (fit.kind === 'width') return (fit.width / b.w) * fit.zoom;
@@ -72,11 +78,16 @@ interface PageProps {
 
 /** One page: a box of the right size at once, the canvas and the text on top of it while the page is near. */
 const PageView = memo(function PageView({ doc, n, fit, guess, near, hidden, cache, marks }: PageProps) {
-  const [page, setPage] = useState<PDFPageProxy | null>(null);
-  const [base, setBase] = useState<Size | null>(null);
+  // A page loaded before (this visit or an earlier one) has its size at once.
+  const [page, setPage] = useState<PDFPageProxy | null>(() => pagesOf(doc).get(n) ?? null);
+  const [base, setBase] = useState<Size | null>(() => (page ? sizeOf(page) : null));
   const canvasHost = useRef<HTMLDivElement>(null);
   const textHost = useRef<HTMLDivElement>(null);
   const drawn = useRef<number | null>(null);
+  /** The canvas shown, and whether the page is near: kept for the next visit when the page goes. */
+  const canvas = useRef<HTMLCanvasElement | null>(null);
+  const nearNow = useRef(near);
+  nearNow.current = near;
   /** Counts the times the text of the page was drawn; the marks of questions are laid on it again each time. */
   const [textDrawn, setTextDrawn] = useState(0);
   const asked = useAsked(n - 1);
@@ -89,9 +100,9 @@ const PageView = memo(function PageView({ doc, n, fit, guess, near, hidden, cach
     if (!near || page) return;
     let live = true;
     void doc.getPage(n).then((p) => {
+      pagesOf(doc).set(n, p);
       if (!live) return;
-      const v = p.getViewport({ scale: 1 });
-      setBase({ w: v.width, h: v.height });
+      setBase(sizeOf(p));
       setPage(p);
     }, () => undefined);
     return () => {
@@ -99,11 +110,24 @@ const PageView = memo(function PageView({ doc, n, fit, guess, near, hidden, cach
     };
   }, [near, page, doc, n]);
 
+  // Back on a page that was in view when the viewer was left: its old picture shows until pdf.js has drawn it anew.
+  useLayoutEffect(() => {
+    const kept = takeBitmap(doc, n);
+    if (kept && canvasHost.current) {
+      canvasHost.current.replaceChildren(kept);
+      canvas.current = kept;
+    }
+    return () => {
+      if (nearNow.current && canvas.current) keepBitmap(doc, n, canvas.current);
+    };
+  }, [doc, n]);
+
   useEffect(
     () =>
       cache.register(n, () => {
         canvasHost.current?.replaceChildren();
         textHost.current?.replaceChildren();
+        canvas.current = null;
         drawn.current = null;
         paintAsked(n - 1, null, []);
       }),
@@ -123,12 +147,12 @@ const PageView = memo(function PageView({ doc, n, fit, guess, near, hidden, cach
       let dpr = Math.min(window.devicePixelRatio || 1, 2);
       dpr = Math.min(dpr, Math.sqrt(MAX_PIXELS / Math.max(1, cssW * cssH)));
       const viewport = page.getViewport({ scale: scale * dpr });
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.floor(viewport.width);
-      canvas.height = Math.floor(viewport.height);
-      canvas.className = 'block size-full';
+      const next = document.createElement('canvas');
+      next.width = Math.floor(viewport.width);
+      next.height = Math.floor(viewport.height);
+      next.className = 'block size-full';
       try {
-        task = page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport });
+        task = page.render({ canvas: next, canvasContext: next.getContext('2d')!, viewport });
         await task.promise;
         if (!live) return;
         const layer = document.createElement('div');
@@ -137,7 +161,8 @@ const PageView = memo(function PageView({ doc, n, fit, guess, near, hidden, cach
         text = tl;
         await tl.render();
         if (!live) return;
-        canvasHost.current?.replaceChildren(canvas);
+        canvasHost.current?.replaceChildren(next);
+        canvas.current = next;
         textHost.current?.replaceChildren(layer);
         drawn.current = scale;
         setTextDrawn((k) => k + 1);
@@ -193,7 +218,8 @@ export function useSize(ref: RefObject<HTMLElement | null>): Size {
     if (!el) return;
     const read = () => setSize((s) => (s.w === el.clientWidth && s.h === el.clientHeight ? s : { w: el.clientWidth, h: el.clientHeight }));
     read();
-    const ro = new ResizeObserver(read);
+    // Before the frame is painted, so a column that opens or closes never shows the pages at their old size.
+    const ro = new ResizeObserver(() => flushSync(read));
     ro.observe(el);
     return () => ro.disconnect();
   }, [ref]);
@@ -267,6 +293,20 @@ export function NotesView({ doc, count, guess, zoom, current, onCurrent, scrolle
     measure();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
+
+  // A new width (a column opened or closed, the window resized) or zoom rescales every page: the same line stays at the
+  // reading spot, not the same scroll position in pixels.
+  const placed = useRef<{ width: number; zoom: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!ready || !started.current) return;
+    const was = placed.current;
+    placed.current = { width: fit.width, zoom };
+    if (!was || (was.width === fit.width && was.zoom === zoom)) return;
+    const sc = scroller.current;
+    const el = list.current?.children[current - 1] as HTMLElement | undefined;
+    if (sc && el) sc.scrollTop = el.offsetTop + offset.current * el.offsetHeight - sc.clientHeight / 3;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, fit.width, zoom]);
 
   useEffect(() => {
     const sc = scroller.current;

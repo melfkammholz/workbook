@@ -3,7 +3,7 @@ import { pageText, reanchor, textItems, type PageText, type PageRect, type Resou
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { ApiError, api } from './api';
 import { fileUrl, refreshResources } from './resources';
-import { openPdf } from './pdf';
+import { forgetPdf, openPdf } from './pdf';
 
 const base = (id: string) => `/api/resources/${encodeURIComponent(id)}`;
 
@@ -19,6 +19,7 @@ export async function uploadVersion(id: string, file: File): Promise<Resource> {
     }
     throw new ApiError(msg, res.status);
   }
+  forgetPdf(id);
   return (await res.json()) as Resource;
 }
 
