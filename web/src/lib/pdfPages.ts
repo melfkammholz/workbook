@@ -73,6 +73,9 @@ export function savePdfPage(qc: QueryClient, resource: string, pageIndex: number
   return next;
 }
 
+/** Resolves when the saves of a page made so far have reached the server. */
+export const pageSaved = (resource: string, pageIndex: number): Promise<unknown> => queue.get(`${resource}/${pageIndex}`) ?? Promise.resolve();
+
 /** The reference to a page as the student writes it in Typst; `quote` (the page's first words) stays if the file goes. */
 export const pdfPageRefText = (resource: string, page: Pick<PdfPageItem, 'id'>, quote: string): string => `#pdf-ref(${typstString(resource)}, ${typstString(page.id)}, quote: ${typstString(quote)})`;
 

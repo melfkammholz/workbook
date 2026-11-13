@@ -45,7 +45,7 @@ function uuid(): string {
 
 /** Highlights still on their way to the server: a change to one waits for it to arrive. */
 const arriving = new Map<string, Promise<unknown>>();
-const arrived = (id: string) => arriving.get(id)?.catch(() => undefined);
+export const arrived = (id: string) => arriving.get(id)?.catch(() => undefined);
 
 /** Shown at once with an id made here, saved behind it; on failure it disappears again and the student is told. */
 export function addPdfHighlight(qc: QueryClient, resource: string, a: NewPdfHighlight): PdfAnnotation {

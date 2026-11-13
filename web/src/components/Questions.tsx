@@ -7,6 +7,7 @@ import { TagPicker } from './TagPicker';
 import { askQuestion, deleteQuestion, setQuestionTags, updateQuestion, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { ProposalMarker } from './Proposals';
+import { QuestionMake } from './QuestionMake';
 import { AnswerPanel, AnswerToggle, OutcomeIcons } from './QuestionAnswer';
 import { Button, IconButton, clsx } from './ui';
 
@@ -202,6 +203,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
               {waiting ? <ProposalMarker changes={waiting} /> : null}
               <AnswerToggle q={q} open={answerOpen} onToggle={() => setAnswerOpen(!answerOpen)} />
               <span className="flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                <QuestionMake item={item} q={q} />
                 <IconButton label={t.editQuestion} className="size-5" onClick={() => setDraft(q.text)}>
                   <Pencil size={12} />
                 </IconButton>
@@ -286,6 +288,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
           {q.links.length ? <OutcomeIcons links={q.links} /> : null}
           <AnswerToggle q={q} open={answerOpen} onToggle={() => setAnswerOpen(!answerOpen)} size="md" />
           <span className="flex shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+            <QuestionMake item={item} q={q} size="md" />
             <IconButton label={t.editQuestion} className="size-6" onClick={() => setDraft(q.text)}>
               <Pencil size={13} />
             </IconButton>

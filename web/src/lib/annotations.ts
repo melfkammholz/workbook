@@ -31,7 +31,7 @@ function uuid(): string {
 
 /** Highlights still on their way to the server: a change to one waits for it to arrive. */
 const arriving = new Map<string, Promise<unknown>>();
-const arrived = (id: string) => arriving.get(id)?.catch(() => undefined);
+export const arrived = (id: string) => arriving.get(id)?.catch(() => undefined);
 
 /**
  * Shown at once, with an id made here, and saved behind it. It was just made from the text on screen, so it is found.

@@ -441,6 +441,8 @@ export const updateQuestion = (item: string | null, id: string, patch: { text?: 
   patchQuestions(apply);
   return saved(item, api.patch(`/api/questions/${encodeURIComponent(id)}`, patch));
 };
+/** Records that something was made from a question (the target must already be saved); the row shows its icon. */
+export const linkQuestion = (item: string | null, id: string, kind: 'card' | 'note' | 'highlight', ref: string) => saved(item, api.post(`/api/questions/${encodeURIComponent(id)}/links`, { kind, ref }));
 /** The student's tags on a question, shown at once. */
 export const setQuestionTags = (item: string | null, id: string, labels: string[]) => {
   const apply = (qs: Question[]) => qs.map((q) => (q.id === id ? { ...q, labels } : q));
