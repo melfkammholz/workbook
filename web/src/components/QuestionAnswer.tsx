@@ -27,10 +27,20 @@ export function AnswerToggle({ q, open, onToggle, size = 'sm' }: { q: Question; 
 }
 
 /** The rendered text of an answer; rendered once per text and kept. */
-function RenderedAnswer({ source }: { source: string }) {
+export function RenderedAnswer({ source }: { source: string }) {
   const r = useQuery({ queryKey: ['answer-preview', source], queryFn: () => previewNote(source), staleTime: Infinity, gcTime: 600_000 });
   if (!r.data) return <p className="text-[13px] text-ink-3">…</p>;
   return <Prose html={r.data.html} css={r.data.css} className="prose-note text-[14px]" />;
+}
+
+/** The Typst editor an answer is written in; the row's panel and an assistant's proposed answer share it. */
+export function AnswerEditor({ value, onChange, status = '', height = 'h-60' }: { value: string; onChange: (v: string) => void; status?: string; height?: string }) {
+  const t = useT();
+  return (
+    <div className={clsx(height, 'overflow-hidden rounded-md border border-line')}>
+      <TypstEditor compact="switch" variant="notes" value={value} onChange={onChange} label={t.questionAnswer} placeholder={t.questionAnswerPlaceholder} status={status} />
+    </div>
+  );
 }
 
 /** Under a row: the answer with who wrote it, and a Typst editor for the student's own text (saved as they type). */
@@ -45,21 +55,15 @@ export function AnswerPanel({ item, q }: { item: string | null; q: Question }) {
   if (editing)
     return (
       <div className="mt-1 mb-1.5">
-        <div className="h-60 overflow-hidden rounded-md border border-line">
-          <TypstEditor
-            compact="switch"
-            variant="notes"
-            value={text}
-            onChange={(v) => {
-              setText(v);
-              setSaved(false);
-              persist.call(v);
-            }}
-            label={t.questionAnswer}
-            placeholder={t.questionAnswerPlaceholder}
-            status={saved ? t.saved : ''}
-          />
-        </div>
+        <AnswerEditor
+          value={text}
+          onChange={(v) => {
+            setText(v);
+            setSaved(false);
+            persist.call(v);
+          }}
+          status={saved ? t.saved : ''}
+        />
         {q.answer ? (
           <Button size="sm" variant="ghost" className="mt-1" onClick={() => { persist.flush(); setEditing(false); }}>
             {t.close}

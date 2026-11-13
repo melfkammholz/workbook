@@ -1,7 +1,9 @@
 import { Check, Pencil, Undo2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Change, Question } from '@wb/shared';
-import { ChangeEditor, ChangeValue, useChangeText, type Value } from '@/components/Proposals';
+import type { Anchor, CardPayload, Change, HighlightPayload, Question, QuestionPayload } from '@wb/shared';
+import { Link } from 'wouter';
+import { CardProposalDialog, ChangeEditor, ChangeValue, isCardProposal, useChangeText, type Value } from '@/components/Proposals';
+import { useAnchorLink } from '@/lib/cardAnchor';
 import { Button, Empty, Spinner, clsx } from '@/components/ui';
 import { acceptChanges, decideChange, undoBatch, useChanges, useQuestions } from '@/lib/api';
 import { useWorks } from '@/lib/bibliography';
@@ -18,6 +20,7 @@ export function InboxPage() {
   const [cursor, setCursor] = useState(0);
   const [error, setError] = useState(false);
   const [edit, setEdit] = useState<{ id: string; value: Value } | null>(null);
+  const [cardFor, setCardFor] = useState<Change | null>(null);
   const [marked, setMarked] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState<Record<string, string>>({});
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
@@ -136,6 +139,7 @@ export function InboxPage() {
                         </Button>
                       ) : null}
                     </div>
+                    <GroupWhere anchor={whereOf(group[0]!, q)} />
                     <ul className="mt-2 divide-y divide-line">
                       {group.map((c) => {
                         const editing = edit?.id === c.id;
@@ -161,7 +165,7 @@ export function InboxPage() {
                                 />
                               </div>
                               <span className="flex shrink-0 gap-1">
-                                <Button size="sm" variant="ghost" onClick={() => setEdit(editing ? null : { id: c.id, value: c.after })} aria-pressed={editing} title={t.inboxEdit}>
+                                <Button size="sm" variant="ghost" onClick={() => (isCardProposal(c) ? setCardFor(c) : setEdit(editing ? null : { id: c.id, value: c.after }))} aria-pressed={editing} title={t.inboxEdit}>
                                   <Pencil size={13} />
                                   <span className="sr-only">{t.inboxEdit}</span>
                                 </Button>
@@ -183,6 +187,7 @@ export function InboxPage() {
             </ul>
           </>
         )}
+        {cardFor ? <CardProposalDialog c={cardFor} onClose={() => setCardFor(null)} onAccept={(after) => decideChange(cardFor.id, 'accept', { after, ...(notes[cardFor.id] ? { feedback: notes[cardFor.id]! } : {}) })} /> : null}
         {lately.length ? (
           <section className="mt-10">
             <h2 className="mb-2 text-[15px] font-semibold">{t.inboxLately}</h2>
@@ -215,3 +220,27 @@ export function InboxPage() {
 }
 
 const quoteOf = (q: Question) => (q.anchor.kind === 'page' || q.anchor.kind === 'text' ? q.anchor.quote : undefined);
+
+/** The place a group is about: the question's own anchor, or where a proposed card, note or question points. */
+function whereOf(c: Change, q: Question | undefined): Anchor | null {
+  if (q) return q.anchor;
+  if (c.field !== 'create') return null;
+  if (c.ref.kind === 'highlight') {
+    const h = c.after as HighlightPayload;
+    return { kind: 'page', resource: h.resource, version: '', pageIndex: h.pageIndex, fingerprint: '' };
+  }
+  return (c.after as Partial<CardPayload & QuestionPayload>).anchor ?? null;
+}
+
+/** One line under a group's title: the page or item it belongs to, as a link in the same tab. */
+function GroupWhere({ anchor }: { anchor: Anchor | null }) {
+  const link = useAnchorLink(anchor);
+  if (!link?.label) return null;
+  return link.href ? (
+    <Link href={link.href} className="mt-0.5 inline-block text-[12.5px] text-accent hover:underline">
+      {link.label}
+    </Link>
+  ) : (
+    <p className="mt-0.5 text-[12.5px] text-ink-3">{link.label}</p>
+  );
+}

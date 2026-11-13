@@ -803,7 +803,7 @@ export class Store {
     if (kind === 'question') return text((p as QuestionPayload).text, MAX_QUESTION) && (p as QuestionPayload).anchor ? null : 'a question needs text and a place';
     if (kind === 'card') {
       const c = p as CardPayload;
-      if (!text(c.front, 4000) || !text(c.back, 4000) && c.cardKind !== 'cloze') return 'a card needs a front and a back';
+      if (!text(c.front, 4000) || !text(c.back, 4000) && c.cardKind !== 'cloze' && c.cardKind !== 'quiz') return 'a card needs a front and a back';
       return 'id' in c.deck || ('title' in c.deck && text(c.deck.title, 120)) ? null : 'a card needs a deck';
     }
     const h = p as HighlightPayload;

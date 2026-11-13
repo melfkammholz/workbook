@@ -202,7 +202,7 @@ export class CourseManager {
         deckId = same ? same.id : (madeDeck = this.flashcards.create(title).id);
       }
       try {
-        const saved = this.flashcards.addCard(deckId, c.cardKind, c.front, c.back, null, null, [], null, c.anchor);
+        const saved = this.flashcards.addCard(deckId, c.cardKind, c.front, c.back, null, null, Array.isArray(c.tags) ? c.tags.filter((x) => typeof x === 'string') : [], null, c.anchor);
         return { id: saved.cardId, deck: madeDeck ? deckId : undefined } as Created;
       } catch (e) {
         if (madeDeck) this.flashcards.remove(madeDeck);

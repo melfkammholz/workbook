@@ -77,6 +77,8 @@ export interface CardPayload {
   front: string;
   back: string;
   anchor: Anchor | null;
+  /** The card's own tags (ids or new labels), when the student added some while editing. */
+  tags?: string[];
 }
 /** A passage of a material with the assistant's note, made as a note on that page (highlights need page positions only the viewer knows). */
 export interface HighlightPayload {

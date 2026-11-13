@@ -1,11 +1,18 @@
 import * as Popover from '@radix-ui/react-popover';
 import { Check, Pencil, X } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { QUESTION_KINDS, type CardPayload, type Change, type MergePayload, type WorkPayload, type ChangeValue as Val, type HighlightPayload, type QuestionKind, type QuestionPayload } from '@wb/shared';
 import { acceptChanges, decideChange, useQuestions } from '@/lib/api';
-import { useFlashcards } from '@/lib/flashcards';
+import { cardText, previewDeck, useFlashcards } from '@/lib/flashcards';
 import { useT } from '@/lib/i18n';
-import { Button, clsx } from './ui';
+import { useMediaQuery } from '@/lib/useActiveTime';
+import { CardFace } from './CardFace';
+import { CardForm, ROOMY, useCardLayout } from './CardForm';
+import { QuestionCard } from './Questions';
+import { AnswerEditor, RenderedAnswer } from './QuestionAnswer';
+import { TypstEditor } from './TypstEditor';
+import { Button, Dialog, clsx } from './ui';
 
 export type Value = Val;
 
@@ -35,6 +42,21 @@ function createSummary(v: Value): string {
   return (p.front ?? p.quote ?? p.text ?? '').replace(/\s+/g, ' ').slice(0, 120);
 }
 
+/** A card proposal rendered as the student will see it: its front and back, in the deck's look. */
+function CardPreview({ v }: { v: Partial<CardPayload> }) {
+  const kind = v.cardKind ?? 'basic';
+  const source = cardText(kind, v.front ?? '', v.back ?? '');
+  const r = useQuery({ queryKey: ['card-proposal-preview', source], queryFn: () => previewDeck(source), staleTime: Infinity, gcTime: 600_000, retry: false });
+  const card = r.data?.cards[0];
+  if (!card || !r.data) return <p className="whitespace-pre-wrap break-words">{v.front}</p>;
+  return (
+    <div className="overflow-hidden rounded-lg border border-line bg-sheet">
+      <CardFace html={card.front} css={r.data.css} gap={kind === 'cloze' ? 1 : null} revealed={kind === 'cloze'} className="px-3 py-2" />
+      {kind === 'cloze' || kind === 'quiz' ? null : <CardFace html={card.back} css={r.data.css} gap={null} revealed className="border-t border-line bg-paper px-3 py-2" />}
+    </div>
+  );
+}
+
 /** What a proposal would make, read out. */
 function CreateView({ c }: { c: Change }) {
   const t = useT();
@@ -43,12 +65,11 @@ function CreateView({ c }: { c: Change }) {
   if (c.ref.kind === 'card') {
     const name = v.deck ? ('id' in v.deck ? (deck?.find((d) => d.id === (v.deck as { id: string }).id)?.title ?? '') : v.deck.title) : '';
     return (
-      <div className="mt-0.5 space-y-1">
+      <div className="mt-0.5 space-y-1.5">
         <p className="text-[12.5px] text-ink-3">
           {t.inboxCreateDeck}: {name}
         </p>
-        <p className="whitespace-pre-wrap break-words">{v.front}</p>
-        {v.back ? <p className="whitespace-pre-wrap break-words text-ink-2">{v.back}</p> : null}
+        <CardPreview v={v} />
       </div>
     );
   }
@@ -57,7 +78,7 @@ function CreateView({ c }: { c: Change }) {
       <div className="mt-0.5 space-y-1">
         <p className="text-[12.5px] text-ink-3">{t.inboxPageOf((v.pageIndex ?? 0) + 1)}</p>
         <p className="whitespace-pre-wrap break-words border-l-2 border-line pl-2 text-ink-2">{v.quote}</p>
-        {v.note ? <p className="whitespace-pre-wrap break-words">{v.note}</p> : null}
+        {v.note ? <RenderedAnswer source={v.note} /> : null}
       </div>
     );
   return (
@@ -68,43 +89,74 @@ function CreateView({ c }: { c: Change }) {
   );
 }
 
-/** Edits the payload of a proposal that makes something; the deck of a card is picked here. */
+/** Edits a proposed page note or question in the place the student would write one; a card has its own dialog. */
 function CreateEditor({ c, value, onChange }: { c: Change; value: Value; onChange: (v: Value) => void }) {
   const t = useT();
-  const decks = useFlashcards().data?.decks ?? [];
   const v = (value && typeof value === 'object' && !Array.isArray(value) ? value : {}) as Partial<CardPayload & HighlightPayload & QuestionPayload>;
   const set = (patch: object) => onChange({ ...v, ...patch } as Value);
-  const area = (label: string, key: 'front' | 'back' | 'note' | 'text' | 'quote', rows = 3) => (
-    <label className="mt-1 block">
-      <span className="text-[12.5px] text-ink-3">{label}</span>
-      <textarea rows={rows} value={(v[key] as string | undefined) ?? ''} onChange={(e) => set({ [key]: e.target.value })} className="wb-field w-full px-2 py-1 text-sm" />
-    </label>
-  );
-  if (c.ref.kind === 'card') {
-    const deck = v.deck ?? { title: '' };
-    const byTitle = 'title' in deck ? decks.find((d) => d.title.toLowerCase() === deck.title.trim().toLowerCase()) : undefined;
-    const picked = 'id' in deck ? deck.id : (byTitle?.id ?? '');
+  if (c.ref.kind === 'highlight')
     return (
-      <div>
-        <label className="mt-1 block">
-          <span className="text-[12.5px] text-ink-3">{t.inboxCreateDeck}</span>
-          <select value={picked} onChange={(e) => set({ deck: e.target.value ? { id: e.target.value } : { title: 'title' in deck ? deck.title : '' } })} className="wb-field w-full px-2 py-1 text-sm">
-            <option value="">{t.inboxNewDeck}</option>
-            {decks.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.title}
-              </option>
-            ))}
-          </select>
+      <div className="mt-1 space-y-2">
+        <label className="block">
+          <span className="text-[12.5px] text-ink-3">{t.inboxQuote}</span>
+          <textarea rows={2} value={v.quote ?? ''} onChange={(e) => set({ quote: e.target.value })} className="wb-field w-full px-2 py-1 text-sm" />
         </label>
-        {!picked ? <input value={'title' in deck ? deck.title : ''} onChange={(e) => set({ deck: { title: e.target.value } })} placeholder={t.inboxDeckTitle} aria-label={t.inboxDeckTitle} className="wb-field mt-1 w-full px-2 py-1 text-sm" /> : null}
-        {area(t.inboxFront, 'front')}
-        {v.cardKind === 'cloze' ? null : area(t.inboxBack, 'back')}
+        <div>
+          <span className="text-[12.5px] text-ink-3">{t.pdfPageNote}</span>
+          <div className="mt-0.5 h-64 overflow-hidden rounded-md border border-line">
+            <TypstEditor compact="switch" variant="notes" value={v.note ?? ''} onChange={(note) => set({ note })} label={t.pdfPageNote} placeholder={t.pdfPageNotePlaceholder} status="" />
+          </div>
+        </div>
       </div>
     );
-  }
-  if (c.ref.kind === 'highlight') return <div>{area(t.inboxQuote, 'quote', 2)}{area(t.inboxNoteText, 'note')}</div>;
-  return area(c.ref.kind === 'question' ? t.inboxCreate.question : '', 'text');
+  return (
+    <QuestionCard context={t.inboxFromAssistant} className="mt-1">
+      <textarea rows={3} value={v.text ?? ''} onChange={(e) => set({ text: e.target.value })} aria-label={t.questionInput} className="block w-full resize-none wb-field px-2.5 py-1.5 text-sm" />
+    </QuestionCard>
+  );
+}
+
+/** Whether accepting this proposal is edited in the card dialog instead of in place. */
+export const isCardProposal = (c: Change) => c.field === 'create' && c.ref.kind === 'card';
+
+/** A proposed card in the same form the student writes cards in (kind, tags, cloze, preview), with the deck to put it in; saving accepts it. */
+export function CardProposalDialog({ c, onAccept, onClose }: { c: Change; onAccept: (after: Value) => Promise<unknown>; onClose: () => void }) {
+  const t = useT();
+  const v = c.after as CardPayload;
+  const decks = useFlashcards().data?.decks ?? [];
+  const [layout] = useCardLayout();
+  const roomy = useMediaQuery(ROOMY);
+  const [deck, setDeck] = useState<{ id: string } | { title: string }>(v.deck);
+  const byTitle = 'title' in deck ? decks.find((d) => d.title.toLowerCase() === deck.title.trim().toLowerCase()) : undefined;
+  const picked = 'id' in deck ? deck.id : (byTitle?.id ?? '');
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} title={t.inboxCreate.card} description={t.inboxCardEditHint} width={layout === 'side' && roomy ? 'max-w-5xl' : 'max-w-xl'}>
+      <CardForm
+        initial={{ kind: v.cardKind, front: v.front, back: v.back, tags: v.tags ?? [], anchor: v.anchor }}
+        autoFocus
+        submitLabel={t.inboxAccept}
+        onCancel={onClose}
+        onSubmit={async (f) => {
+          await onAccept({ deck: picked ? { id: picked } : deck, cardKind: f.kind, front: f.front, back: f.back, anchor: f.anchor ?? null, tags: f.tags } satisfies CardPayload);
+          onClose();
+        }}
+        footer={
+          <div className="block min-w-0 flex-1">
+            <span className="text-sm font-medium">{t.intoDeck}</span>
+            <select value={picked} onChange={(e) => setDeck(e.target.value ? { id: e.target.value } : { title: 'title' in deck ? deck.title : '' })} className="mt-1 block h-8.5 w-full wb-field px-2">
+              <option value="">{t.inboxNewDeck}</option>
+              {decks.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.title} ({t.deckCounts(d.cards)})
+                </option>
+              ))}
+            </select>
+            {!picked ? <input value={'title' in deck ? deck.title : ''} onChange={(e) => setDeck({ title: e.target.value })} placeholder={t.inboxDeckTitle} aria-label={t.inboxDeckTitle} className="wb-field mt-1 w-full px-2 py-1 text-sm" /> : null}
+          </div>
+        }
+      />
+    </Dialog>
+  );
 }
 
 /** The fields a reference would get. */
@@ -201,6 +253,7 @@ export function ChangeEditor({ c, value, onChange }: { c: Change; value: Value; 
     );
   if (c.field === 'labels')
     return <input value={Array.isArray(value) ? value.join(', ') : ''} onChange={(e) => onChange(e.target.value.split(',').map((x) => x.trim()).filter(Boolean))} placeholder={t.inboxLabelsHint} aria-label={fieldName(c)} className="wb-field w-full px-2 py-1 text-sm" />;
+  if (c.field === 'answer') return <AnswerEditor value={typeof value === 'string' ? value : ''} onChange={onChange} height="h-48" />;
   return <textarea rows={4} value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)} aria-label={fieldName(c)} className="wb-field w-full px-2 py-1 text-sm" />;
 }
 
@@ -221,7 +274,9 @@ export function ChangeValue({ c }: { c: Change }) {
   if (c.field === 'answer')
     return (
       <>
-        <p className="mt-0.5 whitespace-pre-wrap break-words">{show(c, c.after)}</p>
+        <div className="mt-0.5">
+          <RenderedAnswer source={typeof c.after === 'string' ? c.after : ''} />
+        </div>
         <p className="mt-0.5 text-[12.5px] text-ink-3">{t.inboxAnswerClose}</p>
       </>
     );
@@ -239,6 +294,7 @@ export function ProposalMarker({ changes }: { changes: Change[] }) {
   const { fieldName } = useChangeText();
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<{ id: string; value: Value } | null>(null);
+  const [cardFor, setCardFor] = useState<Change | null>(null);
   const [note, setNote] = useState('');
   const [error, setError] = useState(false);
   const run = async (f: () => Promise<unknown>) => {
@@ -252,6 +308,7 @@ export function ProposalMarker({ changes }: { changes: Change[] }) {
     }
   };
   return (
+    <>
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
         <button type="button" title={t.proposalMarker} aria-label={t.proposalMarker} className="mt-1 inline-flex size-5 shrink-0 items-center justify-center rounded-full hover:bg-sunk">
@@ -271,7 +328,7 @@ export function ProposalMarker({ changes }: { changes: Change[] }) {
                     {c.reason ? <p className="mt-0.5 text-[12.5px] text-ink-3">{c.reason}</p> : null}
                   </div>
                   <div className={clsx('mt-1.5 flex items-center justify-end gap-1')}>
-                    <Button size="sm" variant="ghost" onClick={() => setEdit(editing ? null : { id: c.id, value: c.after })} aria-pressed={editing} title={t.inboxEdit}>
+                    <Button size="sm" variant="ghost" onClick={() => (isCardProposal(c) ? setCardFor(c) : setEdit(editing ? null : { id: c.id, value: c.after }))} aria-pressed={editing} title={t.inboxEdit}>
                       <Pencil size={13} />
                       <span className="sr-only">{t.inboxEdit}</span>
                     </Button>
@@ -300,5 +357,7 @@ export function ProposalMarker({ changes }: { changes: Change[] }) {
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
+    {cardFor ? <CardProposalDialog c={cardFor} onClose={() => setCardFor(null)} onAccept={(after) => decideChange(cardFor.id, 'accept', { after })} /> : null}
+    </>
   );
 }
