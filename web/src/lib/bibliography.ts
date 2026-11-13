@@ -1,9 +1,9 @@
 import { useQuery, type QueryClient } from '@tanstack/react-query';
-import { entryAt, type ImportChoice, linesOf, parseBibliography, textItems, type BibEntry, type BibEntryInput, type LibraryWork, type PageLines, type Work } from '@wb/shared';
+import { entryAt, type Destination, type ImportChoice, linesOf, parseBibliography, textItems, type BibEntry, type BibEntryInput, type LibraryWork, type PageLines, type Work } from '@wb/shared';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useEffect } from 'react';
 import { api, useSettings } from './api';
-import { linksOf, resolveDest } from './pdfLinks';
+import { linksOf, resolveDest, type Target } from './pdfLinks';
 import { reportSaveFailed } from './saveNotice';
 
 export const bibliographyKey = (resource: string) => ['pdf-bibliography', resource] as const;
@@ -30,11 +30,12 @@ export async function readBibliography(doc: PDFDocumentProxy, isLive: () => bool
     tail.push(linesOf(textItems((await page.getTextContent()).items, page.getViewport({ scale: 1 }))));
     if (!isLive()) return [];
   }
-  const parsed = parseBibliography(tail).map((e) => ({ ...e, pageIndex: e.pageIndex + from }));
+  let parsed = parseBibliography(tail).map((e) => ({ ...e, pageIndex: e.pageIndex + from }));
   if (parsed.length < 2) return [];
-  const out: BibEntryInput[] = parsed.map((e) => ({ text: e.text, pageIndex: e.pageIndex, y: e.y, citedAt: [] }));
+  // The citation links: where each one is and where it leads.
   const first = parsed[0]!.pageIndex;
-  const seen = new Set<string>();
+  const last = parsed[parsed.length - 1]!.pageIndex;
+  const jumps: { page: number; y: number; target: Target }[] = [];
   for (let n = 1; n <= first; n++) {
     await tick();
     if (!isLive()) return [];
@@ -42,14 +43,26 @@ export async function readBibliography(doc: PDFDocumentProxy, isLive: () => bool
     for (const l of await linksOf(page)) {
       if (!l.dest) continue;
       const target = await resolveDest(doc, l.dest);
-      if (!target) continue;
-      const i = entryAt(parsed, target.page - 1, target.y);
-      if (i < 0) continue;
-      const key = `${i}:${n}:${Math.round(l.y * 50)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out[i]!.citedAt.push({ pageIndex: n - 1, y: l.y });
+      if (target) jumps.push({ page: n, y: l.y, target });
     }
+  }
+  // Each place a citation jumps to in the list also starts an entry (the text rules still find the uncited ones).
+  const dests = new Map<string, Destination>();
+  for (const j of jumps) {
+    const t = j.target;
+    if (t.y === null || t.page - 1 < first || t.page - 1 > last) continue;
+    dests.set(`${t.page}:${Math.round(t.y * 400)}:${Math.round((t.x ?? -1) * 100)}`, { pageIndex: t.page - 1 - from, x: t.x ?? null, y: t.y });
+  }
+  if (dests.size) parsed = parseBibliography(tail, [...dests.values()]).map((e) => ({ ...e, pageIndex: e.pageIndex + from }));
+  const out: BibEntryInput[] = parsed.map((e) => ({ text: e.text, pageIndex: e.pageIndex, y: e.y, citedAt: [] }));
+  const seen = new Set<string>();
+  for (const j of jumps) {
+    const i = entryAt(parsed, j.target.page - 1, j.target.y);
+    if (i < 0) continue;
+    const key = `${i}:${j.page}:${Math.round(j.y * 50)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out[i]!.citedAt.push({ pageIndex: j.page - 1, y: j.y });
   }
   return out;
 }

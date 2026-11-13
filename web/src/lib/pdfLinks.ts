@@ -17,6 +17,8 @@ export interface PageLink {
 /** Where a link leads in the PDF: a page (1-based) and how far down it (0-1), `null` when the page as a whole. */
 export interface Target {
   page: number;
+  /** How far right (0-1) the destination is, `null` when not given. */
+  x?: number | null;
   y: number | null;
 }
 
@@ -74,7 +76,8 @@ export function resolveDest(doc: PDFDocumentProxy, dest: unknown): Promise<Targe
       } else if (kind === 'FitH' || kind === 'FitBH') pdfY = typeof d[2] === 'number' ? d[2] : null;
       else if (kind === 'FitR') pdfY = typeof d[5] === 'number' ? d[5] : null;
       const y = pdfY === null ? null : Math.min(1, Math.max(0, v.convertToViewportPoint(pdfX, pdfY)[1] / v.height));
-      return { page: index + 1, y };
+      const x = kind === 'XYZ' && typeof d[2] === 'number' ? Math.min(1, Math.max(0, v.convertToViewportPoint(pdfX, 0)[0] / v.width)) : null;
+      return { page: index + 1, y, x };
     })().catch(() => null);
     m.set(key, p);
   }

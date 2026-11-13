@@ -286,3 +286,103 @@ describe('two-column pages', () => {
     expect(fieldsConfidence(f)).toBeGreaterThanOrEqual(MIN_CONFIDENCE);
   });
 });
+
+describe('entries split at link destinations', () => {
+  const lines = (rows: [number, number, string, number?][]): PageLines => rows.map(([x, y, text, col]) => ({ x, y, text, ...(col ? { col } : {}) }));
+
+  it('starts an entry at the first line at or below each destination, where the text alone would merge them', () => {
+    // No hanging indent and no markers: the text heuristics cannot tell where entries start.
+    const pages = [
+      lines([
+        [0.1, 0.1, 'References'],
+        [0.1, 0.2, 'Alpha A. First paper on fluids,'],
+        [0.1, 0.23, 'Journal of Things 1 (1999) 1-9.'],
+        [0.1, 0.3, 'Beta B. Second paper on gases,'],
+        [0.1, 0.33, 'Journal of Things 2 (2000) 2-8.'],
+        [0.1, 0.4, 'Gamma C. Third paper on flames,'],
+        [0.1, 0.43, 'Journal of Things 3 (2001) 3-7.'],
+      ]),
+    ];
+    const entries = parseBibliography(pages, [
+      { pageIndex: 0, x: 0.1, y: 0.19 },
+      { pageIndex: 0, x: 0.1, y: 0.29 },
+      { pageIndex: 0, x: 0.1, y: 0.39 },
+    ]);
+    expect(entries.map((e) => e.text)).toEqual([
+      'Alpha A. First paper on fluids, Journal of Things 1 (1999) 1-9.',
+      'Beta B. Second paper on gases, Journal of Things 2 (2000) 2-8.',
+      'Gamma C. Third paper on flames, Journal of Things 3 (2001) 3-7.',
+    ]);
+  });
+
+  it('picks the column by the destination x and ignores destinations on no line', () => {
+    const pages = [
+      lines([
+        [0.1, 0.1, 'References'],
+        [0.1, 0.2, 'Alpha A. First paper on fluids, J. Things 1999.'],
+        [0.1, 0.3, 'Beta B. Second paper on gases, J. Things 2000.'],
+        [0.55, 0.1, 'Gamma C. Third paper on flames, J. Things 2001.', 1],
+        [0.55, 0.2, 'Delta D. Fourth paper on heat, J. Things 2002.', 1],
+      ]),
+    ];
+    const entries = parseBibliography(pages, [
+      { pageIndex: 0, x: 0.1, y: 0.2 },
+      { pageIndex: 0, x: 0.1, y: 0.3 },
+      { pageIndex: 0, x: 0.55, y: 0.1 },
+      { pageIndex: 0, x: 0.55, y: 0.2 },
+      { pageIndex: 3, x: 0.1, y: 0.2 },
+      { pageIndex: 0, x: 0.55, y: 0.9 },
+    ]);
+    expect(entries.map((e) => e.text.split(' ')[0])).toEqual(['Alpha', 'Beta', 'Gamma', 'Delta']);
+  });
+
+  it('keeps the entries nobody cites (the text rules still start them)', () => {
+    const pages = [
+      lines([
+        [0.1, 0.1, 'References'],
+        [0.1, 0.2, '[1] Alpha A. First paper on fluids, J. Things 1999.'],
+        [0.1, 0.25, '[2] Beta B. Second paper on gases, J. Things 2000.'],
+        [0.1, 0.3, '[3] Gamma C. Third paper on flames, J. Things 2001.'],
+      ]),
+    ];
+    const e = parseBibliography(pages, [{ pageIndex: 0, x: 0.1, y: 0.2 }]);
+    expect(e.map((x) => x.marker)).toEqual(['[1]', '[2]', '[3]']);
+  });
+
+  it('ends the last entry at a gap, so text after the list is not part of it', () => {
+    const pages = [
+      lines([
+        [0.1, 0.1, 'References'],
+        [0.1, 0.2, 'Alpha A. First paper on fluids,'],
+        [0.1, 0.23, 'Journal of Things 1 (1999) 1-9.'],
+        [0.1, 0.3, 'Beta B. Second paper on gases,'],
+        [0.1, 0.33, 'Journal of Things 2 (2000) 2-8.'],
+        [0.1, 0.36, 'Last line of the second entry here.'],
+        [0.1, 0.7, 'Table 3 shows the results of all runs.'],
+      ]),
+    ];
+    const e = parseBibliography(pages, [{ pageIndex: 0, x: 0.1, y: 0.2 }, { pageIndex: 0, x: 0.1, y: 0.3 }]);
+    expect(e).toHaveLength(2);
+    expect(e[1]!.text).not.toContain('Table 3');
+  });
+
+  it('ends the last entry at a heading on the next page', () => {
+    const p1 = lines([
+      [0.1, 0.1, 'References'],
+      [0.1, 0.2, 'Alpha A. First paper on fluids, Journal of Things 1 (1999) 1-9.'],
+      [0.1, 0.25, 'Beta B. Second paper on gases, Journal of Things 2 (2000) 2-8.'],
+    ]);
+    const p2 = lines([
+      [0.1, 0.1, 'List of abbreviations'],
+      [0.1, 0.15, 'EAD Expected Annual Damage'],
+    ]);
+    const e = parseBibliography([p1, p2], [{ pageIndex: 0, x: 0.1, y: 0.2 }, { pageIndex: 0, x: 0.1, y: 0.25 }]);
+    expect(e).toHaveLength(2);
+    expect(e[1]!.text).not.toContain('abbreviations');
+  });
+
+  it('gives nothing for fewer than two entries', () => {
+    const pages = [lines([[0.1, 0.1, 'References'], [0.1, 0.2, 'Alpha A. First paper on fluids, J. Things 1999.'], [0.1, 0.25, 'Beta B. x']])];
+    expect(parseBibliography(pages, [{ pageIndex: 0, x: 0.1, y: 0.2 }])).toEqual([]);
+  });
+});

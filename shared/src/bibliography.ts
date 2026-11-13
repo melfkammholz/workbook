@@ -156,8 +156,8 @@ function isNoise(t: string): boolean {
   return /^\d{1,4}$/.test(t) || /^(page|seite|s\.)\s*\d+/i.test(t) || t.length < 2;
 }
 
-/** The entries of the references section, or an empty list if the PDF has none. */
-export function parseBibliography(pages: readonly PageLines[]): ParsedEntry[] {
+/** The lines of the references section (after its heading, up to an appendix), without page numbers and figure captions. */
+function sectionLines(pages: readonly PageLines[]): Flat[] {
   const at = findReferencesHeading(pages);
   if (!at) return [];
   const flat: Flat[] = [];
@@ -175,6 +175,62 @@ export function parseBibliography(pages: readonly PageLines[]): ParsedEntry[] {
       flat.push({ ...l, text: t, page: p });
     }
   }
+  return flat;
+}
+
+/** A place in the PDF that a link points at: page index (0-based), x and y as fractions of the page from the top left. */
+export interface Destination {
+  pageIndex: number;
+  x: number | null;
+  y: number;
+}
+
+/** Indices into `flat` of the lines that citation links jump to: the first line of the destination's column at or below it. */
+function destinationStarts(flat: readonly Flat[], dests: readonly Destination[]): Set<number> {
+  const starts = new Set<number>();
+  const tolerance = 0.012;
+  for (const d of dests) {
+    const onPage = flat.map((l, i) => ({ l, i })).filter(({ l }) => l.page === d.pageIndex);
+    if (onPage.length === 0) continue;
+    // The column whose left margin is nearest to the destination's x.
+    const cols = new Map<number, number>();
+    for (const { l } of onPage) cols.set(l.col ?? 0, Math.min(cols.get(l.col ?? 0) ?? 1, l.x));
+    let col = onPage[0]!.l.col ?? 0;
+    if (d.x !== null && cols.size > 1) {
+      let best = Infinity;
+      for (const [c, left] of cols) if (Math.abs(left - d.x) < best) ((best = Math.abs(left - d.x)), (col = c));
+    }
+    let pick = -1;
+    for (const { l, i } of onPage) if ((l.col ?? 0) === col && l.y >= d.y - tolerance && (pick < 0 || l.y < flat[pick]!.y)) pick = i;
+    if (pick >= 0) starts.add(pick);
+  }
+  return starts;
+}
+
+/**
+ * Lines after the end of the list: on the last line's page, a gap of more than three times the usual line pitch in the
+ * same column, or a heading-like line starting a new page, starts something else (a table, the next section). Returns how many lines of `lines` to keep.
+ */
+function keepOfLast(lines: readonly Flat[]): number {
+  const gaps: number[] = [];
+  for (let i = 1; i < lines.length; i++) if (lines[i]!.page === lines[i - 1]!.page && (lines[i]!.col ?? 0) === (lines[i - 1]!.col ?? 0)) gaps.push(lines[i]!.y - lines[i - 1]!.y);
+  const pitch = gaps.length >= 2 ? [...gaps].sort((x, y) => x - y)[Math.floor(gaps.length / 2)]! : Infinity;
+  for (let i = 1; i < lines.length; i++) {
+    const same = lines[i]!.page === lines[i - 1]!.page && (lines[i]!.col ?? 0) === (lines[i - 1]!.col ?? 0);
+    if (same && lines[i]!.y - lines[i - 1]!.y > pitch * 3) return i;
+    // A heading-like line at the top of the next page, after a line that ended an entry, starts the next section.
+    const t = lines[i]!.text;
+    if (lines[i]!.page !== lines[i - 1]!.page && ENDS_ENTRY.test(lines[i - 1]!.text) && t.length < 50 && !/\d|[.,;:]$/.test(t) && /^\p{Lu}/u.test(t) && /\s/.test(t)) return i;
+  }
+  return lines.length;
+}
+
+/**
+ * The entries of the references section, or an empty list if the PDF has none. `dests` are the places the document's own
+ * citation links jump to: each one also starts an entry (the text rules still start the entries nobody cites).
+ */
+export function parseBibliography(pages: readonly PageLines[], dests: readonly Destination[] = []): ParsedEntry[] {
+  const flat = sectionLines(pages);
   if (flat.length === 0) return [];
 
   // Left margin of the section; a hanging indent (first lines out, the rest in) tells entries apart.
@@ -199,12 +255,13 @@ export function parseBibliography(pages: readonly PageLines[]): ParsedEntry[] {
     if (text.length >= 12) entries.push({ pageIndex: cur.start.page, y: clamp01(cur.start.y), marker: cur.marker, text });
     cur = null;
   };
+  const linked = destinationStarts(flat, dests);
   let prev: Flat | null = null;
   let lastNumber = 0;
-  for (const l of flat) {
+  for (const [i, l] of flat.entries()) {
     const m = MARKER.exec(l.text);
     let starts: boolean;
-    if (!cur || !prev) starts = true;
+    if (!cur || !prev || linked.has(i)) starts = true;
     else if (numbered) starts = !!m && isNextMarker(m[1]!, lastNumber);
     else if (hanging) starts = l.x <= marginOf(l) + tol && ENDS_ENTRY.test(prev.text);
     else starts = ENDS_ENTRY.test(prev.text) && SURNAME_START.test(l.text);
@@ -215,6 +272,9 @@ export function parseBibliography(pages: readonly PageLines[]): ParsedEntry[] {
     } else cur!.parts.push(l.text);
     prev = l;
   }
+  // The last entry has no next start: it stops at a gap that ends the list (a table or text after it).
+  const last = cur as { start: Flat; marker: string | null; parts: string[] } | null;
+  if (last) last.parts = last.parts.slice(0, keepOfLast(flat.slice(flat.indexOf(last.start), flat.indexOf(last.start) + last.parts.length)));
   flush();
   // A section with a single entry is more likely a false hit (a heading in the text) than a bibliography.
   return entries.length >= 2 ? entries.slice(0, MAX_BIB_ENTRIES) : [];
