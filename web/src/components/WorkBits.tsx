@@ -1,4 +1,4 @@
-import type { SimilarWork, Work } from '@wb/shared';
+import { MIN_CONFIDENCE, type SimilarWork, type Work } from '@wb/shared';
 import { Link2, Unlink } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'wouter';
@@ -6,6 +6,9 @@ import { keepWorksSeparate, linkWork, mergeWork } from '@/lib/bibliography';
 import { useT } from '@/lib/i18n';
 import { useResources } from '@/lib/resources';
 import { useQueryClient } from '@tanstack/react-query';
+
+/** Whether the fields read from a reference's text can be shown; if not, the raw text is. */
+export const sure = (w: Pick<Work, 'confidence' | 'title'>) => !!w.title && w.confidence >= MIN_CONFIDENCE;
 
 /** "Looks like X in your library": the student says it is the same work (merge) or not (kept separate). */
 export function SimilarWorks({ work, similar }: { work: Work; similar: SimilarWork[] }) {

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ImportCandidate, ImportChoice, ImportPreview, BibEntry, BibEntryInput, LibraryWork, SimilarWork, Work, Anchor, Placed, Reanchored, StaleItems, UnplacedItems, AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
-import { MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_ENTRY_TEXT, normalizeTitle, workFields, workKeys } from '@wb/shared';
+import { MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_ENTRY_TEXT, normalizeTitle, workFields, fieldsConfidence, workKeys } from '@wb/shared';
 import type { Store } from '../db/store.js';
 import { parseBibText, type ImportedWork } from './bibimport.js';
 import { extractPdfText } from './text.js';
@@ -76,6 +76,7 @@ function toResource(r: Row): Resource {
 }
 
 function toWork(r: Row): Work {
+  const stored = r.confidence === undefined || r.confidence === null ? -1 : Number(r.confidence);
   return {
     id: r.id as string,
     title: r.title as string,
@@ -89,6 +90,7 @@ function toWork(r: Row): Work {
     resource: (r.resource as string | null) ?? null,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
+    confidence: stored >= 0 ? stored : Number(r.imported) === 1 ? 1 : fieldsConfidence({ title: r.title as string, authors: r.authors as string, year: r.year === null ? null : Number(r.year), venue: r.venue as string, doi: r.doi as string, url: r.url as string }),
   };
 }
 
@@ -545,14 +547,15 @@ export class Resources {
         let work = e.id ? byId.get(e.id)?.work : undefined;
         if (!work) work = byText.get(normalizeTitle(text))?.shift();
         const f = workFields(text);
+        const conf = fieldsConfidence(f);
         if (work && !used.has(work) && this.sql.get('SELECT id FROM works WHERE id = ?', work)) {
           // Same entry as before: the work stays (a text the student fixed re-reads its fields).
           if (!byId.has(e.id ?? '') || byId.get(e.id!)!.entry_text !== text) {
-            this.sql.run('UPDATE works SET title = ?, authors = ?, year = ?, venue = ?, doi = ?, url = ?, raw = ?, updated_at = ? WHERE id = ?', f.title, f.authors, f.year, f.venue, f.doi, f.url, text, t, work);
+            this.sql.run('UPDATE works SET title = ?, authors = ?, year = ?, venue = ?, doi = ?, url = ?, raw = ?, confidence = ?, updated_at = ? WHERE id = ?', f.title, f.authors, f.year, f.venue, f.doi, f.url, text, conf, t, work);
           }
         } else {
           work = crypto.randomUUID();
-          this.sql.run('INSERT INTO works (id, title, authors, year, venue, doi, url, raw, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)', work, f.title, f.authors, f.year, f.venue, f.doi, f.url, text, t, t);
+          this.sql.run('INSERT INTO works (id, title, authors, year, venue, doi, url, raw, confidence, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)', work, f.title, f.authors, f.year, f.venue, f.doi, f.url, text, conf, t, t);
         }
         used.add(work);
         const cited = e.citedAt.slice(0, 200).map((c) => ({ pageIndex: c.pageIndex, y: Math.round(c.y * 1000) / 1000 }));

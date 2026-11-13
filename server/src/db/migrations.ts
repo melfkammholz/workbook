@@ -744,6 +744,8 @@ export const MIGRATIONS: Migration[] = [
   `,
   /* 30: works the student imported (BibTeX, Hayagriva) stay in the library without a PDF citing them. */
   `ALTER TABLE works ADD COLUMN imported INTEGER NOT NULL DEFAULT 0;`,
+  /* 31: how far the fields read from a reference's text can be trusted (0-1); the app shows the raw text below a threshold. -1: not scored yet (rows from before; scored on the fly from the stored fields). */
+  `ALTER TABLE works ADD COLUMN confidence REAL NOT NULL DEFAULT -1;`,
 ];
 
 /** The course a mounted `/content` folder is. */

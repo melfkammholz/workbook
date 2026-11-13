@@ -3,7 +3,7 @@ import { Bookmark, Merge, Pencil, RefreshCw, Split } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useT } from '@/lib/i18n';
 import type { Fix } from '@/lib/bibliography';
-import { SimilarWorks, WorkHave } from './WorkBits';
+import { SimilarWorks, WorkHave, sure } from './WorkBits';
 import { FoldSection } from './FoldSection';
 import { IconButton, clsx } from './ui';
 
@@ -62,8 +62,8 @@ export function PdfReferences({
               <div className="group/r rounded-md px-1.5 py-1 hover:bg-sunk">
                 <div className="flex items-start gap-1">
                   <button type="button" data-tip={t.pdfRefGo(labelOf(e.pageIndex + 1))} onClick={() => onGo(e.pageIndex + 1)} className="min-w-0 flex-1 text-left">
-                    <span className="block break-words font-medium">{e.work.title || e.text}</span>
-                    {e.work.title ? (
+                    <span className={clsx('block break-words', sure(e.work) && 'font-medium')}>{sure(e.work) ? e.work.title : e.text}</span>
+                    {sure(e.work) ? (
                       <span className="block break-words text-[12px] text-ink-2">
                         {[e.work.authors, e.work.year].filter(Boolean).join(' · ')}
                       </span>

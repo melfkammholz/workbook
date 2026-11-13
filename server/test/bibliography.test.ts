@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { entryAt, joinLines, linesOf, parseBibliography, splitEntry, workFields, type PageLines } from '@wb/shared';
+import { MIN_CONFIDENCE, entryAt, fieldsConfidence, joinLines, linesOf, parseBibliography, splitEntry, workFields, type PageLines } from '@wb/shared';
 
 /** Lines of a page: `[x, text]` pairs placed evenly down the page. */
 const page = (rows: [number, string][]): PageLines => rows.map(([x, text], i) => ({ x, text, y: 0.1 + (i * 0.8) / Math.max(1, rows.length) }));
@@ -170,5 +170,33 @@ describe('IEEE style', () => {
   it('reads a quoted title', () => {
     const f = workFields('J. A. Robinson, “A machine-oriented logic based on the resolution principle,” Journal of the ACM, vol. 12, 1965.');
     expect(f).toMatchObject({ authors: 'J. A. Robinson', title: 'A machine-oriented logic based on the resolution principle', year: 1965, venue: 'Journal of the ACM, vol. 12' });
+  });
+});
+
+describe('unsure entries', () => {
+  const conf = (t: string) => fieldsConfidence(workFields(t));
+
+  it('trusts well-formed entries', () => {
+    expect(conf('Hutton, G. (2016). Programming in Haskell. Cambridge University Press.')).toBeGreaterThanOrEqual(MIN_CONFIDENCE);
+    expect(conf('A. Colmerauer. Prolog and infinite trees. In Logic Programming, pages 231-251, 1982.')).toBeGreaterThanOrEqual(MIN_CONFIDENCE);
+    expect(conf('J. A. Robinson and K. Clark. A machine-oriented logic. J. ACM, 1965.')).toBeGreaterThanOrEqual(MIN_CONFIDENCE);
+  });
+
+  it('does not trust a bare year, a page range or a volume as the title', () => {
+    expect(conf('2007')).toBeLessThan(MIN_CONFIDENCE);
+    expect(conf('Smith, J. 2023')).toBeLessThan(MIN_CONFIDENCE);
+    expect(conf('Smith, J. Foo. , 22-43')).toBeLessThan(MIN_CONFIDENCE);
+    expect(conf('Miller, A. Something about trees. 45, No. 3. Vol. 12. 2026')).toBeLessThan(MIN_CONFIDENCE);
+  });
+
+  it('does not trust authors read as the title', () => {
+    expect(conf('Smith, J., Jones, K. 2020. Pages 1-5.')).toBeLessThan(MIN_CONFIDENCE);
+  });
+
+  it('keeps a venue line starting with initials inside its entry', () => {
+    const line = (text: string, y: number) => ({ text, x: 0.1, y });
+    const pages = [[line('References', 0.1), line('K. Lee, M. Park. Droplet coalescence cascades.', 0.2), line('J. Comp. Phys. 12 (2020) 1-9.', 0.22), line('K. Lee. Another paper on things. Nature, 2019.', 0.26), line('J. Doe, K. Roe. Third paper here. Science, 2018.', 0.3)]];
+    const entries = parseBibliography(pages);
+    expect(entries.some((e) => e.text.includes('cascades. J. Comp. Phys.'))).toBe(true);
   });
 });

@@ -60,7 +60,8 @@ const HEADING = /^(?:\d+\.?\s+|[A-Z]\.\s+)?(references|bibliography|literature|l
 /** A heading that ends the references (an appendix after them). */
 const END_HEADING = /^(?:[A-Z]\.?\s+|\d+\.?\s+)?(appendix|appendices|anhang|anh[äa]nge|supplementary material|acknowledg(?:e)?ments?|danksagung)\b/i;
 const MARKER = /^(\[\s*\d{1,4}\s*\]|\d{1,4}\s*\.(?=\s)|\(\d{1,4}\))\s*/;
-const SURNAME_START = /^(?:[A-ZÄÖÜ][\p{L}'’-]+(?:\s+(?:van|von|de|der|den|du|di|la|le))?,\s+(?:[A-Z]\.|[A-ZÄÖÜ][\p{L}]+)|[A-Z]\.\s?(?:[A-Z]\.\s?)*[A-ZÄÖÜ][\p{L}'’-]+)/u;
+// "J. Comp. Phys." continues a title's venue; initials only start an entry when a surname is followed by a comma, "and", "&" or "et al".
+const SURNAME_START = /^(?:[A-ZÄÖÜ][\p{L}'’-]+(?:\s+(?:van|von|de|der|den|du|di|la|le))?,\s+(?:[A-Z]\.|[A-ZÄÖÜ][\p{L}]+)|[A-Z]\.\s?(?:[A-Z]\.\s?)*[A-ZÄÖÜ][\p{L}'’-]+(?:\s[A-ZÄÖÜ][\p{L}'’-]+)?(?=\s*(?:,|&|and\b|et al\b)))/u;
 const ENDS_ENTRY = /(?:[.?!)\]"”]|\d)\s*$/;
 
 /** The index (page, line) of the last line that is the heading of a references section, looking back from the end. */
@@ -214,6 +215,29 @@ export function workFields(text: string): WorkFields {
   return { title: title.slice(0, 300), authors: authors.slice(0, 400), year, venue: venue.slice(0, 300), doi, url };
 }
 
+/** Below this, an entry's fields are not trusted and the raw text is shown instead. */
+export const MIN_CONFIDENCE = 0.6;
+
+const PERSON_LIKE = /^(?:[A-ZÄÖÜ][\p{L}'’-]+,\s+(?:[A-Z]\.\s?)+|(?:[A-Z]\.\s?)+[A-ZÄÖÜ][\p{L}'’-]+)(?:\s*(?:,|&|and\b|;)|$)/u;
+
+/** How far the fields read from an entry can be trusted (0-1): 0 for a title that is a number, a page range, authors. */
+export function fieldsConfidence(f: WorkFields): number {
+  const title = f.title.trim();
+  const letters = (title.match(/\p{L}/gu) ?? []).length;
+  if (letters < 3) return 0;
+  let c = 1;
+  if (/^[\s,;:.\d–-]/.test(title) || /^\p{Ll}/u.test(title)) c -= 0.5;
+  if (/^(vol|no|nr|pages?|pp?|issue|band|heft)\b\.?/i.test(title) || /\b\d+\s*,\s*(no|vol)\.?$/i.test(title)) c -= 0.6;
+  if (PERSON_LIKE.test(title)) c -= 0.5;
+  if (letters < 8) c -= 0.3;
+  if (!f.authors) c -= 0.2;
+  else if (f.authors === title) c -= 0.5;
+  if (f.year === null) c -= 0.15;
+  if (!f.venue && !f.doi && !f.url) c -= 0.1;
+  if (/^(?:\d+|vol\.?|no\.?|pp?\.?)$/i.test(f.venue)) c -= 0.2;
+  return Math.max(0, Math.round(c * 100) / 100);
+}
+
 /** Sentences, where a period after a single capital letter ("J.") or an abbreviation does not end one. */
 function splitSentences(s: string): string[] {
   const out: string[] = [];
@@ -222,7 +246,7 @@ function splitSentences(s: string): string[] {
   for (let m = re.exec(s); m; m = re.exec(s)) {
     const before = s.slice(start, m.index);
     const lastWord = /(\S+)$/.exec(before)?.[1] ?? '';
-    if (m[1] === '.' && (/^[A-ZÄÖÜ]$/.test(lastWord) || /^(et|al|vol|no|pp|ed|eds|Proc|Int|J|Trans|Conf|St|Dr)$/.test(lastWord))) continue;
+    if (m[1] === '.' && (/^[A-ZÄÖÜ]$/.test(lastWord) || /^(et|al|vol|no|pp|ed|eds|Proc|Int|J|Trans|Conf|St|Dr|Comp|Phys|Rev|Lett|Appl|Math|Sci|Soc|Res|Eng|Syst|Anal|Inf|Technol|Vol|No|Pp)$/.test(lastWord))) continue;
     out.push(s.slice(start, m.index + 1).trim());
     start = m.index + m[0].length;
   }
@@ -316,6 +340,8 @@ export interface Work extends WorkFields {
   resource: string | null;
   createdAt: number;
   updatedAt: number;
+  /** How far the fields can be trusted (0-1); below `MIN_CONFIDENCE` show `raw` only. Entries imported from BibTeX are 1. */
+  confidence: number;
 }
 
 /** What the client sends when it (re)stores the entries of a PDF: ids are kept for entries that stay. */

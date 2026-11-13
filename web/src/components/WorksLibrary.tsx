@@ -6,7 +6,7 @@ import { Link } from 'wouter';
 import { setWantToRead, useWorks } from '@/lib/bibliography';
 import { useT } from '@/lib/i18n';
 import { Empty, Spinner, clsx } from './ui';
-import { SimilarWorks, WorkHave } from './WorkBits';
+import { SimilarWorks, WorkHave, sure } from './WorkBits';
 
 type Filter = 'all' | 'want' | 'have' | 'missing';
 
@@ -54,8 +54,8 @@ function WorkRow({ work: w, onWant }: { work: LibraryWork; onWant: () => void })
     <li className="py-2.5">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <p className="break-words text-[15px] font-medium">{w.title || w.raw}</p>
-          {w.title ? <p className="break-words text-[13px] text-ink-2">{[w.authors, w.year, w.venue].filter(Boolean).join(' · ')}</p> : null}
+          <p className={clsx('break-words text-[15px]', sure(w) && 'font-medium')}>{sure(w) ? w.title : w.raw}</p>
+          {sure(w) ? <p className="break-words text-[13px] text-ink-2">{[w.authors, w.year, w.venue].filter(Boolean).join(' · ')}</p> : null}
           <p className="mt-0.5 flex flex-wrap items-center gap-1 text-[12px] text-ink-3">
             {w.citedBy.length ? (
               <>
