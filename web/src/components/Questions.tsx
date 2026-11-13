@@ -7,6 +7,7 @@ import { TagPicker } from './TagPicker';
 import { askQuestion, deleteQuestion, setQuestionTags, updateQuestion, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { ProposalMarker } from './Proposals';
+import { AnswerPanel, AnswerToggle, OutcomeIcons } from './QuestionAnswer';
 import { Button, IconButton, clsx } from './ui';
 
 /** Grows with its text, up to a few lines: one line to type into, more only when it is needed. */
@@ -145,6 +146,7 @@ export function QuestionInput({ item, autoFocus = false }: { item: string; autoF
 export function QuestionRow({ item, q, extra, dense = false, where }: { item: string | null; q: Question; extra?: React.ReactNode; dense?: boolean; where?: string }) {
   const t = useT();
   const [draft, setDraft] = useState<string | null>(null);
+  const [answerOpen, setAnswerOpen] = useState(false);
   const ref = useAutoGrow(draft ?? '');
   const done = q.status === 'done';
   const waiting = usePendingProposals().get(q.id);
@@ -198,6 +200,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
             </p>
             <div className="flex items-center gap-1.5 whitespace-nowrap text-[12px] text-ink-3">
               {waiting ? <ProposalMarker changes={waiting} /> : null}
+              <AnswerToggle q={q} open={answerOpen} onToggle={() => setAnswerOpen(!answerOpen)} />
               <span className="flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                 <IconButton label={t.editQuestion} className="size-5" onClick={() => setDraft(q.text)}>
                   <Pencil size={12} />
@@ -213,6 +216,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
                   {l}
                 </span>
               ))}
+              {q.links.length ? <OutcomeIcons links={q.links} /> : null}
               <span className="min-w-[5.2rem] text-right tabular-nums" title={new Date(q.createdAt).toLocaleString()}>{t.questionAge(days)}</span>
               <input
                 type="checkbox"
@@ -225,11 +229,13 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
             </div>
           </div>
         )}
+        {answerOpen && draft === null ? <AnswerPanel item={item} q={q} /> : null}
       </li>
     );
   }
   return (
-    <li className="group flex items-start gap-1.5 py-1.5">
+    <li className="group py-1.5">
+      <div className="flex items-start gap-1.5">
       <input
         type="checkbox"
         checked={done}
@@ -277,6 +283,8 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
             ) : null}
           </div>
           {waiting ? <ProposalMarker changes={waiting} /> : null}
+          {q.links.length ? <OutcomeIcons links={q.links} /> : null}
+          <AnswerToggle q={q} open={answerOpen} onToggle={() => setAnswerOpen(!answerOpen)} size="md" />
           <span className="flex shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
             <IconButton label={t.editQuestion} className="size-6" onClick={() => setDraft(q.text)}>
               <Pencil size={13} />
@@ -287,6 +295,8 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
           </span>
         </>
       )}
+      </div>
+      {answerOpen && draft === null ? <div className="pl-6"><AnswerPanel item={item} q={q} /></div> : null}
     </li>
   );
 }

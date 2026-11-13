@@ -434,9 +434,9 @@ export const askQuestion = (where: QuestionPlace, text: string) => {
   return saved(item, api.post('/api/questions', { id, text, ...(item ? { item } : {}), ...(page ? { page } : {}), ...(where.material ? { material: where.material } : {}) }));
 };
 export const addQuestion = (item: string, text: string) => askQuestion({ item }, text);
-export const updateQuestion = (item: string | null, id: string, patch: { text?: string; status?: 'open' | 'done' }) => {
+export const updateQuestion = (item: string | null, id: string, patch: { text?: string; status?: 'open' | 'done'; answer?: string | null }) => {
   const t = Date.now();
-  const apply = (qs: Question[]) => qs.map((q) => (q.id !== id ? q : { ...q, ...patch, ...(patch.status === 'open' ? { mergedInto: null } : {}), updatedAt: t, doneAt: patch.status ? (patch.status === 'done' ? t : null) : q.doneAt }));
+  const apply = (qs: Question[]) => qs.map((q) => (q.id !== id ? q : { ...q, ...patch, ...(patch.answer !== undefined ? { answer: patch.answer?.trim() ? patch.answer : null, answerBy: patch.answer?.trim() ? ('you' as const) : null } : {}), ...(patch.status === 'open' ? { mergedInto: null } : {}), updatedAt: t, doneAt: patch.status ? (patch.status === 'done' ? t : null) : q.doneAt }));
   if (item) patchWork(item, (w) => ({ ...w, questions: apply(w.questions) }));
   patchQuestions(apply);
   return saved(item, api.patch(`/api/questions/${encodeURIComponent(id)}`, patch));

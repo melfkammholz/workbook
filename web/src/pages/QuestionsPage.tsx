@@ -32,14 +32,15 @@ interface Filters {
   kind: string;
   age: string;
   labels: string[];
+  answered: boolean;
 }
 
-const NO_FILTERS: Filters = { text: '', where: '', kind: '', age: '', labels: [] };
+const NO_FILTERS: Filters = { text: '', where: '', kind: '', age: '', labels: [], answered: false };
 const DAY = 86_400_000;
 
 const readUrl = (): Filters => {
   const p = new URLSearchParams(location.search);
-  return { text: p.get('q') ?? '', where: p.get('in') ?? '', kind: p.get('type') ?? '', age: p.get('age') ?? '', labels: (p.get('labels') ?? '').split(',').filter(Boolean) };
+  return { text: p.get('q') ?? '', where: p.get('in') ?? '', kind: p.get('type') ?? '', age: p.get('age') ?? '', labels: (p.get('labels') ?? '').split(',').filter(Boolean), answered: p.get('answer') === '1' };
 };
 
 const writeUrl = (f: Filters) => {
@@ -49,6 +50,7 @@ const writeUrl = (f: Filters) => {
   if (f.kind) p.set('type', f.kind);
   if (f.age) p.set('age', f.age);
   if (f.labels.length) p.set('labels', f.labels.join(','));
+  if (f.answered) p.set('answer', '1');
   const search = p.toString() ? `?${p}` : '';
   if (search !== location.search) history.replaceState(history.state, '', `${location.pathname}${search}${location.hash}`);
 };
@@ -128,6 +130,7 @@ export function QuestionsPage() {
         if (f.where === 'materials' ? !gKey.startsWith('m:') : f.where === 'workbooks' ? !gKey.startsWith('c:') : k === 'mt' ? mtype !== v : k === 'g' ? gKey !== v : false) return false;
       }
       if (f.kind && q.kind !== f.kind) return false;
+      if (f.answered && !q.answer) return false;
       if (f.age) {
         const days = (now - q.createdAt) / DAY;
         if (f.age === 'old' ? days <= 30 : days > Number(f.age)) return false;
@@ -157,7 +160,7 @@ export function QuestionsPage() {
     );
   }
   const hasDone = all.some((q) => q.status === 'done');
-  const active = !!(f.text || f.where || f.kind || f.age || f.labels.length);
+  const active = !!(f.text || f.where || f.kind || f.age || f.labels.length || f.answered);
   const names = groups.map((g) => g.key);
   const allClosed = names.length > 0 && names.every((n) => closed.has(n));
   const searching = !!f.text.trim();
@@ -226,6 +229,9 @@ export function QuestionsPage() {
                 <option value="old">{t.questionsAgeOlder}</option>
               </>,
             )}
+            <button type="button" aria-pressed={f.answered} onClick={() => set({ answered: !f.answered })} className={selectClass(f.answered)}>
+              {t.questionsHasAnswer}
+            </button>
             <span className="flex-1" />
             {active ? (
               <button type="button" onClick={() => setF(NO_FILTERS)} className="px-0.5 py-1 text-[13px] text-accent hover:underline">
