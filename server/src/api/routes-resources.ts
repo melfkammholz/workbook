@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { MAX_PAGE_MARKS, MAX_PAGE_NOTE, MAX_QUOTE, MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_RECTS, QUOTE_CONTEXT, RESOURCE_TYPES, isAnnotationColor } from '@wb/shared';
+import { MAX_BIB_ENTRIES, MAX_ENTRY_TEXT, MAX_PAGE_MARKS, MAX_PAGE_NOTE, MAX_QUOTE, MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_RECTS, QUOTE_CONTEXT, RESOURCE_TYPES, isAnnotationColor } from '@wb/shared';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { mimeOf, ResourceError } from '../resources/service.js';
@@ -61,6 +61,21 @@ const pageItem = z.object({
   note: z.string().max(MAX_PAGE_NOTE).optional(),
   marks: z.array(z.string().min(1).max(100)).max(MAX_PAGE_MARKS).optional(),
   review: review.optional(),
+});
+
+const bibliography = z.object({
+  version: z.string().regex(/^[0-9a-f]{64}$/),
+  entries: z
+    .array(
+      z.object({
+        id: z.string().uuid().optional(),
+        text: z.string().min(1).max(MAX_ENTRY_TEXT),
+        pageIndex: z.number().int().min(0).max(1_000_000),
+        y: z.number().min(0).max(1),
+        citedAt: z.array(z.object({ pageIndex: z.number().int().min(0).max(1_000_000), y: z.number().min(0).max(1) })).max(200),
+      }),
+    )
+    .max(MAX_BIB_ENTRIES),
 });
 
 const tocItem = z.object({
@@ -186,6 +201,33 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
   app.delete<{ Params: { id: string; tid: string } }>('/api/resources/:id/toc/:tid', async (req, reply) =>
     r().deleteToc(req.params.id, req.params.tid) ? { ok: true } : reply.code(404).send({ error: 'unknown entry' }),
   );
+
+  // The bibliography: read in the browser, stored here with the works the entries stand for.
+  app.get<{ Params: { id: string } }>('/api/resources/:id/bibliography', async (req, reply) => {
+    try {
+      return r().listBibliography(req.params.id);
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+  app.put<{ Params: { id: string } }>('/api/resources/:id/bibliography', async (req, reply) => {
+    const b = parse(bibliography, req.body, reply);
+    if (!b) return;
+    try {
+      return r().saveBibliography(req.params.id, b.version, b.entries);
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+  app.put<{ Params: { wid: string } }>('/api/works/:wid/want', async (req, reply) => {
+    const b = parse(z.object({ want: z.boolean() }), req.body, reply);
+    if (!b) return;
+    try {
+      return r().setWantToRead(req.params.wid, b.want);
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
 
   app.delete<{ Params: { id: string } }>('/api/resources/:id', async (req, reply) => {
     try {

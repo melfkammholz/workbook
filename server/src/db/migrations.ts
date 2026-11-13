@@ -698,6 +698,42 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX resource_labels_label ON resource_labels (label_id, resource);
     `);
   },
+  /*
+   * 28: the bibliography. `works` is the student's global library (one row per distinct reference; `resource` is the
+   * material that is the work, once linked); `work_citations` is one entry of a PDF's reference list, which says which
+   * work it is, where it stands in the file and where the file cites it (`cited_at`, JSON). Entries are re-read when a
+   * new version of the file comes, so they carry no anchor of their own.
+   */
+  `
+  CREATE TABLE works (
+    id           TEXT PRIMARY KEY,
+    title        TEXT NOT NULL DEFAULT '',
+    authors      TEXT NOT NULL DEFAULT '',
+    year         INTEGER,
+    venue        TEXT NOT NULL DEFAULT '',
+    doi          TEXT NOT NULL DEFAULT '',
+    url          TEXT NOT NULL DEFAULT '',
+    raw          TEXT NOT NULL DEFAULT '',
+    want_to_read INTEGER NOT NULL DEFAULT 0,
+    resource     TEXT REFERENCES resources(id) ON DELETE SET NULL,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL
+  );
+  CREATE INDEX works_doi ON works (doi) WHERE doi <> '';
+  CREATE TABLE work_citations (
+    id         TEXT PRIMARY KEY,
+    resource   TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+    version    TEXT NOT NULL,
+    work       TEXT NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+    position   INTEGER NOT NULL,
+    entry_text TEXT NOT NULL,
+    page_index INTEGER NOT NULL,
+    y          REAL NOT NULL,
+    cited_at   TEXT NOT NULL DEFAULT '[]'
+  );
+  CREATE INDEX work_citations_resource ON work_citations (resource, position);
+  CREATE INDEX work_citations_work ON work_citations (work);
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Anchor, Placed, Reanchored, StaleItems, UnplacedItems, AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
-import { MAX_TOC_LEVEL, MAX_TOC_TITLE } from '@wb/shared';
+import type { BibEntry, BibEntryInput, Work, Anchor, Placed, Reanchored, StaleItems, UnplacedItems, AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
+import { MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_ENTRY_TEXT, normalizeTitle, workFields } from '@wb/shared';
 import type { Store } from '../db/store.js';
 import { extractPdfText } from './text.js';
 
@@ -69,6 +69,23 @@ function toResource(r: Row): Resource {
     versions: Number(r.versions),
     stale: Number(r.stale),
     unplaced: Number(r.unplaced),
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+  };
+}
+
+function toWork(r: Row): Work {
+  return {
+    id: r.id as string,
+    title: r.title as string,
+    authors: r.authors as string,
+    year: r.year === null ? null : Number(r.year),
+    venue: r.venue as string,
+    doi: r.doi as string,
+    url: r.url as string,
+    raw: r.raw as string,
+    wantToRead: Number(r.want_to_read) === 1,
+    resource: (r.resource as string | null) ?? null,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
   };
@@ -481,6 +498,77 @@ export class Resources {
     if (!this.sql.get('SELECT id FROM pdf_toc WHERE resource = ? AND id = ?', resource, id)) return false;
     this.sql.run('DELETE FROM pdf_toc WHERE id = ?', id);
     return true;
+  }
+
+  // ───────────────────────── bibliography ─────────────────────────
+
+  /** The reference entries of a PDF in reading order, each with its work. */
+  listBibliography(resource: string): BibEntry[] {
+    this.get(resource);
+    return this.sql
+      .all(
+        `SELECT c.id AS cid, c.resource AS cresource, c.version, c.position, c.entry_text, c.page_index, c.y, c.cited_at, w.*
+           FROM work_citations c JOIN works w ON w.id = c.work WHERE c.resource = ? ORDER BY c.position`,
+        resource,
+      )
+      .map((r) => {
+        let citedAt: BibEntry['citedAt'] = [];
+        try {
+          const j = JSON.parse(r.cited_at as string) as unknown;
+          if (Array.isArray(j)) citedAt = j.filter((x): x is { pageIndex: number; y: number } => typeof x?.pageIndex === 'number' && typeof x?.y === 'number');
+        } catch {
+          /* none */
+        }
+        return { id: r.cid as string, resource: r.cresource as string, version: r.version as string, position: Number(r.position), text: r.entry_text as string, pageIndex: Number(r.page_index), y: Number(r.y), citedAt, work: toWork(r) };
+      });
+  }
+
+  /**
+   * Replaces the entries of a PDF with those the browser read (or the student fixed). An entry keeps its work when its
+   * `id` is known, or when its text is the same as an old entry's (a new version of the file, a re-read); otherwise it
+   * gets a new work. A work nothing cites, wants or is linked to goes away with its last entry.
+   */
+  saveBibliography(resource: string, version: string, entries: BibEntryInput[]): BibEntry[] {
+    this.get(resource);
+    const t = this.now();
+    const old = this.sql.all('SELECT id, work, entry_text FROM work_citations WHERE resource = ?', resource) as { id: string; work: string; entry_text: string }[];
+    const byId = new Map(old.map((o) => [o.id, o]));
+    const byText = new Map<string, string[]>();
+    for (const o of old) (byText.get(normalizeTitle(o.entry_text)) ?? byText.set(normalizeTitle(o.entry_text), []).get(normalizeTitle(o.entry_text))!).push(o.work);
+    this.sql.tx(() => {
+      this.sql.run('DELETE FROM work_citations WHERE resource = ?', resource);
+      const used = new Set<string>();
+      entries.forEach((e, position) => {
+        const text = e.text.trim().slice(0, MAX_ENTRY_TEXT);
+        let work = e.id ? byId.get(e.id)?.work : undefined;
+        if (!work) work = byText.get(normalizeTitle(text))?.shift();
+        const f = workFields(text);
+        if (work && !used.has(work) && this.sql.get('SELECT id FROM works WHERE id = ?', work)) {
+          // Same entry as before: the work stays (a text the student fixed re-reads its fields).
+          if (!byId.has(e.id ?? '') || byId.get(e.id!)!.entry_text !== text) {
+            this.sql.run('UPDATE works SET title = ?, authors = ?, year = ?, venue = ?, doi = ?, url = ?, raw = ?, updated_at = ? WHERE id = ?', f.title, f.authors, f.year, f.venue, f.doi, f.url, text, t, work);
+          }
+        } else {
+          work = crypto.randomUUID();
+          this.sql.run('INSERT INTO works (id, title, authors, year, venue, doi, url, raw, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)', work, f.title, f.authors, f.year, f.venue, f.doi, f.url, text, t, t);
+        }
+        used.add(work);
+        const cited = e.citedAt.slice(0, 200).map((c) => ({ pageIndex: c.pageIndex, y: Math.round(c.y * 1000) / 1000 }));
+        this.sql.run('INSERT INTO work_citations (id, resource, version, work, position, entry_text, page_index, y, cited_at) VALUES (?,?,?,?,?,?,?,?,?)', crypto.randomUUID(), resource, version, work, position, text, e.pageIndex, e.y, JSON.stringify(cited));
+      });
+      // Works that lost their entry here and have no other reason to stay.
+      this.sql.run(
+        `DELETE FROM works WHERE want_to_read = 0 AND resource IS NULL AND NOT EXISTS (SELECT 1 FROM work_citations c WHERE c.work = works.id)`,
+      );
+    });
+    return this.listBibliography(resource);
+  }
+
+  setWantToRead(work: string, want: boolean): Work {
+    const row = this.sql.get('SELECT * FROM works WHERE id = ?', work);
+    if (!row) throw new ResourceError('unknown-item');
+    this.sql.run('UPDATE works SET want_to_read = ?, updated_at = ? WHERE id = ?', want ? 1 : 0, this.now(), work);
+    return toWork(this.sql.get('SELECT * FROM works WHERE id = ?', work)!);
   }
 
   // ───────────────────────── new versions of a file ─────────────────────────

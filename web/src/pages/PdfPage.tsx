@@ -10,6 +10,8 @@ import { PagesWithNotes, PdfPageNotes } from '@/components/PdfPageNotes';
 import { PdfUnplaced } from '@/components/PdfUnplaced';
 import { PdfQuestionBar, PdfQuestionList, usePdfQuestions } from '@/components/PdfQuestions';
 import { PdfToc, type TocActions } from '@/components/PdfToc';
+import { PdfReferences } from '@/components/PdfReferences';
+import { fixEntry, rereadBibliography, setWantToRead, useBibliography, useBibliographyReader, type Fix } from '@/lib/bibliography';
 import { NotesView, SlidesView, type Marks, type PdfLayout, type Size } from '@/components/PdfViewer';
 import { IconButton, Segmented, Spinner, Empty } from '@/components/ui';
 import { api, useSettings } from '@/lib/api';
@@ -193,6 +195,8 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   const [typed, setTyped] = useState<string | null>(null);
   const pages = usePdfPages(resource.id).data;
   const questions = usePdfQuestions(resource);
+  const bibliography = useBibliography(resource.id).data;
+  useBibliographyReader(qc, resource.id, resource.file.sha256, doc, bibliography);
   const settings = useSettings().data;
   const cards = !!settings?.showFlashcards;
   const [pageCard, setPageCard] = useState<{ text: string; anchor: Anchor } | null>(null);
@@ -669,6 +673,17 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
               {marks && doc ? <AllHighlights resource={resource.id} list={highlights ?? []} current={current} labelOf={labelOf} chapterAt={chapterAt} editing={editing?.id ?? null} onJump={(a) => jumpTo(a, true)} /> : null}
               {doc ? <PdfQuestionList resource={resource} questions={questions} current={current} labelOf={labelOf} onGo={goto} /> : null}
               {doc ? <PdfUnplaced resource={resource} current={current} pageInfo={pageInfo} /> : null}
+              {doc && bibliography?.length ? (
+                <PdfReferences
+                  entries={bibliography}
+                  current={current}
+                  labelOf={labelOf}
+                  onGo={goto}
+                  onWant={(e, want) => setWantToRead(qc, resource.id, e.work, want)}
+                  onFix={(i: number, fix: Fix) => void fixEntry(qc, resource.id, resource.file.sha256, bibliography, i, fix)?.catch(() => undefined)}
+                  onReread={() => void rereadBibliography(qc, resource.id, resource.file.sha256, doc).catch(() => undefined)}
+                />
+              ) : null}
               {marksOn && doc && pages ? (
                 <>
                   <PagesWithNotes items={pages} marks={settings?.pdfPageMarks ?? []} current={notePage} labelOf={labelOf} onGo={goto} chapterAt={chapterAt} />
