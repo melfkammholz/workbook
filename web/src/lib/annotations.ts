@@ -14,8 +14,8 @@ export function useAnnotations() {
   return useQuery({ queryKey: annotationKey, queryFn: () => api.get<AnnotationEntry[]>('/api/annotations'), enabled: on, staleTime: 30_000 });
 }
 
-export type NewAnnotation = { target: string; part: string; color: AnnotationColor; label?: string | null; comment?: string; review?: AnnotationReview | null } & TextQuote;
-export type AnnotationPatch = Partial<Pick<Annotation, 'color' | 'label' | 'comment' | 'review'>>;
+export type NewAnnotation = { target: string; part: string; color: AnnotationColor; tags?: string[]; comment?: string; review?: AnnotationReview | null } & TextQuote;
+export type AnnotationPatch = Partial<Pick<Annotation, 'color' | 'tags' | 'comment' | 'review'>>;
 
 const setList = (qc: QueryClient, f: (list: AnnotationEntry[]) => AnnotationEntry[]) => qc.setQueryData<AnnotationEntry[]>(annotationKey, (l) => f(l ?? []));
 
@@ -40,7 +40,7 @@ const arrived = (id: string) => arriving.get(id)?.catch(() => undefined);
 export function addAnnotation(qc: QueryClient, a: NewAnnotation): AnnotationEntry {
   const t = Date.now();
   // Only the fields of a new one: an undo passes the removed highlight, whose id may still be on its way out.
-  const body = { target: a.target, part: a.part, quote: a.quote, prefix: a.prefix, suffix: a.suffix, color: a.color, label: a.label ?? null, comment: a.comment ?? '', review: a.review ?? null, id: uuid() };
+  const body = { target: a.target, part: a.part, quote: a.quote, prefix: a.prefix, suffix: a.suffix, color: a.color, tags: a.tags ?? [], comment: a.comment ?? '', review: a.review ?? null, id: uuid() };
   const made: AnnotationEntry = { ...body, createdAt: t, updatedAt: t, found: true };
   setList(qc, (l) => [...l, made]);
   const saving = api.post<Annotation>('/api/annotations', body).then(

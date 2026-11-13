@@ -479,7 +479,7 @@ describe('importing per-course databases of earlier versions', () => {
     expect(a.search('Apfel')).toHaveLength(1);
     expect(b.getState().progress.x?.status).toBe('in_progress');
     expect(b.getState().reflections.x?.confidence).toBe(1);
-    expect(b.getAnnotation('m1')).toMatchObject({ quote: 'Satz', label: 'l' });
+    expect(b.getAnnotation('m1')).toMatchObject({ quote: 'Satz' });
     expect(a.getAnnotation('m1')).toBeNull();
     expect(b.getState().landingSeen).toBe(false);
     // The old file is left as it was.
@@ -509,14 +509,9 @@ describe('migration 16', () => {
     const store = new Store(file);
     const got = store.getSettings();
     expect(got.displayName).toBe('Ada');
-    expect(got.highlightLabels).toEqual([{ id: 'l1', name: 'Wichtig', color: '#ff0000' }, { id: 'l2', name: '', color: 'blue' }]);
-    // Page marks are tags now: the colored labels first, then the marks, then the default tag.
-    expect(got.pdfPageMarks).toEqual([{ id: 'l1', name: 'Wichtig' }, { id: 'l2', name: '' }, { id: 'm1', name: 'Klausur' }, { id: 'm2', name: 'Unklar' }, { id: 'tg-interesting', name: 'Interesting' }]);
+    // Labels and page marks are tags now: the colored labels first, then the marks, then the default tag.
+    expect(store.listTags()).toEqual([{ id: 'l1', name: 'Wichtig', color: '#ff0000' }, { id: 'l2', name: '', color: 'blue' }, { id: 'm1', name: 'Klausur', color: '' }, { id: 'm2', name: 'Unklar', color: '' }, { id: 'tg-interesting', name: 'Interesting', color: '' }]);
     expect(String(store.sql.get("SELECT value FROM settings WHERE course = '' AND key = 'settings'")!.value)).not.toContain('Wichtig');
-    // Changing one list leaves the other alone.
-    store.saveSettings({ pdfPageMarks: [{ id: 'm2', name: 'Unklar!' }] });
-    expect(store.getSettings().highlightLabels).toHaveLength(2);
-    expect(store.getSettings().pdfPageMarks.map((m) => m.name)).toEqual(['Wichtig', '', 'Unklar!']);
     store.close();
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -531,6 +526,24 @@ describe('migration 17', () => {
     expect(store.forCourse('c1').getState().questions).toMatchObject([{ text: 'Warum?', status: 'open', course: 'c1', anchor: { kind: 'exercise', course: 'c1', id: 'e1' }, createdAt: 5 }]);
     expect(store.listQuestions().map((q) => q.text)).toEqual(['Warum?', 'Wie?']);
     expect(store.sql.get("SELECT name FROM sqlite_master WHERE name = 'open_questions'")).toBeUndefined();
+    store.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('highlight tags (migration 34)', () => {
+  it('turns a highlight\'s label into a tag link and lets it carry several', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-m34-'));
+    const store = new Store(path.join(dir, 'workbook.db'));
+    const a = store.createTag('Definition', 'blue');
+    const b = store.createTag('Later', '');
+    const h = store.addAnnotation({ target: 'x', part: 'task', quote: 'q', prefix: '', suffix: '', color: 'blue', tags: [a.id] });
+    expect(h.tags).toEqual([a.id]);
+    expect(store.updateAnnotation(h.id, { tags: [a.id, b.id] })!.tags.sort()).toEqual([a.id, b.id].sort());
+    store.mergeTags(b.id, a.id);
+    expect(store.getAnnotation(h.id)!.tags).toEqual([a.id]);
+    store.deleteAnnotation(h.id);
+    expect(store.tagLinks('highlight').size).toBe(0);
     store.close();
     fs.rmSync(dir, { recursive: true, force: true });
   });

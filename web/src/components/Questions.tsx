@@ -2,7 +2,9 @@ import * as Popover from '@radix-ui/react-popover';
 import { HelpCircle, Pencil, Trash2, X } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { type Question } from '@wb/shared';
-import { askQuestion, deleteQuestion, updateQuestion, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
+import { useTags } from '@/lib/tags';
+import { TagPicker } from './TagPicker';
+import { askQuestion, deleteQuestion, setQuestionTags, updateQuestion, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { ProposalMarker } from './Proposals';
 import { Button, IconButton, clsx } from './ui';
@@ -147,7 +149,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
   const done = q.status === 'done';
   const waiting = usePendingProposals().get(q.id);
   const into = useQuestions().data?.find((x) => x.id === q.mergedInto);
-  const labelNames = new Map((useSettings().data?.highlightLabels ?? []).map((l) => [l.id, l.name]));
+  const labelNames = new Map((useTags().data ?? []).map((l) => [l.id, l.name]));
   const store = () => {
     const text = (draft ?? '').trim();
     setDraft(null);
@@ -165,6 +167,9 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
         onKeyDown={(e) => submitKey(e, store, () => setDraft(null))}
         className="block w-full resize-none wb-field px-2 py-1 text-sm"
       />
+      <div className="mt-1.5">
+        <TagPicker size="sm" value={q.labels} onChange={(ids) => void setQuestionTags(item, q.id, ids)} />
+      </div>
       <div className="mt-1 flex gap-2">
         <Button size="sm" variant="primary" onClick={store}>
           {t.save}
@@ -245,6 +250,9 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
             onKeyDown={(e) => submitKey(e, store, () => setDraft(null))}
             className="block w-full resize-none wb-field px-2 py-1 text-sm"
           />
+          <div className="mt-1.5">
+            <TagPicker size="sm" value={q.labels} onChange={(ids) => void setQuestionTags(item, q.id, ids)} />
+          </div>
           <div className="mt-1 flex gap-2">
             <Button size="sm" variant="primary" onClick={store}>
               {t.save}

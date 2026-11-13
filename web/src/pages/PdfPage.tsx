@@ -28,7 +28,8 @@ import { deleteTocEdit, readOutline, saveTocEdit, usePdfToc } from '@/lib/pdfToc
 import { fileUrl, formatSize, refreshResources, resourceKeys, updateResource, useResources } from '@/lib/resources';
 import { placeStale } from '@/lib/pdfVersions';
 import { NewVersionButton } from '@/components/NewVersionButton';
-import { LabelPicker } from '@/components/LabelPicker';
+import { useTags } from '@/lib/tags';
+import { TagPicker } from '@/components/TagPicker';
 
 const ZOOM_STEP = 1.25;
 const ZOOM_MIN = 0.4;
@@ -202,6 +203,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   const bibliographyCard = useMemo(() => (bibliography?.length ? { entries: bibliography, onWant: (e: BibEntry, want: boolean) => setWantToRead(qc, resource.id, e.work, want) } : undefined), [bibliography, qc, resource.id]);
   const bibImport = useBibImport();
   const settings = useSettings().data;
+  const tagList = useTags().data ?? [];
   const cards = !!settings?.showFlashcards;
   const [pageCard, setPageCard] = useState<{ text: string; anchor: Anchor } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -641,7 +643,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
               </p>
               <NewVersionButton resource={resource} icon className="mt-1 block" />
               <div className="mt-2">
-                <LabelPicker
+                <TagPicker
                   size="sm"
                   value={resource.labels}
                   onChange={(labels) =>
@@ -711,7 +713,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
               ) : null}
               {marksOn && doc && pages ? (
                 <>
-                  <PagesWithNotes items={pages} marks={settings?.pdfPageMarks ?? []} current={notePage} labelOf={labelOf} onGo={goto} chapterAt={chapterAt} />
+                  <PagesWithNotes items={pages} marks={tagList} current={notePage} labelOf={labelOf} onGo={goto} chapterAt={chapterAt} />
                   <PdfPageNotes
                     key={`${layout}-${notePage}`}
                     heading={`${layout === 'slides' ? t.pdfSlideNotesTitle : t.pdfPageNotesTitle}: ${labelOf(notePage)}`}

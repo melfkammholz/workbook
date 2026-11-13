@@ -324,10 +324,8 @@ export const useSaveSettings = () => {
       if (ctx?.prev) qc.setQueryData(keys.settings, ctx.prev);
       reportSaveFailed();
     },
-    onSuccess: (data, patch) => {
+    onSuccess: (data) => {
       qc.setQueryData(keys.settings, data);
-      // A removed mark is taken off the pages on the server.
-      if (patch.pdfPageMarks) void qc.invalidateQueries({ queryKey: ['pdf-pages'] });
     },
   });
 };
@@ -442,6 +440,13 @@ export const updateQuestion = (item: string | null, id: string, patch: { text?: 
   if (item) patchWork(item, (w) => ({ ...w, questions: apply(w.questions) }));
   patchQuestions(apply);
   return saved(item, api.patch(`/api/questions/${encodeURIComponent(id)}`, patch));
+};
+/** The student's tags on a question, shown at once. */
+export const setQuestionTags = (item: string | null, id: string, labels: string[]) => {
+  const apply = (qs: Question[]) => qs.map((q) => (q.id === id ? { ...q, labels } : q));
+  if (item) patchWork(item, (w) => ({ ...w, questions: apply(w.questions) }));
+  patchQuestions(apply);
+  return saved(item, api.put(`/api/tags/on/question/${encodeURIComponent(id)}`, { ids: labels }));
 };
 export const deleteQuestion = (item: string | null, id: string) => {
   if (item) patchWork(item, (w) => ({ ...w, questions: w.questions.filter((q) => q.id !== id) }));

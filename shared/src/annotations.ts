@@ -12,13 +12,6 @@ export const isAnnotationColor = (c: string): c is AnnotationColor => (ANNOTATIO
 /** The same color written the same way, so two labels cannot have one color in two spellings. */
 export const normalizeColor = (c: string): string => c.toLowerCase();
 
-/** A name the student gives to highlights, with the color they get. Kept in the settings. */
-export interface HighlightLabel {
-  id: string;
-  name: string;
-  color: AnnotationColor;
-}
-
 /** `open`: the student marked it to come back to; `resolved`: they did. */
 export type AnnotationReview = 'open' | 'resolved';
 
@@ -34,8 +27,8 @@ export interface AnnotationPlace {
 export interface Annotation extends AnnotationPlace, TextQuote {
   id: string;
   color: AnnotationColor;
-  /** The id of one of the student's labels, or null. The color stays when the label is removed. */
-  label: string | null;
+  /** Ids of the student's tags on it. */
+  tags: string[];
   /** Plain text. */
   comment: string;
   review: AnnotationReview | null;

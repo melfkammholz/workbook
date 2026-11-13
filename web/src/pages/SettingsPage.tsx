@@ -1,8 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { ANNOTATION_COLORS, DUSK_COLORS, isCustomColor, normalizeColor, type AnnotationColor, type HighlightLabel, type PdfPageMark, type Settings, type SnapshotInfo, type UiLanguage } from '@wb/shared';
+import { ANNOTATION_COLORS, DUSK_COLORS, isCustomColor, normalizeColor, type AnnotationColor, type Settings, type SnapshotInfo, type UiLanguage } from '@wb/shared';
 import { Plus, X } from 'lucide-react';
 import { api, keys, useSaveSettings, useSettings } from '@/lib/api';
+import { useTagActions, useTags } from '@/lib/tags';
 import { useAllPdfPages } from '@/lib/pdfPages';
 import { swatchProps } from '@/lib/annotations';
 import { useLang, useT } from '@/lib/i18n';
@@ -136,106 +137,82 @@ function CustomColor({ value, label, onPick }: { value: string; label: string; o
   );
 }
 
-/** The student's own marks for PDF pages. They are made in the viewer; here they can be renamed or removed. */
-function PageMarksEditor({ marks, onChange }: { marks: PdfPageMark[]; onChange: (m: PdfPageMark[]) => void }) {
-  const t = useT();
-  const all = useAllPdfPages().data;
-  const [asking, setAsking] = useState<string | null>(null);
-  if (!marks.length) return null;
-  const count = (id: string) => (all ?? []).filter((p) => p.marks.includes(id)).length;
-  return (
-    <div className="ml-7 max-w-lg space-y-2">
-      <p className="text-sm font-medium">{t.pdfPageMarksTitle}</p>
-      <p className="text-[13px] text-ink-2">{t.pdfPageMarksBody}</p>
-      <ul className="space-y-1.5">
-        {marks.map((m) => (
-          <Fragment key={m.id}>
-          <li className="flex items-center gap-2">
-            <input defaultValue={m.name} maxLength={60} aria-label={t.pdfMarkName} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== m.name && onChange(marks.map((x) => (x.id === m.id ? { ...x, name: e.target.value.trim() } : x)))} className="h-8.5 min-w-0 flex-1 wb-field px-2" />
-            <button type="button" onClick={() => setAsking(m.id)} aria-label={t.pdfPageMarkRemove(m.name)} title={t.pdfPageMarkRemove(m.name)} className="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-sunk hover:text-danger">
-              <X size={15} />
-            </button>
-          </li>
-          {asking === m.id ? (
-            <li role="alertdialog" aria-label={t.pdfPageMarkRemove(m.name)} className="flex flex-wrap items-center gap-2 rounded-md bg-sunk px-2 py-1.5 text-[13px]">
-              <span className="mr-auto">{count(m.id) === 0 ? t.pdfMarkRemoveAskNone(m.name) : t.pdfMarkRemoveAsk(m.name, count(m.id))}</span>
-              <button type="button" autoFocus onClick={() => { setAsking(null); onChange(marks.filter((x) => x.id !== m.id)); }} className="rounded-md px-2 py-0.5 font-medium text-danger hover:bg-paper">{t.pdfMarkRemoveYes}</button>
-              <button type="button" onClick={() => setAsking(null)} className="rounded-md px-2 py-0.5 text-ink-2 hover:bg-paper">{t.cancel}</button>
-            </li>
-          ) : null}
-          </Fragment>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-/** The student's own names for highlights. Each has its own color: one of the palette, or one added. */
-function LabelsEditor({ labels, onChange }: { labels: HighlightLabel[]; onChange: (l: HighlightLabel[]) => void }) {
+/** The student's tags: renamed, colored, merged or deleted here; they are made by typing them where something is tagged. */
+function TagsEditor() {
   const t = useT();
   const safe = !!useSettings().data?.safeColors;
   const colorNames = safe ? t.annColorSafe : t.annColor;
-  const [taken, setTaken] = useState(false);
-  const change = (id: string, patch: Partial<HighlightLabel>) => onChange(labels.map((l) => (l.id === id ? { ...l, ...patch } : l)));
-  const usedByOther = (id: string, color: string) => labels.some((l) => l.id !== id && l.color === color);
-  const setColor = (id: string, color: string) => {
-    const c = normalizeColor(color);
-    if (usedByOther(id, c)) return setTaken(true);
-    setTaken(false);
-    change(id, { color: c as AnnotationColor });
+  const tags = useTags().data ?? [];
+  const act = useTagActions();
+  const [asking, setAsking] = useState<string | null>(null);
+  const [taken, setTaken] = useState<string | null>(null);
+  const rename = (id: string, name: string) => {
+    const n = name.trim();
+    const cur = tags.find((x) => x.id === id);
+    if (!n || !cur || n === cur.name) return;
+    setTaken(null);
+    act.rename.mutate({ id, name: n }, { onError: () => setTaken(id) });
   };
-  const free = [...ANNOTATION_COLORS, ...MORE_COLORS].find((c) => !labels.some((l) => l.color === c));
   return (
-    <div className="ml-7 max-w-lg space-y-2">
-      <p className="text-sm font-medium">{t.annLabelsTitle}</p>
-      <p className="text-[13px] text-ink-2">{t.annLabelsBody}</p>
+    <div className="ml-7 max-w-xl space-y-2">
+      <p className="text-sm font-medium">{t.tagsTitle}</p>
+      <p className="text-[13px] text-ink-2">{t.tagsBody}</p>
+      {tags.length ? null : <p className="text-[13px] text-ink-3">{t.tagsNone}</p>}
       <ul className="space-y-1.5">
-        {labels.map((l) => (
-          <li key={l.id} className="flex items-center gap-2">
-            <input
-              defaultValue={l.name}
-              maxLength={60}
-              aria-label={t.annLabelName}
-              placeholder={t.annLabelPlaceholder}
-              onBlur={(e) => e.target.value !== l.name && change(l.id, { name: e.target.value.trim() })}
-              className="h-8.5 min-w-0 flex-1 wb-field px-2"
-            />
-            <span role="group" aria-label={t.annLabelColor} className="flex items-center">
-              {ANNOTATION_COLORS.map((c) => {
-                const used = usedByOther(l.id, c);
-                return (
-                  <button
-                    key={c}
-                    type="button"
-                    disabled={used}
-                    onClick={() => setColor(l.id, c)}
-                    aria-pressed={l.color === c}
-                    aria-label={colorNames[c]}
-                    title={used ? t.annColorTaken(colorNames[c]) : colorNames[c]}
-                    className="grid size-7 place-items-center rounded-md hover:bg-sunk disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
-                  >
-                    <span data-color={c} className={clsx('wb-ann-swatch size-4.5 rounded-full border border-ink/15', l.color === c && 'ring-2 ring-accent ring-offset-1 ring-offset-sheet')} />
+        {tags.map((tag) => (
+          <Fragment key={`${tag.id}:${tag.name}`}>
+            <li className="flex flex-wrap items-center gap-2">
+              <input defaultValue={tag.name} maxLength={60} aria-label={t.tagName} onBlur={(e) => rename(tag.id, e.target.value)} className="h-8.5 min-w-0 flex-1 wb-field px-2" />
+              <span role="group" aria-label={t.tagColor} className="flex items-center">
+                <button type="button" onClick={() => act.recolor.mutate({ id: tag.id, color: '' })} aria-pressed={!tag.color} aria-label={t.tagNoColor} title={t.tagNoColor} className="grid size-7 place-items-center rounded-md hover:bg-sunk">
+                  <span className={clsx('size-4.5 rounded-full border border-dashed border-ink-3', !tag.color && 'ring-2 ring-accent ring-offset-1 ring-offset-sheet')} />
+                </button>
+                {ANNOTATION_COLORS.map((c) => (
+                  <button key={c} type="button" onClick={() => act.recolor.mutate({ id: tag.id, color: c })} aria-pressed={tag.color === c} aria-label={colorNames[c]} title={colorNames[c]} className="grid size-7 place-items-center rounded-md hover:bg-sunk">
+                    <span data-color={c} className={clsx('wb-ann-swatch size-4.5 rounded-full border border-ink/15', tag.color === c && 'ring-2 ring-accent ring-offset-1 ring-offset-sheet')} />
                   </button>
-                );
-              })}
-              <CustomColor value={l.color} label={t.annColorOwn} onPick={(hex) => setColor(l.id, hex)} />
-            </span>
-            <button type="button" onClick={() => onChange(labels.filter((x) => x.id !== l.id))} aria-label={t.annLabelRemove(l.name)} title={t.annLabelRemove(l.name)} className="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-sunk hover:text-danger">
-              <X size={15} />
-            </button>
-          </li>
+                ))}
+                <CustomColor value={tag.color} label={t.annColorOwn} onPick={(hex) => act.recolor.mutate({ id: tag.id, color: normalizeColor(hex) })} />
+              </span>
+              {tags.length > 1 ? (
+                <select
+                  value=""
+                  aria-label={t.tagMerged(tag.name)}
+                  title={t.tagMerged(tag.name)}
+                  onChange={(e) => e.target.value && act.merge.mutate({ id: tag.id, into: e.target.value })}
+                  className="h-7 max-w-[9rem] rounded-md border border-line bg-sheet px-1 text-[12.5px] text-ink-2"
+                >
+                  <option value="">{t.tagMergeInto}</option>
+                  {tags.filter((x) => x.id !== tag.id).map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              <button type="button" onClick={() => setAsking(tag.id)} aria-label={t.tagDelete(tag.name)} title={t.tagDelete(tag.name)} className="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-sunk hover:text-danger">
+                <X size={15} />
+              </button>
+            </li>
+            {taken === tag.id ? (
+              <li role="status" className="text-[13px] text-review">
+                {t.tagNameTaken}
+              </li>
+            ) : null}
+            {asking === tag.id ? (
+              <li role="alertdialog" aria-label={t.tagDelete(tag.name)} className="flex flex-wrap items-center gap-2 rounded-md bg-sunk px-2 py-1.5 text-[13px]">
+                <span className="mr-auto">{t.tagDeleteAsk(tag.name)}</span>
+                <button type="button" autoFocus onClick={() => { setAsking(null); act.remove.mutate(tag.id); }} className="rounded-md px-2 py-0.5 font-medium text-danger hover:bg-paper">
+                  {t.tagDeleteYes}
+                </button>
+                <button type="button" onClick={() => setAsking(null)} className="rounded-md px-2 py-0.5 text-ink-2 hover:bg-paper">
+                  {t.cancel}
+                </button>
+              </li>
+            ) : null}
+          </Fragment>
         ))}
       </ul>
-      {taken ? (
-        <p role="status" className="text-[13px] text-review">
-          {t.annColorUsed}
-        </p>
-      ) : null}
-      {free && labels.length < 30 ? (
-        <Button onClick={() => onChange([...labels, { id: crypto.randomUUID().slice(0, 8), name: '', color: free as AnnotationColor }])}>
-          <Plus size={14} /> {t.annLabelAdd}
-        </Button>
-      ) : null}
     </div>
   );
 }
@@ -490,12 +467,13 @@ export function SettingsPage({ section }: { section?: string }) {
           ) : null}
           <Toggle checked={settings.showFlashcards} onChange={(v) => set({ showFlashcards: v })} title={t.showFlashcards} body={t.showFlashcardsBody} />
           <Toggle checked={settings.showAnnotations} onChange={(v) => set({ showAnnotations: v })} title={t.showAnnotations} body={t.showAnnotationsBody} />
-          {settings.showAnnotations ? <LabelsEditor labels={settings.highlightLabels} onChange={(l) => set({ highlightLabels: l })} /> : null}
           <Toggle checked={settings.showMaterials} onChange={(v) => set({ showMaterials: v })} title={t.showMaterials} body={t.showMaterialsBody} />
           {settings.showMaterials ? <Toggle checked={settings.lookupReferences} onChange={(v) => set({ lookupReferences: v })} title={t.lookupReferences} body={t.lookupReferencesBody} /> : null}
-          {settings.showMaterials && settings.showAnnotations ? <PageMarksEditor marks={settings.pdfPageMarks} onChange={(m) => set({ pdfPageMarks: m })} /> : null}
           <Toggle checked={settings.showAi} onChange={(v) => set({ showAi: v })} title={t.showAi} body={t.showAiBody} />
           {settings.showAi ? <AssistantBridge settings={settings} set={set} /> : null}
+          <div className="pt-2">
+            <TagsEditor />
+          </div>
         </div>
       ),
     },

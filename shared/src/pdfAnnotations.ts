@@ -22,7 +22,7 @@ export interface PdfAnnotation extends TextQuote {
   pageIndex: number;
   rects: PageRect[];
   color: AnnotationColor;
-  label: string | null;
+  tags: string[];
   comment: string;
   review: AnnotationReview | null;
   createdAt: number;
@@ -30,7 +30,7 @@ export interface PdfAnnotation extends TextQuote {
 }
 
 export type NewPdfAnnotation = Pick<PdfAnnotation, 'version' | 'pageIndex' | 'rects' | 'quote' | 'prefix' | 'suffix' | 'color'> &
-  Partial<Pick<PdfAnnotation, 'label' | 'comment' | 'review'>> & { id?: string };
+  Partial<Pick<PdfAnnotation, 'tags' | 'comment' | 'review'>> & { id?: string };
 
 export const MAX_RECTS = 400;
 

@@ -129,7 +129,7 @@ function toPage(r: Row, reviews: Map<string, AnnotationReview>, marks: string[])
   };
 }
 
-function toHighlight(r: Row, reviews: Map<string, AnnotationReview>): PdfAnnotation {
+function toHighlight(r: Row, reviews: Map<string, AnnotationReview>, tags: string[]): PdfAnnotation {
   return {
     id: r.id as string,
     resource: r.resource as string,
@@ -140,7 +140,7 @@ function toHighlight(r: Row, reviews: Map<string, AnnotationReview>): PdfAnnotat
     prefix: r.prefix as string,
     suffix: r.suffix as string,
     color: r.color as AnnotationColor,
-    label: (r.label as string | null) ?? null,
+    tags,
     comment: r.comment as string,
     review: reviews.get(r.id as string) ?? null,
     createdAt: Number(r.created_at),
@@ -242,6 +242,7 @@ export class Resources {
     const shas = (this.sql.all('SELECT DISTINCT sha256 FROM resource_versions WHERE resource = ?', id) as { sha256: string }[]).map((x) => x.sha256);
     this.sql.tx(() => {
       for (const p of this.sql.all('SELECT id FROM pdf_pages WHERE resource = ?', id)) this.store.unlinkAll('pdfPage', p.id as string);
+      for (const p of this.sql.all('SELECT id FROM pdf_annotations WHERE resource = ?', id)) this.store.unlinkAll('pdfHighlight', p.id as string);
       this.sql.run('DELETE FROM resources WHERE id = ?', id);
       this.store.unlinkAll('resource', id);
       // Like its highlights, the questions asked about it go with it.
@@ -337,12 +338,13 @@ export class Resources {
       ? this.sql.all('SELECT * FROM pdf_annotations WHERE resource = ? AND unplaced = 0 ORDER BY page_index, created_at, id', resource)
       : this.sql.all('SELECT * FROM pdf_annotations WHERE unplaced = 0 ORDER BY resource, page_index, created_at, id');
     const reviews = this.store.reviews();
-    return rows.map((r) => toHighlight(r, reviews));
+    const tags = this.store.tagLinks('pdfHighlight');
+    return rows.map((r) => toHighlight(r, reviews, tags.get(r.id as string) ?? []));
   }
 
   getHighlight(id: string): PdfAnnotation | null {
     const r = this.sql.get('SELECT * FROM pdf_annotations WHERE id = ?', id);
-    return r ? toHighlight(r, this.store.reviews()) : null;
+    return r ? toHighlight(r, this.store.reviews(), this.store.tagsOf('pdfHighlight', id)) : null;
   }
 
   addHighlight(resource: string, a: NewPdfAnnotation): PdfAnnotation {
@@ -351,20 +353,22 @@ export class Resources {
     const t = this.now();
     this.sql.tx(() => {
       this.sql.run(
-        'INSERT INTO pdf_annotations (id, resource, version, page_index, rects, quote, prefix, suffix, color, label, comment, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-        id, resource, a.version, a.pageIndex, JSON.stringify(a.rects), a.quote, a.prefix, a.suffix, a.color, a.label ?? null, (a.comment ?? '').slice(0, 4000), t, t,
+        'INSERT INTO pdf_annotations (id, resource, version, page_index, rects, quote, prefix, suffix, color, comment, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+        id, resource, a.version, a.pageIndex, JSON.stringify(a.rects), a.quote, a.prefix, a.suffix, a.color, (a.comment ?? '').slice(0, 4000), t, t,
       );
+      if (a.tags?.length) this.store.setTags('pdfHighlight', id, a.tags);
       if (a.review) this.store.setReview(id, a.review, this.highlightAnchor(id));
     });
     return this.getHighlight(id)!;
   }
 
-  updateHighlight(id: string, patch: { color?: AnnotationColor; label?: string | null; comment?: string; review?: AnnotationReview | null }): PdfAnnotation | null {
+  updateHighlight(id: string, patch: { color?: AnnotationColor; tags?: string[]; comment?: string; review?: AnnotationReview | null }): PdfAnnotation | null {
     const prev = this.getHighlight(id);
     if (!prev) return null;
     const next = { ...prev, ...patch };
     this.sql.tx(() => {
-      this.sql.run('UPDATE pdf_annotations SET color = ?, label = ?, comment = ?, updated_at = ? WHERE id = ?', next.color, next.label, next.comment.slice(0, 4000), this.now(), id);
+      this.sql.run('UPDATE pdf_annotations SET color = ?, comment = ?, updated_at = ? WHERE id = ?', next.color, next.comment.slice(0, 4000), this.now(), id);
+      if (patch.tags) this.store.setTags('pdfHighlight', id, patch.tags);
       if (patch.review !== undefined) this.store.setReview(id, patch.review, this.highlightAnchor(id));
     });
     return this.getHighlight(id);
@@ -395,6 +399,7 @@ export class Resources {
   deleteHighlight(id: string): boolean {
     if (!this.getHighlight(id)) return false;
     this.sql.run('DELETE FROM pdf_annotations WHERE id = ?', id);
+    this.store.unlinkAll('pdfHighlight', id);
     return true;
   }
 
@@ -839,7 +844,7 @@ export class Resources {
     this.get(id);
     const reviews = this.store.reviews();
     return {
-      highlights: this.sql.all('SELECT * FROM pdf_annotations WHERE resource = ? AND unplaced = 1 ORDER BY page_index, created_at', id).map((r) => toHighlight(r, reviews)),
+      highlights: this.sql.all('SELECT * FROM pdf_annotations WHERE resource = ? AND unplaced = 1 ORDER BY page_index, created_at', id).map((r) => toHighlight(r, reviews, this.store.tagsOf('pdfHighlight', r.id as string))),
       pages: this.sql.all('SELECT * FROM pdf_pages WHERE resource = ? AND unplaced = 1 ORDER BY page_index', id).map((r) => toPage(r, reviews, this.store.tagsOf('pdfPage', r.id as string))),
       toc: this.sql.all('SELECT * FROM pdf_toc WHERE resource = ? AND unplaced = 1 ORDER BY page_index', id).map(toToc),
       questions: this.store.listQuestions({ resource: id }).filter((q) => q.unplaced),

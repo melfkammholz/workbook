@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useT } from '@/lib/i18n';
 import { isPdf, pdfMetadata } from '@/lib/pdf';
 import { MAX_FILE_BYTES, deleteResource, formatSize, naturalCompare, refreshResources, titleFromFilename, updateResource, uploadResource } from '@/lib/resources';
-import { LabelPicker } from './LabelPicker';
+import { TagPicker } from './TagPicker';
 import { Button, Dialog, Segmented } from './ui';
 
 type Course = ResourcesResponse['courses'][number];
@@ -52,7 +52,7 @@ function Details({ fields, set, courses, series, many }: { fields: ResourceField
       </fieldset>
       <fieldset>
         <legend className="mb-1 text-sm font-medium">{t.resourceLabels}</legend>
-        <LabelPicker value={fields.labels} onChange={(labels) => set({ labels })} />
+        <TagPicker value={fields.labels} onChange={(labels) => set({ labels })} />
       </fieldset>
       <label className="block text-sm">
         <span className="mb-1 block font-medium">{t.resourceSeries}</span>

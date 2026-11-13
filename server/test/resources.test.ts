@@ -31,16 +31,17 @@ const up = (query: Record<string, string>, body: Buffer | string) =>
 
 describe('materials', () => {
   it('has the paper type and keeps the student labels on a material', async () => {
-    await app.inject({ method: 'PUT', url: '/api/settings', payload: { highlightLabels: [{ id: 'lb-a', name: 'To read', color: 'blue' }, { id: 'lb-b', name: 'Core', color: 'green' }] } });
-    const made = await up({ filename: 'paper.pdf', title: 'A paper', type: 'paper', labels: 'lb-a,lb-nope' }, Buffer.from('%PDF-1.4 paper'));
+    const tagA = (await app.inject({ method: 'POST', url: '/api/tags', payload: { name: 'To read', color: 'blue' } })).json() as { id: string };
+    const tagB = (await app.inject({ method: 'POST', url: '/api/tags', payload: { name: 'Core', color: 'green' } })).json() as { id: string };
+    const made = await up({ filename: 'paper.pdf', title: 'A paper', type: 'paper', labels: `${tagA.id},lb-nope` }, Buffer.from('%PDF-1.4 paper'));
     expect(made.statusCode).toBe(200);
     const r = made.json() as Resource;
-    expect(r).toMatchObject({ type: 'paper', labels: ['lb-a'] });
-    const put = await app.inject({ method: 'PUT', url: `/api/resources/${r.id}`, payload: { title: 'A paper', type: 'paper', labels: ['lb-b', 'lb-a'], courses: [], series: null } });
-    expect((put.json() as Resource).labels.sort()).toEqual(['lb-a', 'lb-b']);
-    await app.inject({ method: 'PUT', url: '/api/settings', payload: { highlightLabels: [{ id: 'lb-b', name: 'Core', color: 'green' }] } });
+    expect(r).toMatchObject({ type: 'paper', labels: [tagA.id] });
+    const put = await app.inject({ method: 'PUT', url: `/api/resources/${r.id}`, payload: { title: 'A paper', type: 'paper', labels: [tagB.id, tagA.id], courses: [], series: null } });
+    expect((put.json() as Resource).labels.sort()).toEqual([tagA.id, tagB.id].sort());
+    await app.inject({ method: 'DELETE', url: `/api/tags/${tagA.id}` });
     const list = (await app.inject('/api/resources')).json() as ResourcesResponse;
-    expect(list.resources.find((x) => x.id === r.id)!.labels).toEqual(['lb-b']);
+    expect(list.resources.find((x) => x.id === r.id)!.labels).toEqual([tagB.id]);
     await app.inject({ method: 'DELETE', url: `/api/resources/${r.id}` });
   });
 
@@ -163,12 +164,13 @@ describe('highlights in PDFs', () => {
   it('takes a removed mark off every page', async () => {
     const res = (await up({ filename: 'm.pdf', title: 'M', type: 'slides' }, Buffer.from('%PDF-1.4 marks'))).json() as Resource;
     const base = { version: res.file.sha256, fingerprint: 'index:0' };
-    await app.inject({ method: 'PUT', url: '/api/settings', payload: { pdfPageMarks: [{ id: 'a', name: 'exam' }, { id: 'b', name: 'unclear' }] } });
-    for (const i of [0, 1]) await app.inject({ method: 'PUT', url: `/api/resources/${res.id}/pages/${i}`, payload: { ...base, id: crypto.randomUUID(), marks: ['a', 'b'] } });
-    await app.inject({ method: 'PUT', url: '/api/settings', payload: { pdfPageMarks: [{ id: 'b', name: 'unclear' }] } });
+    const a = (await app.inject({ method: 'POST', url: '/api/tags', payload: { name: 'exam' } })).json() as { id: string };
+    const b = (await app.inject({ method: 'POST', url: '/api/tags', payload: { name: 'unclear' } })).json() as { id: string };
+    for (const i of [0, 1]) await app.inject({ method: 'PUT', url: `/api/resources/${res.id}/pages/${i}`, payload: { ...base, id: crypto.randomUUID(), marks: [a.id, b.id] } });
+    await app.inject({ method: 'DELETE', url: `/api/tags/${a.id}` });
     const pages = (await app.inject({ method: 'GET', url: `/api/resources/${res.id}/pages` })).json() as { marks: string[] }[];
-    expect(pages.map((p) => p.marks)).toEqual([['b'], ['b']]);
-    await app.inject({ method: 'PUT', url: '/api/settings', payload: { pdfPageMarks: [] } });
+    expect(pages.map((p) => p.marks)).toEqual([[b.id], [b.id]]);
+    await app.inject({ method: 'DELETE', url: `/api/tags/${b.id}` });
     await app.inject({ method: 'DELETE', url: `/api/resources/${res.id}` });
   });
 });

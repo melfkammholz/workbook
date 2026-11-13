@@ -25,8 +25,8 @@ export function useAllPdfAnnotations() {
   return useQuery({ queryKey: [...pdfAnnotationsAllKey, '*'], queryFn: () => api.get<PdfAnnotation[]>('/api/pdf-annotations'), enabled: on, staleTime: 30_000 });
 }
 
-export type NewPdfHighlight = { version: string; pageIndex: number; rects: PageRect[]; color: AnnotationColor; label?: string | null; comment?: string; review?: AnnotationReview | null } & TextQuote;
-export type PdfHighlightPatch = Partial<Pick<PdfAnnotation, 'color' | 'label' | 'comment' | 'review'>>;
+export type NewPdfHighlight = { version: string; pageIndex: number; rects: PageRect[]; color: AnnotationColor; tags?: string[]; comment?: string; review?: AnnotationReview | null } & TextQuote;
+export type PdfHighlightPatch = Partial<Pick<PdfAnnotation, 'color' | 'tags' | 'comment' | 'review'>>;
 
 const setList = (qc: QueryClient, resource: string, f: (list: PdfAnnotation[]) => PdfAnnotation[]) => qc.setQueryData<PdfAnnotation[]>(pdfAnnotationKey(resource), (l) => f(l ?? []));
 const refresh = (qc: QueryClient, resource: string) => {
@@ -50,7 +50,7 @@ const arrived = (id: string) => arriving.get(id)?.catch(() => undefined);
 /** Shown at once with an id made here, saved behind it; on failure it disappears again and the student is told. */
 export function addPdfHighlight(qc: QueryClient, resource: string, a: NewPdfHighlight): PdfAnnotation {
   const t = Date.now();
-  const body = { version: a.version, pageIndex: a.pageIndex, rects: a.rects, quote: a.quote, prefix: a.prefix, suffix: a.suffix, color: a.color, label: a.label ?? null, comment: a.comment ?? '', review: a.review ?? null, id: uuid() };
+  const body = { version: a.version, pageIndex: a.pageIndex, rects: a.rects, quote: a.quote, prefix: a.prefix, suffix: a.suffix, color: a.color, tags: a.tags ?? [], comment: a.comment ?? '', review: a.review ?? null, id: uuid() };
   const made: PdfAnnotation = { ...body, resource, createdAt: t, updatedAt: t };
   setList(qc, resource, (l) => [...l, made]);
   const saving = api.post<PdfAnnotation>(`/api/resources/${encodeURIComponent(resource)}/annotations`, body).then(

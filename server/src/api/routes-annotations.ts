@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { MAX_QUOTE, isAnnotationColor, QUOTE_CONTEXT, type AnnotationEntry } from '@wb/shared';
+import { MAX_QUOTE, MAX_TAGS_ON_ONE, isAnnotationColor, QUOTE_CONTEXT, type AnnotationEntry } from '@wb/shared';
 import { isPart, withFound } from '../annotations.js';
 import type { Deps } from './deps.js';
 
@@ -17,11 +17,11 @@ const bodies = {
     prefix: z.string().max(QUOTE_CONTEXT * 2),
     suffix: z.string().max(QUOTE_CONTEXT * 2),
     color,
-    label: z.string().max(100).nullable().default(null),
+    tags: z.array(z.string().min(1).max(100)).max(MAX_TAGS_ON_ONE).default([]),
     comment: z.string().max(4000).default(''),
     review: review.default(null),
   }),
-  update: z.object({ color, label: z.string().max(100).nullable(), comment: z.string().max(4000), review }).partial(),
+  update: z.object({ color, tags: z.array(z.string().min(1).max(100)).max(MAX_TAGS_ON_ONE), comment: z.string().max(4000), review }).partial(),
 };
 
 /** Highlights and comments on the course's text. They belong to the student, in the open course. */

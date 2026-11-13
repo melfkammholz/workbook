@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { ANNOTATION_COLORS, MAX_QUOTE, isAnnotationColor, itemOfTarget, quoteAt, type Annotation, type AnnotationColor, type HighlightLabel, type PaletteColor, type TextQuote } from '@wb/shared';
+import { ANNOTATION_COLORS, MAX_QUOTE, isAnnotationColor, itemOfTarget, quoteAt, type Annotation, type AnnotationColor, type TextQuote } from '@wb/shared';
 import { Check, Layers, MessageSquare, NotebookPen, RotateCcw, Trash2, Undo2 } from 'lucide-react';
+import { TagPicker } from './TagPicker';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'wouter';
@@ -145,7 +146,7 @@ function Layer() {
     };
   }, []);
 
-  const create = (color: AnnotationColor, then?: 'comment' | 'review' | 'card', label: string | null = null) => {
+  const create = (color: AnnotationColor, then?: 'comment' | 'review' | 'card') => {
     if (pop?.kind !== 'new') return;
     try {
       localStorage.setItem(LAST_COLOR, color);
@@ -153,19 +154,19 @@ function Layer() {
       /* only a convenience */
     }
     getSelection()?.removeAllRanges();
-    const made = addAnnotation(qc, { target: pop.target, part: pop.part, ...pop.quote, color, label, review: then === 'review' ? 'open' : null });
+    const made = addAnnotation(qc, { target: pop.target, part: pop.part, ...pop.quote, color, review: then === 'review' ? 'open' : null });
     if (then === 'card') setCard({ exerciseId: itemOfTarget(made.target), highlightId: made.id });
     setPop(then === 'comment' || then === 'review' ? { kind: 'edit', id: made.id, focus: then === 'comment' } : null);
   };
 
-  // Keys while the colours are offered: 1 to 9 for a colour or label, c to comment, r to come back to it, a to add a card.
+  // Keys while the colours are offered: 1 to 9 for a colour, c to comment, r to come back to it, a to add a card.
   // These listen on the document, so they run before `usePageKeys` (on the window) and a lone `a` is never taken for `g a`.
   useEffect(() => {
     if (pop?.kind !== 'new') return;
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const i = '123456789'.indexOf(e.key);
-      const action = i >= 0 && swatches[i] ? () => create(swatches[i]!.color, undefined, swatches[i]!.label) : e.key === 'a' && cards ? () => create(lastColor(), 'card') : e.key === 'c' ? () => create(lastColor(), 'comment') : e.key === 'r' ? () => create(lastColor(), 'review') : null;
+      const action = i >= 0 && swatches[i] ? () => create(swatches[i]!.color) : e.key === 'a' && cards ? () => create(lastColor(), 'card') : e.key === 'c' ? () => create(lastColor(), 'comment') : e.key === 'r' ? () => create(lastColor(), 'review') : null;
       if (!action) return;
       e.preventDefault();
       void action();
@@ -210,14 +211,14 @@ function Layer() {
       {pop ? (
         <Floating anchor={anchor} popRef={popRef} wide={pop.kind === 'edit'}>
           {pop.kind === 'new' ? (
-            <NewHighlight onPick={(c, then, label) => void create(c, then, label)} />
+            <NewHighlight onPick={(c, then) => void create(c, then)} />
           ) : pop.kind === 'notice' ? (
             <p className="max-w-xs px-3 py-2 text-[13px] text-ink-2">{pop.text}</p>
           ) : pop.kind === 'removed' ? (
             <Removed
               onUndo={() => {
                 const { ann } = pop;
-                const back = addAnnotation(qc, { target: ann.target, part: ann.part, quote: ann.quote, prefix: ann.prefix, suffix: ann.suffix, color: ann.color, label: ann.label, comment: ann.comment, review: ann.review });
+                const back = addAnnotation(qc, { target: ann.target, part: ann.part, quote: ann.quote, prefix: ann.prefix, suffix: ann.suffix, color: ann.color, tags: ann.tags, comment: ann.comment, review: ann.review });
                 setPop({ kind: 'edit', id: back.id, focus: false });
               }}
               onGone={close}
@@ -287,38 +288,31 @@ export function Floating({ anchor, popRef, wide, children }: { anchor: () => { r
 export interface Swatch {
   key: string;
   color: AnnotationColor;
-  /** The student's label, if the swatch is one. */
-  label: string | null;
   name: string;
 }
 
 /** What a selection can be highlighted as: the student's labels, or the plain colors while there are none. */
 export function useSwatches(): Swatch[] {
   const t = useT();
-  const settings = useSettings().data;
-  const names = settings?.safeColors ? t.annColorSafe : t.annColor;
-  const labels = settings?.highlightLabels ?? [];
-  return labels.length
-    ? labels.map((l: HighlightLabel) => ({ key: l.id, color: l.color, label: l.id, name: l.name.trim() || names[l.color as PaletteColor] || l.color }))
-    : ANNOTATION_COLORS.map((c) => ({ key: c, color: c, label: null, name: names[c] }));
+  const names = useSettings().data?.safeColors ? t.annColorSafe : t.annColor;
+  return ANNOTATION_COLORS.map((c) => ({ key: c, color: c, name: names[c] }));
 }
 
-export function Swatches({ value, onPick }: { value?: { color: AnnotationColor; label: string | null }; onPick: (s: Swatch) => void }) {
+export function Swatches({ value, onPick }: { value?: { color: AnnotationColor }; onPick: (s: Swatch) => void }) {
   const t = useT();
   const items = useSwatches();
-  const labelled = items.some((s) => s.label);
   return (
     <div className="flex items-center gap-1">
       {items.map((s, i) => {
-        const selected = value ? (labelled ? value.label === s.label : value.color === s.color) : false;
+        const selected = value ? value.color === s.color : false;
         return (
           <button
             key={s.key}
             type="button"
             onClick={() => onPick(s)}
-            aria-label={labelled ? s.name : t.annHighlightIn(s.name)}
+            aria-label={t.annHighlightIn(s.name)}
             aria-pressed={value === undefined ? undefined : selected}
-            title={value === undefined && i < 9 ? `${labelled ? s.name : t.annHighlightIn(s.name)} (${i + 1})` : s.name}
+            title={value === undefined && i < 9 ? `${t.annHighlightIn(s.name)} (${i + 1})` : s.name}
             className="grid size-7 place-items-center rounded-md hover:bg-sunk"
           >
             <span {...swatchProps(s.color)} className={clsx('wb-ann-swatch grid size-4.5 place-items-center rounded-full border border-ink/15', selected && 'ring-2 ring-accent ring-offset-1 ring-offset-sheet')}>
@@ -331,13 +325,13 @@ export function Swatches({ value, onPick }: { value?: { color: AnnotationColor; 
   );
 }
 
-function NewHighlight({ onPick }: { onPick: (c: AnnotationColor, then?: 'comment' | 'review' | 'card', label?: string | null) => void }) {
+function NewHighlight({ onPick }: { onPick: (c: AnnotationColor, then?: 'comment' | 'review' | 'card') => void }) {
   const t = useT();
   const showCards = !!useSettings().data?.showFlashcards;
   const last = lastColor();
   return (
     <div className="flex items-center gap-1 p-1">
-      <Swatches onPick={(s) => onPick(s.color, undefined, s.label)} />
+      <Swatches onPick={(s) => onPick(s.color)} />
       <span className="mx-0.5 h-5 w-px bg-line" />
       <IconAction onClick={() => onPick(last, 'comment')} label={`${t.annComment} (c)`}>
         <MessageSquare size={15} />
@@ -415,7 +409,7 @@ function EditHighlight({ id, focus, onRemove, onCard, onGone }: { id: string; fo
   return (
     <div className="p-2">
       <div className="flex items-center gap-1">
-        <Swatches value={ann} onPick={(s) => void updateAnnotation(qc, id, { color: s.color, label: s.label })} />
+        <Swatches value={ann} onPick={(s) => void updateAnnotation(qc, id, { color: s.color })} />
         <span className="flex-1" />
         {review === 'open' ? (
           <IconAction pressed onClick={() => void updateAnnotation(qc, id, { review: 'resolved' })} label={`${t.annMarked}: ${t.annClearUp}`}>
@@ -449,6 +443,9 @@ function EditHighlight({ id, focus, onRemove, onCard, onGone }: { id: string; fo
         <button type="button" onClick={() => onRemove(ann)} aria-label={t.annRemove} title={`${t.annRemove} (d)`} className="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-sunk hover:text-danger">
           <Trash2 size={15} />
         </button>
+      </div>
+      <div className="mt-1.5">
+        <TagPicker size="sm" value={ann.tags} onChange={(tags) => void updateAnnotation(qc, id, { tags })} />
       </div>
       <label className="mt-1.5 block">
         <span className="sr-only">{t.annCommentLabel}</span>

@@ -6,7 +6,7 @@ export interface Tag {
 }
 
 /** What a tag can be put on; `ref` is the id of that thing. */
-export const TAG_KINDS = ['question', 'resource', 'pdfPage'] as const;
+export const TAG_KINDS = ['question', 'resource', 'pdfPage', 'highlight', 'pdfHighlight', 'work'] as const;
 export type TagKind = (typeof TAG_KINDS)[number];
 
 export const MAX_TAGS = 500;

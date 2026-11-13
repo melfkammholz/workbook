@@ -823,6 +823,18 @@ export const MIGRATIONS: Migration[] = [
     // Highlights keep their one label (its id is a tag id now; a merged page mark was never one).
     db.exec('ALTER TABLE pdf_pages DROP COLUMN marks; DROP TABLE labels; DROP TABLE question_labels; DROP TABLE resource_labels;');
   },
+  /*
+   * 34: a highlight's one label becomes tags in `tag_links` (kinds `highlight` and `pdfHighlight`), any number of them.
+   * Its color stays its own. The label column goes.
+   */
+  (db) => {
+    const t = Date.now();
+    const link = db.prepare('INSERT OR IGNORE INTO tag_links (tag_id, kind, ref, created_at) SELECT id, ?, ?, ? FROM tags WHERE id = ?');
+    for (const [table, kind] of [['annotations', 'highlight'], ['pdf_annotations', 'pdfHighlight']] as const) {
+      for (const r of db.prepare(`SELECT id, label FROM ${table} WHERE label IS NOT NULL`).all() as { id: string; label: string }[]) link.run(kind, r.id, t, r.label);
+      db.exec(`ALTER TABLE ${table} DROP COLUMN label`);
+    }
+  },
 ];
 
 /** The course a mounted `/content` folder is. */

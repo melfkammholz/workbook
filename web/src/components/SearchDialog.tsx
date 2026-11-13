@@ -1,6 +1,7 @@
 import { Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
+import { useTags } from '@/lib/tags';
 import { indexItems, search, useCourseAction, useCourses, useOutline, useSettings, useState_, type SearchResponse } from '@/lib/api';
 import { focusOf, itemInFocus } from '@/lib/focus';
 import { useT } from '@/lib/i18n';
@@ -63,7 +64,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   const materialsOn = !!useSettings().data?.showMaterials;
   const library = useResources(null, materialsOn && open).data;
   const needle = q.trim().toLowerCase();
-  const labelNames = new Map((useSettings().data?.highlightLabels ?? []).map((l) => [l.id, l.name]));
+  const labelNames = new Map((useTags().data ?? []).map((l) => [l.id, l.name]));
   const materials = materialsOn && needle && library ? library.resources.filter((r) => [r.title, r.author, library.series.find((s) => s.id === r.series)?.title ?? '', ...r.labels.map((l) => labelNames.get(l) ?? '')].some((x) => x.toLowerCase().includes(needle))).slice(0, 8) : [];
   const first = others[0] ?? lessons[0];
   const showMaterials = materialsOn && !!res?.materials.length;

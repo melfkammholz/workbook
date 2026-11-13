@@ -1,8 +1,6 @@
 // Types shared by server and web. Keep this file free of runtime dependencies.
 
 import type { Anchor } from './anchors';
-import type { HighlightLabel } from './annotations';
-import type { PdfPageMark } from './pdfPages';
 import type { Question } from './questions';
 import type { SldTree } from './sld';
 
@@ -346,10 +344,6 @@ export interface Settings {
   showAnnotations: boolean;
   /** Opt-in. Send the text of references the app cannot read to Crossref to get title, authors and DOI. */
   lookupReferences: boolean;
-  /** The student's own names for highlights, each with a color. Empty: the plain colors. */
-  highlightLabels: HighlightLabel[];
-  /** The student's own names for kinds of PDF pages. Empty until they add one. */
-  pdfPageMarks: PdfPageMark[];
   /** Opt-in. While false, the materials and the library appear nowhere; uploaded files are kept. */
   showMaterials: boolean;
   /** Opt-in. While false, nothing offers a prompt for an AI chat. */
@@ -403,8 +397,6 @@ export const DEFAULT_SETTINGS: Settings = {
   rewardIcon: 'trophy',
   showFlashcards: false,
   showAnnotations: false,
-  highlightLabels: [],
-  pdfPageMarks: [],
   showMaterials: false,
   lookupReferences: false,
   showAi: false,

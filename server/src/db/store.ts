@@ -43,7 +43,6 @@ import {
   type ProgressEntry,
   type Reflection,
   type ReviewData,
-  type HighlightLabel,
   type Settings,
   type Stats,
   type Status,
@@ -1005,20 +1004,21 @@ export class Store {
       ? this.all('SELECT * FROM annotations WHERE course = ? AND target = ? ORDER BY created_at, id', this.course, target)
       : this.all('SELECT * FROM annotations WHERE course = ? ORDER BY created_at, id', this.course);
     const reviews = this.reviews();
-    return rows.map((r) => rowToAnnotation(r, reviews));
+    const tags = this.tagLinks('highlight');
+    return rows.map((r) => rowToAnnotation(r, reviews, tags.get(r.id as string) ?? []));
   }
 
   getAnnotation(id: string): Annotation | null {
     const r = this.get('SELECT * FROM annotations WHERE id = ? AND course = ?', id, this.course);
-    return r ? rowToAnnotation(r, this.reviews()) : null;
+    return r ? rowToAnnotation(r, this.reviews(), this.tagsOf('highlight', id)) : null;
   }
 
-  addAnnotation(a: AnnotationPlace & TextQuote & { id?: string; color: AnnotationColor; label?: string | null; comment?: string; review?: AnnotationReview | null }): Annotation {
+  addAnnotation(a: AnnotationPlace & TextQuote & { id?: string; color: AnnotationColor; tags?: string[]; comment?: string; review?: AnnotationReview | null }): Annotation {
     const id = a.id ?? randomUUID();
     const t = this.now();
     this.tx(() => {
       this.run(
-        'INSERT INTO annotations (course, id, target, part, quote, prefix, suffix, color, label, comment, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO annotations (course, id, target, part, quote, prefix, suffix, color, comment, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
         this.course,
         id,
         a.target,
@@ -1027,31 +1027,31 @@ export class Store {
         a.prefix,
         a.suffix,
         a.color,
-        a.label ?? null,
         (a.comment ?? '').slice(0, 4000),
         t,
         t,
       );
+      if (a.tags?.length) this.setTags('highlight', id, a.tags);
       if (a.review) this.setReview(id, a.review, this.textAnchor(id));
     });
     return this.getAnnotation(id)!;
   }
 
   /** Null when there is no such annotation. */
-  updateAnnotation(id: string, patch: { color?: AnnotationColor; label?: string | null; comment?: string; review?: AnnotationReview | null }): Annotation | null {
+  updateAnnotation(id: string, patch: { color?: AnnotationColor; tags?: string[]; comment?: string; review?: AnnotationReview | null }): Annotation | null {
     const prev = this.getAnnotation(id);
     if (!prev) return null;
     const next = { ...prev, ...patch, comment: (patch.comment ?? prev.comment).slice(0, 4000) };
     this.tx(() => {
       this.run(
-        'UPDATE annotations SET color = ?, label = ?, comment = ?, updated_at = ? WHERE id = ? AND course = ?',
+        'UPDATE annotations SET color = ?, comment = ?, updated_at = ? WHERE id = ? AND course = ?',
         next.color,
-        next.label,
         next.comment,
         this.now(),
         id,
         this.course,
       );
+      if (patch.tags) this.setTags('highlight', id, patch.tags);
       if (patch.review !== undefined) this.setReview(id, patch.review, this.textAnchor(id));
     });
     return this.getAnnotation(id);
@@ -1062,6 +1062,7 @@ export class Store {
     if (!prev) return false;
     this.tx(() => {
       this.run('DELETE FROM annotations WHERE id = ? AND course = ?', id, this.course);
+      this.unlinkAll('highlight', id);
     });
     return true;
   }
@@ -1170,22 +1171,14 @@ export class Store {
 
   // ───────────────────────── settings ─────────────────────────
 
-  /** The student's settings, the same from every view. The labels live in their own table and are put in here. */
+  /** The student's settings, the same from every view. */
   getSettings(): Settings {
     const raw = this.getRaw<Partial<Settings>>(GLOBAL, 'settings', {});
-    // Until the tag manager replaces them, the old lists are views of the tags: highlight labels are the colored ones.
-    const tags = this.listTags();
-    return { ...DEFAULT_SETTINGS, ...raw, highlightLabels: tags.filter((t) => t.color) as HighlightLabel[], pdfPageMarks: tags.map(({ id, name }) => ({ id, name })) };
+    return { ...DEFAULT_SETTINGS, ...raw };
   }
 
   saveSettings(patch: Partial<Settings>): Settings {
-    const { highlightLabels, pdfPageMarks, ...rest } = patch;
-    this.tx(() => {
-      if (highlightLabels) this.replaceTags((t) => t.color !== '', highlightLabels);
-      if (pdfPageMarks) this.replaceTags((t) => t.color === '', pdfPageMarks.map((m) => ({ ...m, color: undefined })));
-      const { highlightLabels: _a, pdfPageMarks: _b, ...stored } = { ...this.getSettings(), ...rest };
-      this.setRaw(GLOBAL, 'settings', stored);
-    });
+    this.setRaw(GLOBAL, 'settings', { ...this.getSettings(), ...patch });
     return this.getSettings();
   }
 
@@ -1273,9 +1266,6 @@ export class Store {
       const had = this.get('SELECT 1 AS x FROM tags WHERE id = ?', id) !== null;
       this.run('DELETE FROM tag_links WHERE tag_id = ?', id);
       this.run('DELETE FROM tags WHERE id = ?', id);
-      // Highlights keep one label of their own for now (a tag id).
-      this.run('UPDATE annotations SET label = NULL WHERE label = ?', id);
-      this.run('UPDATE pdf_annotations SET label = NULL WHERE label = ?', id);
       return had;
     });
   }
@@ -1285,8 +1275,6 @@ export class Store {
     if (from === into || !this.get('SELECT 1 AS x FROM tags WHERE id = ?', from) || !this.get('SELECT 1 AS x FROM tags WHERE id = ?', into)) return false;
     this.tx(() => {
       this.run('INSERT OR IGNORE INTO tag_links (tag_id, kind, ref, created_at) SELECT ?, kind, ref, created_at FROM tag_links WHERE tag_id = ?', into, from);
-      this.run('UPDATE annotations SET label = ? WHERE label = ?', into, from);
-      this.run('UPDATE pdf_annotations SET label = ? WHERE label = ?', into, from);
       this.deleteTag(from);
     });
     return true;
@@ -1322,23 +1310,6 @@ export class Store {
     this.run('DELETE FROM tag_links WHERE kind = ? AND ref = ?', kind, ref);
   }
 
-  /**
-   * The old two lists of the settings (highlight labels, page marks) write through here: tags matching `owns` are
-   * made exactly this list (a missing one is deleted), others are left alone. A color of undefined keeps the old one.
-   */
-  private replaceTags(owns: (t: Tag) => boolean, list: { id: string; name: string; color?: string | undefined }[]): void {
-    const keep = new Set(list.map((l) => l.id));
-    for (const t of this.listTags()) if (owns(t) && !keep.has(t.id)) this.deleteTag(t.id);
-    const now = this.now();
-    for (const l of list) {
-      if (this.get('SELECT 1 AS x FROM tags WHERE id = ?', l.id)) this.run('UPDATE tags SET name = ?, color = ?, updated_at = ? WHERE id = ?', l.name, l.color ?? (this.get('SELECT color FROM tags WHERE id = ?', l.id)!.color as string), now, l.id);
-      else {
-        const sort = Number(this.get('SELECT COALESCE(MAX(sort), -1) + 1 AS n FROM tags')!.n);
-        this.run('INSERT INTO tags (id, name, color, sort, created_at, updated_at) VALUES (?,?,?,?,?,?)', l.id, l.name, l.color ?? '', sort, now, now);
-      }
-    }
-  }
-
   /** Forgets all work in this course, and nothing else. */
   resetWork(): void {
     this.tx(() => {
@@ -1346,6 +1317,7 @@ export class Store {
         if (table === 'settings') continue;
         this.run(`DELETE FROM ${table} WHERE course = ?`, this.course);
       }
+      this.run("DELETE FROM tag_links WHERE kind = 'highlight' AND ref NOT IN (SELECT id FROM annotations)");
       // Course '' is also where the student's own values live.
       this.run(`DELETE FROM settings WHERE course = ? AND key NOT IN (${GLOBAL_KEYS.map(() => '?').join(',')})`, this.course, ...GLOBAL_KEYS);
     });
@@ -1551,7 +1523,7 @@ function rowToReflection(r: Row): Reflection {
   };
 }
 
-function rowToAnnotation(r: Row, reviews: Map<string, AnnotationReview>): Annotation {
+function rowToAnnotation(r: Row, reviews: Map<string, AnnotationReview>, tags: string[]): Annotation {
   return {
     id: r.id as string,
     target: r.target as string,
@@ -1560,7 +1532,7 @@ function rowToAnnotation(r: Row, reviews: Map<string, AnnotationReview>): Annota
     prefix: r.prefix as string,
     suffix: r.suffix as string,
     color: r.color as AnnotationColor,
-    label: (r.label as string | null) ?? null,
+    tags,
     comment: r.comment as string,
     review: reviews.get(r.id as string) ?? null,
     createdAt: Number(r.created_at),

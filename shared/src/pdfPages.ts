@@ -28,12 +28,6 @@ export interface PdfPageFields {
   id?: string;
 }
 
-/** A name the student gave to a kind of page ("Exam", "Unclear"); kept in the settings. */
-export interface PdfPageMark {
-  id: string;
-  name: string;
-}
-
 export const MAX_PAGE_NOTE = 20_000;
 export const MAX_PAGE_MARKS = 30;
 const FINGERPRINT_HEAD = 300;

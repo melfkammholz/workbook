@@ -45,8 +45,6 @@ const bodies = {
       rewardIcon: z.enum(['trophy', 'paw']),
       showFlashcards: z.boolean(),
       showAnnotations: z.boolean(),
-      highlightLabels: z.array(z.object({ id: z.string().min(1).max(100), name: z.string().max(60), color: z.string().transform((c) => c.toLowerCase()).refine(isAnnotationColor, 'a palette color or #rrggbb') })).max(30).refine((l) => new Set(l.map((x) => x.color)).size === l.length, 'one label for each color'),
-      pdfPageMarks: z.array(z.object({ id: z.string().min(1).max(100), name: z.string().max(60) })).max(30),
       showMaterials: z.boolean(),
       lookupReferences: z.boolean(),
       showAi: z.boolean(),

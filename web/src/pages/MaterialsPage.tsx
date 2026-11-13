@@ -7,6 +7,7 @@ import { WorksLibrary } from '@/components/WorksLibrary';
 import { NewVersionButton } from '@/components/NewVersionButton';
 import { DeleteDialog, EditDialog, UploadDialog } from '@/components/ResourceDialogs';
 import { Button, Empty, IconButton, Spinner } from '@/components/ui';
+import { useTags } from '@/lib/tags';
 import { useOutline } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
@@ -45,7 +46,7 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
   const [editing, setEditing] = useState<Resource | null>(null);
   const [deleting, setDeleting] = useState<Resource | null>(null);
   const data = list.data;
-  const labelDefs = useSettings().data?.highlightLabels ?? [];
+  const labelDefs = useTags().data ?? [];
   const [tab, setTab] = useState<'files' | 'references'>('files');
   const bib = useBibImport();
   const refs = !course && tab === 'references';

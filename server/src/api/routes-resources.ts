@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { MAX_BIB_ENTRIES, MAX_ENTRY_TEXT, MAX_PAGE_MARKS, MAX_PAGE_NOTE, MAX_QUOTE, MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_RECTS, QUOTE_CONTEXT, RESOURCE_TYPES, isAnnotationColor } from '@wb/shared';
+import { MAX_TAGS_ON_ONE, MAX_BIB_ENTRIES, MAX_ENTRY_TEXT, MAX_PAGE_MARKS, MAX_PAGE_NOTE, MAX_QUOTE, MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_RECTS, QUOTE_CONTEXT, RESOURCE_TYPES, isAnnotationColor } from '@wb/shared';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { mimeOf, ResourceError } from '../resources/service.js';
@@ -46,11 +46,11 @@ const highlight = {
     prefix: z.string().max(QUOTE_CONTEXT * 2),
     suffix: z.string().max(QUOTE_CONTEXT * 2),
     color,
-    label: z.string().max(100).nullable().default(null),
+    tags: z.array(z.string().min(1).max(100)).max(MAX_TAGS_ON_ONE).default([]),
     comment: z.string().max(4000).default(''),
     review: review.default(null),
   }),
-  update: z.object({ color, label: z.string().max(100).nullable(), comment: z.string().max(4000), review }).partial(),
+  update: z.object({ color, tags: z.array(z.string().min(1).max(100)).max(MAX_TAGS_ON_ONE), comment: z.string().max(4000), review }).partial(),
 };
 
 const pageItem = z.object({

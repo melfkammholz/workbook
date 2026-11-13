@@ -7,6 +7,7 @@ import { addPdfHighlight, deletePdfHighlight, pdfRefText, updatePdfHighlight } f
 import { useT } from '@/lib/i18n';
 import { isTyping } from '@/lib/keys';
 import { useDebouncedCallback } from '@/lib/useDebounced';
+import { TagPicker } from './TagPicker';
 import { MakeCardDialog } from './MakeCardDialog';
 import { Floating, IconAction, LAST_COLOR, Removed, Swatches, lastColor, useSwatches } from './AnnotationLayer';
 
@@ -165,7 +166,7 @@ export function PdfHighlightLayer({ resource, scroller, list, editing, setEditin
     };
   }, [scroller]);
 
-  const create = (color: AnnotationColor, then?: 'comment' | 'review' | 'card', label: string | null = null) => {
+  const create = (color: AnnotationColor, then?: 'comment' | 'review' | 'card') => {
     if (pop?.kind !== 'new') return;
     try {
       localStorage.setItem(LAST_COLOR, color);
@@ -173,7 +174,7 @@ export function PdfHighlightLayer({ resource, scroller, list, editing, setEditin
       /* only a convenience */
     }
     getSelection()?.removeAllRanges();
-    const made = addPdfHighlight(qc, resource.id, { version: resource.file.sha256, pageIndex: pop.page, rects: pop.rects, ...pop.quote, color, label, review: then === 'review' ? 'open' : null });
+    const made = addPdfHighlight(qc, resource.id, { version: resource.file.sha256, pageIndex: pop.page, rects: pop.rects, ...pop.quote, color, review: then === 'review' ? 'open' : null });
     setPop(null);
     if (then === 'card') {
       setEditing(null);
@@ -183,13 +184,13 @@ export function PdfHighlightLayer({ resource, scroller, list, editing, setEditin
     setEditing(then ? { id: made.id, focus: then === 'comment' } : null);
   };
 
-  // While the colours are offered: 1 to 9 for a colour or label, c to comment, r to come back to it.
+  // While the colours are offered: 1 to 9 for a colour, c to comment, r to come back to it.
   useEffect(() => {
     if (pop?.kind !== 'new') return;
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const i = '123456789'.indexOf(e.key);
-      const action = i >= 0 && swatches[i] ? () => create(swatches[i]!.color, undefined, swatches[i]!.label) : e.key === 'a' && cards ? () => create(lastColor(), 'card') : e.key === 'c' ? () => create(lastColor(), 'comment') : e.key === 'r' ? () => create(lastColor(), 'review') : null;
+      const action = i >= 0 && swatches[i] ? () => create(swatches[i]!.color) : e.key === 'a' && cards ? () => create(lastColor(), 'card') : e.key === 'c' ? () => create(lastColor(), 'comment') : e.key === 'r' ? () => create(lastColor(), 'review') : null;
       if (!action) return;
       e.preventDefault();
       action();
@@ -238,7 +239,7 @@ export function PdfHighlightLayer({ resource, scroller, list, editing, setEditin
     <Floating anchor={anchor} popRef={popRef} wide={!pop && !!ann}>
       {pop?.kind === 'new' ? (
         <div className="flex items-center gap-1 p-1">
-          <Swatches onPick={(s) => create(s.color, undefined, s.label)} />
+          <Swatches onPick={(s) => create(s.color)} />
           <span className="mx-0.5 h-5 w-px bg-line" />
           <IconAction onClick={() => create(lastColor(), 'comment')} label={`${t.annComment} (c)`}>
             <MessageSquare size={15} />
@@ -258,7 +259,7 @@ export function PdfHighlightLayer({ resource, scroller, list, editing, setEditin
         <Removed
           onUndo={() => {
             const a = pop.ann;
-            const back = addPdfHighlight(qc, resource.id, { version: a.version, pageIndex: a.pageIndex, rects: a.rects, quote: a.quote, prefix: a.prefix, suffix: a.suffix, color: a.color, label: a.label, comment: a.comment, review: a.review });
+            const back = addPdfHighlight(qc, resource.id, { version: a.version, pageIndex: a.pageIndex, rects: a.rects, quote: a.quote, prefix: a.prefix, suffix: a.suffix, color: a.color, tags: a.tags, comment: a.comment, review: a.review });
             setPop(null);
             setEditing({ id: back.id, focus: false });
           }}
@@ -282,7 +283,7 @@ function EditPdfHighlight({ ann, resourceId, focus, onRemove, onCard }: { ann: P
   return (
     <div className="p-2">
       <div className="flex items-center gap-1">
-        <Swatches value={ann} onPick={(s) => patch({ color: s.color, label: s.label })} />
+        <Swatches value={ann} onPick={(s) => patch({ color: s.color })} />
         <span className="flex-1" />
         {review === 'open' ? (
           <IconAction pressed onClick={() => patch({ review: 'resolved' })} label={`${t.annMarked}: ${t.annClearUp}`}>
@@ -306,6 +307,9 @@ function EditPdfHighlight({ ann, resourceId, focus, onRemove, onCard }: { ann: P
         <button type="button" onClick={onRemove} aria-label={t.annRemove} title={`${t.annRemove} (d)`} className="grid size-7 place-items-center rounded-md text-ink-3 hover:bg-sunk hover:text-danger">
           <Trash2 size={15} />
         </button>
+      </div>
+      <div className="mt-1.5">
+        <TagPicker size="sm" value={ann.tags} onChange={(tags) => patch({ tags })} />
       </div>
       <label className="mt-1.5 block">
         <span className="sr-only">{t.annCommentLabel}</span>

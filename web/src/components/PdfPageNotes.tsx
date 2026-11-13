@@ -1,4 +1,5 @@
-import type { PdfPageItem, PdfPageMark } from "@wb/shared";
+import type { PdfPageItem } from "@wb/shared";
+import { TagPicker } from "./TagPicker";
 import { Check, Layers, Plus, RotateCcw, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { useSaveSettings, useSettings } from "@/lib/api";
@@ -83,177 +84,15 @@ export function PdfPageNotes({
   );
 }
 
-/** The student's own marks: pressed ones are on this page. A new one is typed right here and goes into the settings. */
-function PageMarks({
-  active,
-  onChange,
-}: {
-  active: string[];
-  onChange: (marks: string[]) => void;
-}) {
+/** The student's own tags on this page, found while typing; a new one is made by typing it. */
+function PageMarks({ active, onChange }: { active: string[]; onChange: (marks: string[]) => void }) {
   const t = useT();
-  const marks: PdfPageMark[] = useSettings().data?.pdfPageMarks ?? [];
-  const saveSettings = useSaveSettings();
-  const [adding, setAdding] = useState(false);
-  const [asking, setAsking] = useState<string | null>(null);
-  const [renaming, setRenaming] = useState<string | null>(null);
-  const all = useAllPdfPages().data;
-  const input = useRef<HTMLInputElement>(null);
-  const known = new Set(marks.map((m) => m.id));
-  const on = active.filter((id) => known.has(id));
-  const toggle = (id: string) =>
-    onChange(on.includes(id) ? on.filter((x) => x !== id) : [...on, id]);
-  const add = (raw: string) => {
-    const name = raw.trim();
-    setAdding(false);
-    if (!name) return;
-    const same = marks.find((m) => m.name.toLowerCase() === name.toLowerCase());
-    if (same) return void (on.includes(same.id) || onChange([...on, same.id]));
-    if (marks.length >= 30) return;
-    const id = crypto.randomUUID().slice(0, 8);
-    saveSettings.mutate({ pdfPageMarks: [...marks, { id, name }] });
-    onChange([...on, id]);
-  };
-  // The page in view counts even before the list has caught up with it.
-  const count = (id: string) =>
-    Math.max(
-      (all ?? []).filter((p) => p.marks.includes(id)).length,
-      on.includes(id) ? 1 : 0,
-    );
-  const removeNow = (id: string) => {
-    setAsking(null);
-    saveSettings.mutate({ pdfPageMarks: marks.filter((m) => m.id !== id) });
-  };
-  const ask = (id: string) => setAsking(id);
-  const rename = (id: string, raw: string) => {
-    setRenaming(null);
-    const name = raw.trim();
-    const cur = marks.find((m) => m.id === id);
-    if (
-      !name ||
-      !cur ||
-      name === cur.name ||
-      marks.some(
-        (m) => m.id !== id && m.name.toLowerCase() === name.toLowerCase(),
-      )
-    )
-      return;
-    saveSettings.mutate({
-      pdfPageMarks: marks.map((m) => (m.id === id ? { ...m, name } : m)),
-    });
-  };
-  const askMark = marks.find((m) => m.id === asking);
   return (
     <>
       <p className="mt-1 text-[12px] text-ink-3">{t.pdfMarksCaption}</p>
-      <div
-        className="mt-2 flex flex-wrap items-center gap-1.5"
-        role="group"
-        aria-label={t.pdfMarks}
-      >
-        {marks.map((m) =>
-          renaming === m.id ? (
-            <input
-              key={m.id}
-              autoFocus
-              defaultValue={m.name}
-              maxLength={60}
-              aria-label={t.pdfMarkRename(m.name)}
-              onFocus={(e) => e.target.select()}
-              onBlur={(e) => rename(m.id, e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") rename(m.id, e.currentTarget.value);
-                if (e.key === "Escape") {
-                  e.stopPropagation();
-                  setRenaming(null);
-                }
-              }}
-              className="h-7 w-28 wb-field px-2 text-[13px]"
-            />
-          ) : (
-            <span key={m.id} className="group/m relative inline-flex">
-              <button
-                type="button"
-                aria-pressed={on.includes(m.id)}
-                onClick={() => toggle(m.id)}
-                onDoubleClick={() => setRenaming(m.id)}
-                title={t.pdfMarkRename(m.name)}
-                className={clsx(
-                  "rounded-full border px-2.5 py-0.5 text-[12.5px] group-focus-within/m:pr-6 group-hover/m:pr-6",
-                  on.includes(m.id)
-                    ? "border-accent bg-accent-soft text-ink"
-                    : "border-line text-ink-2 hover:bg-sunk",
-                )}
-              >
-                {m.name}
-              </button>
-              <button
-                type="button"
-                onClick={() => ask(m.id)}
-                aria-label={t.pdfPageMarkRemove(m.name)}
-                title={t.pdfPageMarkRemove(m.name)}
-                className="absolute right-1 top-1/2 grid size-4 -translate-y-1/2 place-items-center rounded-full text-ink-3 opacity-0 hover:text-danger focus:opacity-100 group-hover/m:opacity-100"
-              >
-                <X size={11} />
-              </button>
-            </span>
-          ),
-        )}
-        {adding ? (
-          <input
-            ref={input}
-            autoFocus
-            maxLength={60}
-            aria-label={t.pdfMarkName}
-            placeholder={t.pdfMarkName}
-            onBlur={(e) => add(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") add(e.currentTarget.value);
-              if (e.key === "Escape") {
-                e.stopPropagation();
-                setAdding(false);
-              }
-            }}
-            className="h-7 w-32 wb-field px-2 text-[13px]"
-          />
-        ) : (
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className="inline-flex items-center gap-1 rounded-full border border-dashed border-line px-2 py-0.5 text-[12.5px] text-ink-3 hover:bg-sunk hover:text-ink-2"
-          >
-            <Plus size={12} /> {marks.length ? t.pdfMarkAdd : t.pdfMarkAddFirst}
-          </button>
-        )}
+      <div className="mt-2" role="group" aria-label={t.pdfMarks}>
+        <TagPicker size="sm" value={active} onChange={onChange} />
       </div>
-      {askMark ? (
-        <div
-          role="alertdialog"
-          aria-label={t.pdfPageMarkRemove(askMark.name)}
-          className="mt-2 flex flex-wrap items-center gap-2 rounded-md bg-sunk px-2 py-1.5 text-[12.5px]"
-        >
-          <span className="mr-auto">
-            {count(askMark.id) === 0
-              ? t.pdfMarkRemoveAskNone(askMark.name)
-              : t.pdfMarkRemoveAsk(askMark.name, count(askMark.id))}
-          </span>
-          <button
-            type="button"
-            autoFocus
-            onClick={() => removeNow(askMark.id)}
-            className="rounded-md px-2 py-0.5 font-medium text-danger hover:bg-paper"
-          >
-            {t.pdfMarkRemoveYes}
-          </button>
-          <button
-            type="button"
-            onClick={() => setAsking(null)}
-            className="rounded-md px-2 py-0.5 text-ink-2 hover:bg-paper"
-          >
-            {t.cancel}
-          </button>
-        </div>
-      ) : null}
     </>
   );
 }
@@ -302,7 +141,7 @@ export function PagesWithNotes({
   chapterAt,
 }: {
   items: PdfPageItem[];
-  marks: PdfPageMark[];
+  marks: { id: string; name: string }[];
   current: number;
   labelOf: (n: number) => string;
   onGo: (page: number) => void;

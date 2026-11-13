@@ -5,6 +5,7 @@ import { Link } from 'wouter';
 import { QUESTION_KINDS, RESOURCE_TYPES, type Question, type QuestionKind, type ResourceType } from '@wb/shared';
 import { QuestionRow } from '@/components/Questions';
 import { Empty, Spinner } from '@/components/ui';
+import { useTags } from '@/lib/tags';
 import { useCourses, useOutline, useQuestions, useSettings } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
@@ -61,7 +62,7 @@ export function QuestionsPage() {
   const outline = useOutline().data;
   const courses = useCourses().data;
   const resources = useResources(null).data?.resources;
-  const labelDefs = useSettings().data?.highlightLabels;
+  const labelDefs = useTags().data;
   const [showDone, setShowDone] = useState(false);
   const [f, setF] = useState<Filters>(readUrl);
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
