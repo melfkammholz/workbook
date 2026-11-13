@@ -344,6 +344,8 @@ export interface Settings {
   showFlashcards: boolean;
   /** Opt-in. While false, course text cannot be highlighted and no highlights are shown; they are kept. */
   showAnnotations: boolean;
+  /** Opt-in. Send the text of references the app cannot read to Crossref to get title, authors and DOI. */
+  lookupReferences: boolean;
   /** The student's own names for highlights, each with a color. Empty: the plain colors. */
   highlightLabels: HighlightLabel[];
   /** The student's own names for kinds of PDF pages. Empty until they add one. */
@@ -404,6 +406,7 @@ export const DEFAULT_SETTINGS: Settings = {
   highlightLabels: [],
   pdfPageMarks: [],
   showMaterials: false,
+  lookupReferences: false,
   showAi: false,
   assistantBridge: false,
   bridgeIncludeSolutions: true,

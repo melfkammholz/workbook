@@ -746,6 +746,15 @@ export const MIGRATIONS: Migration[] = [
   `ALTER TABLE works ADD COLUMN imported INTEGER NOT NULL DEFAULT 0;`,
   /* 31: how far the fields read from a reference's text can be trusted (0-1); the app shows the raw text below a threshold. -1: not scored yet (rows from before; scored on the fly from the stored fields). */
   `ALTER TABLE works ADD COLUMN confidence REAL NOT NULL DEFAULT -1;`,
+  /* 32: online lookup of references the parser is unsure about: where a work's fields came from ('' read from the text, 'crossref'), and what was asked (key: hash of the entry's text; fields '' for a miss, so it is not asked again). */
+  `
+  ALTER TABLE works ADD COLUMN source TEXT NOT NULL DEFAULT '';
+  CREATE TABLE work_lookups (
+    key       TEXT PRIMARY KEY,
+    fields    TEXT NOT NULL DEFAULT '',
+    looked_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

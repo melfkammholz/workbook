@@ -214,7 +214,9 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
     const b = parse(bibliography, req.body, reply);
     if (!b) return;
     try {
-      return r().saveBibliography(req.params.id, b.version, b.entries);
+      const saved = r().saveBibliography(req.params.id, b.version, b.entries);
+      r().startLookups();
+      return saved;
     } catch (e) {
       return fail(e, reply);
     }

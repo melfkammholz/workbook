@@ -42,6 +42,7 @@ const bodies = {
       highlightLabels: z.array(z.object({ id: z.string().min(1).max(100), name: z.string().max(60), color: z.string().transform((c) => c.toLowerCase()).refine(isAnnotationColor, 'a palette color or #rrggbb') })).max(30).refine((l) => new Set(l.map((x) => x.color)).size === l.length, 'one label for each color'),
       pdfPageMarks: z.array(z.object({ id: z.string().min(1).max(100), name: z.string().max(60) })).max(30),
       showMaterials: z.boolean(),
+      lookupReferences: z.boolean(),
       showAi: z.boolean(),
       assistantBridge: z.boolean(),
       bridgeIncludeSolutions: z.boolean(),
@@ -232,6 +233,7 @@ export function workRoutes(app: FastifyInstance, d: Deps): void {
     const saved = d.courses.global.saveSettings(b);
     // A removed mark must not stay on any page.
     if (b.pdfPageMarks) d.courses.resources.pruneMarks(saved.pdfPageMarks.map((m) => m.id));
+    if (b.lookupReferences) d.courses.resources.startLookups();
     return saved;
   });
 

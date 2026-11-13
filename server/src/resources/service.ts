@@ -1,9 +1,10 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { ImportCandidate, ImportChoice, ImportPreview, BibEntry, BibEntryInput, LibraryWork, SimilarWork, Work, Anchor, Placed, Reanchored, StaleItems, UnplacedItems, AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
-import { MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_ENTRY_TEXT, normalizeTitle, workFields, fieldsConfidence, workKeys } from '@wb/shared';
+import type { WorkFields, ImportCandidate, ImportChoice, ImportPreview, BibEntry, BibEntryInput, LibraryWork, SimilarWork, Work, Anchor, Placed, Reanchored, StaleItems, UnplacedItems, AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
+import { MIN_CONFIDENCE, MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_ENTRY_TEXT, normalizeTitle, workFields, fieldsConfidence, workKeys } from '@wb/shared';
 import type { Store } from '../db/store.js';
+import { crossrefLookup, LOOKUP_PAUSE_MS, type FetchFn } from './crossref.js';
 import { parseBibText, type ImportedWork } from './bibimport.js';
 import { extractPdfText } from './text.js';
 
@@ -75,6 +76,8 @@ function toResource(r: Row): Resource {
   };
 }
 
+const lookupKey = (raw: string) => crypto.createHash('sha256').update(normalizeTitle(raw)).digest('hex');
+
 function toWork(r: Row): Work {
   const stored = r.confidence === undefined || r.confidence === null ? -1 : Number(r.confidence);
   return {
@@ -90,6 +93,7 @@ function toWork(r: Row): Work {
     resource: (r.resource as string | null) ?? null,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
+    source: r.source === 'crossref' ? 'crossref' : '',
     confidence: stored >= 0 ? stored : Number(r.imported) === 1 ? 1 : fieldsConfidence({ title: r.title as string, authors: r.authors as string, year: r.year === null ? null : Number(r.year), venue: r.venue as string, doi: r.doi as string, url: r.url as string }),
   };
 }
@@ -163,6 +167,8 @@ export class Resources {
     dataDir: string,
     private readonly courses: () => { id: string; title: string }[] = () => [],
     private readonly now: () => number = Date.now,
+    private readonly fetchFn: FetchFn = (url, init) => fetch(url, init),
+    private readonly lookupPause = LOOKUP_PAUSE_MS,
   ) {
     this.filesDir = path.join(dataDir, 'files');
   }
@@ -551,7 +557,7 @@ export class Resources {
         if (work && !used.has(work) && this.sql.get('SELECT id FROM works WHERE id = ?', work)) {
           // Same entry as before: the work stays (a text the student fixed re-reads its fields).
           if (!byId.has(e.id ?? '') || byId.get(e.id!)!.entry_text !== text) {
-            this.sql.run('UPDATE works SET title = ?, authors = ?, year = ?, venue = ?, doi = ?, url = ?, raw = ?, confidence = ?, updated_at = ? WHERE id = ?', f.title, f.authors, f.year, f.venue, f.doi, f.url, text, conf, t, work);
+            this.sql.run('UPDATE works SET title = ?, authors = ?, year = ?, venue = ?, doi = ?, url = ?, raw = ?, confidence = ?, source = \'\', updated_at = ? WHERE id = ?', f.title, f.authors, f.year, f.venue, f.doi, f.url, text, conf, t, work);
           }
         } else {
           work = crypto.randomUUID();
@@ -611,6 +617,62 @@ export class Resources {
       (by.get(c.work as string) ?? by.set(c.work as string, []).get(c.work as string)!).push({ resource: c.resource as string, title: c.title as string, count: Number(c.n) });
     }
     return (this.sql.all('SELECT * FROM works ORDER BY year DESC, title') as Row[]).map((r) => ({ ...toWork(r), citedBy: by.get(r.id as string) ?? [], similar: similar.get(r.id as string) ?? [] }));
+  }
+
+  private lookupRun: Promise<void> | null = null;
+  private lookupAgain = false;
+
+  /**
+   * Looks up the references the parser is unsure about, one request at a time in the background. Does nothing while the
+   * setting `lookupReferences` is off. Returns the running pass (tests wait for it).
+   */
+  startLookups(): Promise<void> {
+    if (this.lookupRun) {
+      this.lookupAgain = true;
+      return this.lookupRun;
+    }
+    if (!this.store.getSettings().lookupReferences) return Promise.resolve();
+    this.lookupRun = this.lookupPass()
+      .catch(() => {})
+      .finally(() => {
+        this.lookupRun = null;
+        if (this.lookupAgain) {
+          this.lookupAgain = false;
+          void this.startLookups();
+        }
+      });
+    return this.lookupRun;
+  }
+
+  private async lookupPass(): Promise<void> {
+    const seen = new Set<string>();
+    for (;;) {
+      if (!this.store.getSettings().lookupReferences) return;
+      const next = (this.sql.all("SELECT * FROM works WHERE imported = 0 AND source = '' AND raw <> ''") as Row[])
+        .map((r) => ({ r, w: toWork(r) }))
+        .find(({ w }) => !seen.has(w.id) && w.confidence < MIN_CONFIDENCE && !this.sql.get('SELECT key FROM work_lookups WHERE key = ? AND fields = ?', lookupKey(w.raw), ''));
+      if (!next) return;
+      seen.add(next.w.id);
+      const key = lookupKey(next.w.raw);
+      const cached = this.sql.get('SELECT fields FROM work_lookups WHERE key = ?', key);
+      let fields: WorkFields | null;
+      if (cached) fields = JSON.parse(cached.fields as string) as WorkFields;
+      else {
+        try {
+          fields = await crossrefLookup(next.w.raw, this.fetchFn);
+        } catch {
+          return; // Unreachable or refused: silent, the entries stay raw, and the next save tries again.
+        }
+        this.sql.run('INSERT OR REPLACE INTO work_lookups (key, fields, looked_at) VALUES (?,?,?)', key, fields ? JSON.stringify(fields) : '', this.now());
+        await new Promise((resolve) => setTimeout(resolve, this.lookupPause));
+      }
+      // The setting or the entry may have changed while waiting.
+      if (!fields || !this.store.getSettings().lookupReferences) continue;
+      const now = this.sql.get("SELECT raw FROM works WHERE id = ? AND source = ''", next.w.id);
+      if (!now || now.raw !== next.w.raw) continue;
+      const f = fields;
+      this.sql.run("UPDATE works SET title = ?, authors = ?, year = ?, venue = ?, doi = ?, url = ?, confidence = 1, source = 'crossref', updated_at = ? WHERE id = ?", f.title, f.authors, f.year, f.venue, f.doi, f.url || next.w.url, this.now(), next.w.id);
+    }
   }
 
   /**

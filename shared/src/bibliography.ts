@@ -342,6 +342,8 @@ export interface Work extends WorkFields {
   updatedAt: number;
   /** How far the fields can be trusted (0-1); below `MIN_CONFIDENCE` show `raw` only. Entries imported from BibTeX are 1. */
   confidence: number;
+  /** Where the fields came from: '' read from the entry's text, 'crossref' looked up online. */
+  source: '' | 'crossref';
 }
 
 /** What the client sends when it (re)stores the entries of a PDF: ids are kept for entries that stay. */
