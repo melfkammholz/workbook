@@ -149,7 +149,8 @@ describe('assistant bridge', () => {
     await decide(answer.id, 'accept');
     expect((await decide(answer.id, 'accept')).statusCode).toBe(409);
     const now = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.id);
-    expect(now).toMatchObject({ kind: 'how', status: 'done', answer: 'foldr faltet von rechts.' });
+    // accepting an answer does not close the question
+    expect(now).toMatchObject({ kind: 'how', status: 'open', answer: 'foldr faltet von rechts.', answerBy: 'assistant' });
     expect(now.labels).toHaveLength(1);
     expect(JSON.parse((await tool('list_labels')).text)).toContain('Faltung');
     // undo puts back what was there
@@ -176,7 +177,7 @@ describe('assistant bridge', () => {
     const accepted = (await app.inject({ method: 'POST', url: '/api/changes/accept', payload: { ids } })).json() as { batch: string; changes: { status: string }[] };
     expect(accepted.changes.every((c) => c.status === 'applied')).toBe(true);
     const now = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.id);
-    expect(now).toMatchObject({ text: 'Wie faltet foldr eine Liste?', kind: 'check', answer: 'Von rechts.', status: 'done' });
+    expect(now).toMatchObject({ text: 'Wie faltet foldr eine Liste?', kind: 'check', answer: 'Von rechts.', status: 'open' });
     // accepting again fails and changes nothing
     expect((await app.inject({ method: 'POST', url: '/api/changes/accept', payload: { ids } })).statusCode).toBe(409);
     expect((await app.inject({ method: 'POST', url: `/api/changes/batch/${accepted.batch}/undo` })).statusCode).toBe(200);
@@ -343,13 +344,19 @@ describe('assistant bridge', () => {
     for (const ch of (await app.inject({ method: 'GET', url: '/api/changes' })).json() as { id: string; status: string; ref: { id: string } }[]) if (ch.status === 'pending' && ch.ref.id === b) await decide(ch.id, 'accept');
     expect((await tool('propose_merge', { survivor: a, duplicates: [a] })).error).toBe(true);
     expect((await tool('propose_merge', { survivor: a, duplicates: ['nope'] })).error).toBe(true);
+    // a card made from a duplicate follows to the survivor
+    const deck = courses.flashcards.create('Faltungen').id;
+    const card = courses.flashcards.addCard(deck, 'basic', 'Was ist foldl?', 'Eine Faltung.', null).cardId;
+    expect(g().addQuestionLink(b, 'card', card)).toBe(true);
     expect((await tool('propose_merge', { survivor: a, duplicates: [b, c], text: 'Was ist foldl, und was macht es?', reason: 'gleiche Frage' })).error).toBe(false);
     const find = async (id: string) => (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === id);
     expect(await find(b)).toMatchObject({ mergedInto: null, status: 'open' });
     const merge = ((await app.inject({ method: 'GET', url: '/api/changes' })).json() as { id: string; field: string; status: string }[]).find((x) => x.field === 'merge' && x.status === 'pending')!;
     expect((await decide(merge.id, 'accept')).json().status).toBe('applied');
-    expect(await find(a)).toMatchObject({ text: 'Was ist foldl, und was macht es?', answer: 'Eine Faltung.\n\nFaltet von links.', status: 'open' });
+    expect(await find(a)).toMatchObject({ text: 'Was ist foldl, und was macht es?', answer: 'Eine Faltung.', answerBy: 'you', status: 'open' });
     expect((await find(a)).labels).toHaveLength(1);
+    expect((await find(a)).links).toMatchObject([{ kind: 'card', ref: card, deck }]);
+    expect((await find(b)).links).toEqual([]);
     expect(await find(b)).toMatchObject({ mergedInto: a, status: 'done' });
     expect(await find(c)).toMatchObject({ mergedInto: a, status: 'done' });
     // the survivor cannot be merged away while it survives, and a merged one cannot be merged again
@@ -357,6 +364,8 @@ describe('assistant bridge', () => {
     expect((await decide(merge.id, 'undo')).statusCode).toBe(200);
     expect(await find(a)).toMatchObject({ text: 'Was ist foldl?', answer: 'Eine Faltung.', labels: [] });
     expect(await find(b)).toMatchObject({ mergedInto: null, status: 'open', answer: 'Faltet von links.' });
+    expect((await find(b)).links).toMatchObject([{ kind: 'card', ref: card }]);
+    expect((await find(a)).links).toEqual([]);
     // reopening a merged duplicate frees it
     await tool('propose_merge', { survivor: a, duplicates: [c] });
     const again = ((await app.inject({ method: 'GET', url: '/api/changes' })).json() as { id: string; field: string; status: string }[]).find((x) => x.field === 'merge' && x.status === 'pending')!;
@@ -367,6 +376,22 @@ describe('assistant bridge', () => {
     await tool('propose_merge', { survivor: a, duplicates: [b] });
     g().deleteQuestion(b);
     expect(((await app.inject({ method: 'GET', url: '/api/changes' })).json() as { field: string; status: string }[]).filter((x) => x.field === 'merge' && x.status === 'pending')).toHaveLength(0);
+  });
+
+  it('writes an answer and links over the API', async () => {
+    const q = g().addQuestion({ text: 'Was ist eine Faltung?', anchor: { kind: 'none' } });
+    const patch = await app.inject({ method: 'PATCH', url: `/api/questions/${q.id}`, payload: { answer: 'Ein *Reduktionsmuster*.' } });
+    expect(patch.json()).toMatchObject({ answer: 'Ein *Reduktionsmuster*.', answerBy: 'you', status: 'open', links: [] });
+    const deck = courses.flashcards.create('Fragen').id;
+    const card = courses.flashcards.addCard(deck, 'basic', 'F', 'B', null).cardId;
+    expect((await app.inject({ method: 'POST', url: `/api/questions/${q.id}/links`, payload: { kind: 'card', ref: 'nope' } })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'POST', url: `/api/questions/${q.id}/links`, payload: { kind: 'x', ref: card } })).statusCode).toBe(400);
+    const linked = await app.inject({ method: 'POST', url: `/api/questions/${q.id}/links`, payload: { kind: 'card', ref: card } });
+    expect(linked.json().links).toMatchObject([{ kind: 'card', ref: card, deck }]);
+    const gone = await app.inject({ method: 'DELETE', url: `/api/questions/${q.id}/links?kind=card&ref=${card}` });
+    expect(gone.json().links).toEqual([]);
+    expect((await app.inject({ method: 'DELETE', url: `/api/questions/${q.id}/links?kind=card&ref=${card}` })).statusCode).toBe(404);
+    g().deleteQuestion(q.id);
   });
 
   it('fixes flagged references: only unsure ones, accept writes the fields, undo restores, a lookup makes it stale', async () => {

@@ -183,6 +183,7 @@ export class CourseManager {
         }
         return !this.resources.has((payload as HighlightPayload).resource);
       },
+      cardDecks: (ids) => this.flashcards.cardDecks(ids),
     });
   }
 

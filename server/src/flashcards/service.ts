@@ -166,6 +166,15 @@ export class Flashcards {
     return d ? { id: d.id, cards: scanCards(d.source).length } : null;
   }
 
+  /** The deck of each of these cards that exists (card id to deck id). */
+  cardDecks(ids: string[]): Map<string, string> {
+    const want = new Set(ids);
+    const out = new Map<string, string>();
+    if (!want.size) return out;
+    for (const d of this.decks()) for (const c of scanCards(d.source)) if (c.id && want.has(c.id)) out.set(c.id, d.id);
+    return out;
+  }
+
   private cardsOf(source: string): DeckCard[] {
     return scanCards(source).map((c) => {
       const f = fieldsOf(source, c);

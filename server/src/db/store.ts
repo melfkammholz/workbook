@@ -17,6 +17,10 @@ import {
   type NoteDoc,
   type NoteFormat,
   type Question,
+  type QuestionLink,
+  type QuestionLinkKind,
+  type AnswerBy,
+  QUESTION_LINK_KINDS,
   type Anchor,
   type Change,
   type ChangeField,
@@ -84,6 +88,8 @@ export interface ChangeCreators {
   remove(kind: 'card' | 'highlight', made: Created): void;
   /** True if what the payload points at (deck, material) is gone. */
   gone(kind: 'card' | 'highlight', payload: CreatePayload): boolean;
+  /** The deck of each of these cards that still exists (card id to deck id). */
+  cardDecks(ids: string[]): Map<string, string>;
 }
 
 /** The one SQLite file, shared by every view of it. */
@@ -444,12 +450,58 @@ export class Store {
     }
     const rows = this.all(`SELECT * FROM questions ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at, rowid`, ...params);
     const labels = this.tagLinks('question');
-    return rows.map((r) => rowToQuestion(r, labels.get(r.id as string) ?? []));
+    const links = this.questionLinks(rows.map((r) => r.id as string), filter.course === undefined && filter.exercise === undefined && filter.resource === undefined);
+    return rows.map((r) => rowToQuestion(r, labels.get(r.id as string) ?? [], links.get(r.id as string) ?? []));
   }
 
   getQuestion(id: string): Question | null {
     const r = this.get('SELECT * FROM questions WHERE id = ?', id);
-    return r ? rowToQuestion(r, this.tagsOf('question', id)) : null;
+    return r ? rowToQuestion(r, this.tagsOf('question', id), this.questionLinks([id], false).get(id) ?? []) : null;
+  }
+
+  /** The links of these questions (`all`: of every question, in one query), without those whose target is gone. */
+  private questionLinks(ids: string[], all: boolean): Map<string, QuestionLink[]> {
+    const rows = all
+      ? this.all('SELECT question_id, kind, ref, created_at FROM question_links ORDER BY created_at, ref')
+      : ids.length > 50
+        ? this.all('SELECT question_id, kind, ref, created_at FROM question_links ORDER BY created_at, ref').filter((r) => ids.includes(r.question_id as string))
+        : ids.flatMap((id) => this.all('SELECT question_id, kind, ref, created_at FROM question_links WHERE question_id = ? ORDER BY created_at, ref', id));
+    const out = new Map<string, QuestionLink[]>();
+    if (!rows.length) return out;
+    const decks = this.db.creators?.cardDecks(rows.filter((r) => r.kind === 'card').map((r) => r.ref as string)) ?? new Map<string, string>();
+    for (const r of rows) {
+      const kind = r.kind as QuestionLinkKind;
+      const ref = r.ref as string;
+      const link: QuestionLink = { kind, ref, createdAt: Number(r.created_at) };
+      if (kind === 'card') {
+        const deck = decks.get(ref);
+        if (!deck) continue;
+        link.deck = deck;
+      } else if (!this.targetExists(kind, ref)) continue;
+      const q = r.question_id as string;
+      (out.get(q) ?? out.set(q, []).get(q)!).push(link);
+    }
+    return out;
+  }
+
+  private targetExists(kind: 'note' | 'highlight', ref: string): boolean {
+    if (kind === 'note') return this.get('SELECT 1 FROM pdf_pages WHERE id = ?', ref) !== undefined;
+    return this.get('SELECT 1 FROM annotations WHERE id = ?', ref) !== undefined || this.get('SELECT 1 FROM pdf_annotations WHERE id = ?', ref) !== undefined;
+  }
+
+  /** Records that something was made from a question. False if the question or the target does not exist (nothing is stored). */
+  addQuestionLink(id: string, kind: QuestionLinkKind, ref: string): boolean {
+    if (!(QUESTION_LINK_KINDS as readonly string[]).includes(kind) || !ref || !this.get('SELECT 1 FROM questions WHERE id = ?', id)) return false;
+    const exists = kind === 'card' ? (this.db.creators?.cardDecks([ref]).has(ref) ?? false) : this.targetExists(kind, ref);
+    if (!exists) return false;
+    this.run('INSERT OR IGNORE INTO question_links (question_id, kind, ref, created_at) VALUES (?,?,?,?)', id, kind, ref, this.now());
+    return true;
+  }
+
+  removeQuestionLink(id: string, kind: string, ref: string): boolean {
+    if (this.get('SELECT 1 FROM question_links WHERE question_id = ? AND kind = ? AND ref = ?', id, kind, ref) === undefined) return false;
+    this.run('DELETE FROM question_links WHERE question_id = ? AND kind = ? AND ref = ?', id, kind, ref);
+    return true;
   }
 
   addQuestion(q: { id?: string | undefined; text: string; anchor: Anchor; highlightId?: string | null; who?: string }): Question {
@@ -466,7 +518,7 @@ export class Store {
   }
 
   /** Reopening forgets when it was done; the answer, if any, stays. */
-  updateQuestion(id: string, patch: { text?: string; status?: 'open' | 'done'; answer?: string | null }): Question | null {
+  updateQuestion(id: string, patch: { text?: string; status?: 'open' | 'done'; answer?: string | null; answerBy?: AnswerBy }): Question | null {
     const cur = this.getQuestion(id);
     if (!cur) return null;
     const t = this.now();
@@ -474,11 +526,13 @@ export class Store {
     const doneAt = status === 'done' ? (cur.status === 'done' ? cur.doneAt : t) : null;
     // Reopening a merged duplicate is the student disagreeing: it stands on its own again.
     if (patch.status === 'open') this.run('UPDATE questions SET merged_into = NULL WHERE id = ?', id);
+    const answer = patch.answer === undefined ? cur.answer : patch.answer?.trim() ? patch.answer : null;
     this.run(
-      'UPDATE questions SET text = ?, status = ?, answer = ?, done_at = ?, updated_at = ? WHERE id = ?',
+      'UPDATE questions SET text = ?, status = ?, answer = ?, answer_by = ?, done_at = ?, updated_at = ? WHERE id = ?',
       patch.text === undefined ? cur.text : patch.text.trim().slice(0, MAX_QUESTION),
       status,
-      patch.answer === undefined ? cur.answer : patch.answer,
+      answer,
+      answer === null ? null : patch.answer === undefined ? cur.answerBy : (patch.answerBy ?? 'you'),
       doneAt,
       t,
       id,
@@ -523,7 +577,7 @@ export class Store {
   }
 
   deleteQuestion(id: string): boolean {
-    const had = this.getQuestion(id) !== null;
+    const had = this.get('SELECT 1 FROM questions WHERE id = ?', id) !== undefined;
     if (had) {
       // Duplicates that were merged into it are open questions again.
       this.run("UPDATE questions SET merged_into = NULL, status = 'open', done_at = NULL WHERE merged_into = ?", id);
@@ -697,12 +751,17 @@ export class Store {
       if (!u?.survivor) return null;
       const s = u.survivor;
       if (this.getQuestion(c.ref.id)) {
-        this.run('UPDATE questions SET text = ?, answer = ?, status = ?, done_at = ?, updated_at = ? WHERE id = ?', s.text, s.answer, s.status, s.doneAt, s.updatedAt, c.ref.id);
+        this.run('UPDATE questions SET text = ?, answer = ?, answer_by = ?, status = ?, done_at = ?, updated_at = ? WHERE id = ?', s.text, s.answer, s.answer === null ? null : (s.answerBy ?? 'assistant'), s.status, s.doneAt, s.updatedAt, c.ref.id);
         this.setTags('question', c.ref.id, s.labels);
       }
       for (const d of u.duplicates) {
         if (!this.getQuestion(d.id)) continue;
-        this.run('UPDATE questions SET merged_into = NULL, status = ?, done_at = ?, answer = ? WHERE id = ?', d.status, d.doneAt, d.answer, d.id);
+        this.run('UPDATE questions SET merged_into = NULL, status = ?, done_at = ?, answer = ?, answer_by = ? WHERE id = ?', d.status, d.doneAt, d.answer, d.answer === null ? null : (d.answerBy ?? 'assistant'), d.id);
+      }
+      for (const l of u.links ?? []) {
+        if (!this.getQuestion(l.from)) continue;
+        if (!l.kept) this.run('DELETE FROM question_links WHERE question_id = ? AND kind = ? AND ref = ?', c.ref.id, l.kind, l.ref);
+        this.run('INSERT OR IGNORE INTO question_links (question_id, kind, ref, created_at) VALUES (?,?,?,?)', l.from, l.kind, l.ref, l.createdAt);
       }
       return null;
     }
@@ -713,14 +772,26 @@ export class Store {
     if (p.text !== undefined && (typeof p.text !== 'string' || !p.text.trim())) return 'the question needs text';
     const s = this.getQuestion(c.ref.id)!;
     const all = dups.map((d) => this.getQuestion(d)!);
+    const moved: NonNullable<MergeUndo['links']> = [];
     const undo_: MergeUndo = {
-      survivor: { text: s.text, answer: s.answer, status: s.status, doneAt: s.doneAt, updatedAt: s.updatedAt, labels: s.labels },
-      duplicates: all.map((q) => ({ id: q.id, status: q.status, doneAt: q.doneAt, answer: q.answer, labels: q.labels })),
+      survivor: { text: s.text, answer: s.answer, answerBy: s.answerBy, status: s.status, doneAt: s.doneAt, updatedAt: s.updatedAt, labels: s.labels },
+      duplicates: all.map((q) => ({ id: q.id, status: q.status, doneAt: q.doneAt, answer: q.answer, answerBy: q.answerBy, labels: q.labels })),
+      links: moved,
     };
-    // Answers are joined (the survivor's first), labels are the union.
-    const answers = [s.answer, ...all.map((q) => q.answer)].map((a) => a?.trim() ?? '').filter((a, i, l) => a && l.indexOf(a) === i);
+    // The survivor's answer wins; without one it takes the first duplicate's. Labels are the union, links move over.
+    const donor = s.answer?.trim() ? s : all.find((q) => q.answer?.trim());
     const t = this.now();
-    this.run('UPDATE questions SET text = ?, answer = ?, updated_at = ? WHERE id = ?', (p.text?.trim() ?? s.text).slice(0, MAX_QUESTION), answers.length ? answers.join('\n\n') : null, t, s.id);
+    this.run('UPDATE questions SET text = ?, answer = ?, answer_by = ?, updated_at = ? WHERE id = ?', (p.text?.trim() ?? s.text).slice(0, MAX_QUESTION), donor?.answer ?? null, donor ? donor.answerBy : null, t, s.id);
+    for (const d of all) {
+      for (const l of this.all('SELECT kind, ref, created_at FROM question_links WHERE question_id = ?', d.id)) {
+        const kind = l.kind as QuestionLinkKind;
+        const ref = l.ref as string;
+        const kept = this.get('SELECT 1 FROM question_links WHERE question_id = ? AND kind = ? AND ref = ?', s.id, kind, ref) !== undefined;
+        moved.push({ from: d.id, kind, ref, createdAt: Number(l.created_at), kept });
+        this.run('INSERT OR IGNORE INTO question_links (question_id, kind, ref, created_at) VALUES (?,?,?,?)', s.id, kind, ref, Number(l.created_at));
+      }
+      this.run('DELETE FROM question_links WHERE question_id = ?', d.id);
+    }
     this.setTags('question', s.id, [...new Set(all.flatMap((q) => q.labels))]);
     for (const q of all) this.run("UPDATE questions SET merged_into = ?, status = 'done', done_at = ? WHERE id = ?", s.id, q.status === 'done' ? (q.doneAt ?? t) : t, q.id);
     this.run('UPDATE changes SET before = ? WHERE id = ?', JSON.stringify(undo_), c.id);
@@ -951,8 +1022,9 @@ export class Store {
       if (typeof value !== 'string' || !value.trim()) return 'the question needs text';
       this.updateQuestion(questionId, { text: value });
     } else {
-      if (undo) this.updateQuestion(questionId, { answer: (value as string | null) ?? null, status: 'open' });
-      else this.updateQuestion(questionId, { answer: typeof value === 'string' ? value : null, status: 'done' });
+      // An answer does not settle the question: it stays open (or done) as the student left it.
+      if (undo) this.updateQuestion(questionId, { answer: (value as string | null) ?? null });
+      else this.updateQuestion(questionId, { answer: typeof value === 'string' ? value : null, answerBy: 'assistant' });
     }
     if (field === 'answer' || field === 'text') {
       // Another waiting proposal for the same question (answer and rewrite come in one group) stays current.
@@ -1483,7 +1555,7 @@ function rowToChange(r: Row): Change {
   };
 }
 
-function rowToQuestion(r: Row, labels: string[] = []): Question {
+function rowToQuestion(r: Row, labels: string[] = [], links: QuestionLink[] = []): Question {
   return {
     id: r.id as string,
     text: r.text as string,
@@ -1493,6 +1565,8 @@ function rowToQuestion(r: Row, labels: string[] = []): Question {
     unplaced: Number(r.unplaced) === 1,
     status: r.status as 'open' | 'done',
     answer: (r.answer as string | null) ?? null,
+    answerBy: r.answer ? ((r.answer_by as AnswerBy | null) ?? 'assistant') : null,
+    links,
     kind: (r.kind as QuestionKind | null) ?? null,
     who: (r.who as string | null) ?? null,
     mergedInto: (r.merged_into as string | null) ?? null,

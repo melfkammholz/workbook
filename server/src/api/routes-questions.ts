@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { MAX_QUESTION, MAX_QUOTE, SNIPPET_LENGTH, type Anchor, type ChangeValue } from '@wb/shared';
+import { MAX_QUESTION, MAX_QUOTE, QUESTION_LINK_KINDS, SNIPPET_LENGTH, type Anchor, type ChangeValue } from '@wb/shared';
 import { changesBus } from '../db/changes-bus.js';
 import type { Deps } from './deps.js';
 
@@ -74,6 +74,21 @@ export function questionRoutes(app: FastifyInstance, d: Deps): void {
     const r = bodies.update.safeParse(req.body);
     if (!r.success) return fail(reply, r.error);
     return d.store.updateQuestion(req.params.id, r.data) ?? reply.code(404).send({ error: 'unknown question' });
+  });
+
+  // What was made from a question. The target must exist; a link whose target goes later disappears on its own.
+  app.post<{ Params: { id: string } }>('/api/questions/:id/links', async (req, reply) => {
+    const r = z.object({ kind: z.enum(QUESTION_LINK_KINDS), ref: z.string().min(1).max(300) }).safeParse(req.body);
+    if (!r.success) return fail(reply, r.error);
+    if (!d.store.getQuestion(req.params.id)) return reply.code(404).send({ error: 'unknown question' });
+    if (!d.store.addQuestionLink(req.params.id, r.data.kind, r.data.ref)) return reply.code(404).send({ error: 'unknown target' });
+    return d.store.getQuestion(req.params.id);
+  });
+  app.delete<{ Params: { id: string }; Querystring: { kind?: string; ref?: string } }>('/api/questions/:id/links', async (req, reply) => {
+    const { kind, ref } = req.query;
+    if (!kind || !ref) return reply.code(400).send({ error: 'kind and ref are needed' });
+    if (!d.store.removeQuestionLink(req.params.id, kind, ref)) return reply.code(404).send({ error: 'unknown link' });
+    return d.store.getQuestion(req.params.id);
   });
 
   app.delete<{ Params: { id: string } }>('/api/questions/:id', async (req, reply) =>

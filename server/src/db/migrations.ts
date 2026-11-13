@@ -835,6 +835,22 @@ export const MIGRATIONS: Migration[] = [
       db.exec(`ALTER TABLE ${table} DROP COLUMN label`);
     }
   },
+  /*
+   * 35: a question's answer says who wrote it (`answer_by`: 'you' or 'assistant'; before this only accepted assistant
+   * answers existed), and `question_links` records what was made from a question: `kind` card, note (page note) or
+   * highlight, `ref` the target's stable id. Whether the target still exists is checked when the links are read.
+   */
+  `
+  ALTER TABLE questions ADD COLUMN answer_by TEXT;
+  UPDATE questions SET answer_by = 'assistant' WHERE answer IS NOT NULL AND answer <> '';
+  CREATE TABLE question_links (
+    question_id TEXT NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+    kind        TEXT NOT NULL,
+    ref         TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (question_id, kind, ref)
+  ) WITHOUT ROWID;
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

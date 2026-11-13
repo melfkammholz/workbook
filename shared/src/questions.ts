@@ -14,7 +14,12 @@ export interface Question {
   /** A question on a page of a PDF that the new version of the file could not place: it waits to be fixed or dropped. */
   unplaced: boolean;
   status: 'open' | 'done';
+  /** The answer in Typst, one per question; the student's own or an accepted assistant's. */
   answer: string | null;
+  /** Who wrote `answer`; null without one. */
+  answerBy: AnswerBy | null;
+  /** What was made from the question; links to things that are gone are left out. */
+  links: QuestionLink[];
   /** What kind of question it is; the student's or the assistant's (accepted proposal) choice. Untyped until then. */
   kind: QuestionKind | null;
   /** Who asked it when it was not the student, e.g. 'assistant' (an accepted proposal). */
@@ -26,6 +31,23 @@ export interface Question {
   createdAt: number;
   updatedAt: number;
   doneAt: number | null;
+}
+
+export type AnswerBy = 'you' | 'assistant';
+
+/** What a question can lead to. */
+export const QUESTION_LINK_KINDS = ['card', 'note', 'highlight'] as const;
+export type QuestionLinkKind = (typeof QUESTION_LINK_KINDS)[number];
+/**
+ * Something made from a question. `ref` is the stable id of a card (its Typst `id:`), of a page note (the page's id) or
+ * of a highlight (text or PDF). A `card` link also says which deck the card is in now.
+ */
+export interface QuestionLink {
+  kind: QuestionLinkKind;
+  ref: string;
+  /** Cards only. */
+  deck?: string;
+  createdAt: number;
 }
 
 export const MAX_QUESTION = 2000;
@@ -78,8 +100,8 @@ export interface Created {
   note?: string;
 }
 /**
- * A `merge` proposal is about the question that survives (`ref`). Its answer and labels are joined with those of the
- * duplicates, which close as "merged into" it; `text` is an optional rewording of the survivor.
+ * A `merge` proposal is about the question that survives (`ref`). Its labels are joined with those of the
+ * duplicates, its answer is kept (or the first duplicate's if it has none) and their links move to it; the duplicates, which close as "merged into" it; `text` is an optional rewording of the survivor.
  */
 export interface MergePayload {
   duplicates: string[];
@@ -87,8 +109,10 @@ export interface MergePayload {
 }
 /** What accepting a merge replaced, so that undo puts it back. */
 export interface MergeUndo {
-  survivor: { text: string; answer: string | null; status: 'open' | 'done'; doneAt: number | null; updatedAt: number; labels: string[] };
-  duplicates: { id: string; status: 'open' | 'done'; doneAt: number | null; answer: string | null; labels: string[] }[];
+  survivor: { text: string; answer: string | null; answerBy?: AnswerBy | null; status: 'open' | 'done'; doneAt: number | null; updatedAt: number; labels: string[] };
+  duplicates: { id: string; status: 'open' | 'done'; doneAt: number | null; answer: string | null; answerBy?: AnswerBy | null; labels: string[] }[];
+  /** Links that moved from a duplicate to the survivor; `kept`: the survivor had it already. */
+  links?: { from: string; kind: QuestionLinkKind; ref: string; createdAt: number; kept: boolean }[];
 }
 /**
  * A `work` proposal is about one entry of the reference library whose fields the parser was unsure about (`ref.id` is

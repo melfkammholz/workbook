@@ -236,6 +236,37 @@ describe('Store', () => {
     expect(store.saveSettings({ theme: 'dark' }).theme).toBe('dark');
   });
 
+  it('keeps an answer with its writer and links to what was made from a question', () => {
+    const store = new Store(':memory:', () => 5);
+    const cards = new Map([['c1', 'deck1']]);
+    store.useCreators({ create: () => ({ id: 'x' }), remove: () => {}, gone: () => false, cardDecks: (ids) => new Map(ids.flatMap((i) => (cards.has(i) ? [[i, cards.get(i)!] as const] : []))) });
+    const anchor = { kind: 'none' } as const;
+    const q = store.addQuestion({ text: 'Warum?', anchor });
+    expect(q).toMatchObject({ answer: null, answerBy: null, links: [] });
+    expect(store.updateQuestion(q.id, { answer: 'Weil.' })).toMatchObject({ answer: 'Weil.', answerBy: 'you', status: 'open' });
+    expect(store.updateQuestion(q.id, { answer: 'Anders.', answerBy: 'assistant' })).toMatchObject({ answerBy: 'assistant' });
+    expect(store.updateQuestion(q.id, { answer: '  ' })).toMatchObject({ answer: null, answerBy: null });
+    // a link needs an existing target; a gone one disappears on read, and comes back with it
+    expect(store.addQuestionLink(q.id, 'card', 'nope')).toBe(false);
+    expect(store.addQuestionLink('nope', 'card', 'c1')).toBe(false);
+    expect(store.addQuestionLink(q.id, 'card', 'c1')).toBe(true);
+    expect(store.addQuestionLink(q.id, 'card', 'c1')).toBe(true);
+    expect(store.getQuestion(q.id)!.links).toEqual([{ kind: 'card', ref: 'c1', deck: 'deck1', createdAt: 5 }]);
+    expect(store.listQuestions()[0]!.links).toHaveLength(1);
+    cards.delete('c1');
+    expect(store.getQuestion(q.id)!.links).toEqual([]);
+    expect(store.listQuestions()[0]!.links).toEqual([]);
+    cards.set('c1', 'deck2');
+    expect(store.getQuestion(q.id)!.links[0]).toMatchObject({ deck: 'deck2' });
+    expect(store.removeQuestionLink(q.id, 'card', 'c1')).toBe(true);
+    expect(store.removeQuestionLink(q.id, 'card', 'c1')).toBe(false);
+    // deleting the question takes its links
+    store.addQuestionLink(q.id, 'card', 'c1');
+    store.deleteQuestion(q.id);
+    expect(store.sql.get('SELECT 1 AS x FROM question_links')).toBeUndefined();
+    store.close();
+  });
+
   it('keeps questions as a list: edited, done, reopened, deleted', () => {
     let now = 1_000_000;
     const store = new Store(':memory:', () => now);
