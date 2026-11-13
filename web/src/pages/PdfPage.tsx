@@ -21,9 +21,10 @@ import { swatchProps } from '@/lib/annotations';
 import { usePdfAnnotations, usePdfAnnotationsOn } from '@/lib/pdfAnnotations';
 import { pdfPageRefText, savePdfPage, usePdfPages, type PagePatch } from '@/lib/pdfPages';
 import { deleteTocEdit, readOutline, saveTocEdit, usePdfToc } from '@/lib/pdfToc';
-import { fileUrl, formatSize, resourceKeys, useResources } from '@/lib/resources';
+import { fileUrl, formatSize, refreshResources, resourceKeys, updateResource, useResources } from '@/lib/resources';
 import { placeStale } from '@/lib/pdfVersions';
 import { NewVersionButton } from '@/components/NewVersionButton';
+import { LabelPicker } from '@/components/LabelPicker';
 
 const ZOOM_STEP = 1.25;
 const ZOOM_MIN = 0.4;
@@ -567,6 +568,15 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
                 {resource.file.filename} · {formatSize(resource.file.size)}
               </p>
               <NewVersionButton resource={resource} icon className="mt-1 block" />
+              <div className="mt-2">
+                <LabelPicker
+                  size="sm"
+                  value={resource.labels}
+                  onChange={(labels) =>
+                    void updateResource(resource.id, { title: resource.title, type: resource.type, author: resource.author, date: resource.date, courses: resource.courses, labels, series: resource.series }).then(() => refreshResources(qc))
+                  }
+                />
+              </div>
               {doc && toc ? <PdfToc entries={toc} current={current} currentKey={chapter?.key ?? null} labelOf={labelOf} onGo={goto} actions={tocActions} hasOutline={!!outline?.length} /> : null}
             </aside>
             <ColumnHandle side="left" width={leftW} onWidth={setLeftW} label={t.pdfResizeToc} />

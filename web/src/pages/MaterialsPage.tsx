@@ -10,8 +10,9 @@ import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { isPdf, preloadPdf } from '@/lib/pdf';
 import { fileUrl, formatSize, useResources } from '@/lib/resources';
+import { useSettings } from '@/lib/api';
 
-const TYPES: ResourceType[] = ['notes', 'slides', 'other'];
+const TYPES: ResourceType[] = ['notes', 'slides', 'paper', 'other'];
 
 function dateText(date: string): string {
   if (!date) return '';
@@ -42,6 +43,10 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
   const [editing, setEditing] = useState<Resource | null>(null);
   const [deleting, setDeleting] = useState<Resource | null>(null);
   const data = list.data;
+  const labelDefs = useSettings().data?.highlightLabels ?? [];
+  const [labelFilter, setLabelFilter] = useState<string[]>([]);
+  const usedLabels = labelDefs.filter((l) => data?.resources.some((r) => r.labels.includes(l.id)));
+  const matches = (r: Resource) => labelFilter.every((l) => r.labels.includes(l));
   const seriesById = useMemo(() => new Map((data?.series ?? []).map((s) => [s.id, s])), [data]);
   const anyPdf = !!data?.resources.some((r) => isPdf(r.file.filename));
   // Opening a PDF then finds pdf.js and its worker already loaded.
@@ -60,9 +65,10 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
 
   // In the library, what belongs to no course is a group of its own, after the types.
   const sections: { key: string; title: string; type: ResourceType | null; items: Resource[] }[] = [];
-  const asked = course ? data.resources : data.resources.filter((r) => r.courses.length > 0);
+  const visible = data.resources.filter(matches);
+  const asked = course ? visible : visible.filter((r) => r.courses.length > 0);
   for (const type of TYPES) sections.push({ key: type, title: t.resourceTypes[type], type, items: asked.filter((r) => r.type === type) });
-  if (!course) sections.push({ key: 'none', title: t.resourceNoCourse, type: null, items: data.resources.filter((r) => r.courses.length === 0) });
+  if (!course) sections.push({ key: 'none', title: t.resourceNoCourse, type: null, items: visible.filter((r) => r.courses.length === 0) });
 
   /** "new version 3 days ago, 2 notes to fix": for a month after a replacement, and as long as something is left to fix. */
   const versionNote = (r: Resource) => {
@@ -86,7 +92,7 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
           </a>
         )}
         <div className="truncate text-[13px] text-ink-2">
-          {[r.author, dateText(r.date), formatSize(r.file.size), r.lastPage ? t.resourceOpenedAt(r.lastPage) : '', versionNote(r), !course && r.courses.length ? `${t.resourceInCourses} ${r.courses.map(titleOfCourse).join(', ')}` : ''].filter(Boolean).join(' · ')}
+          {[r.author, dateText(r.date), formatSize(r.file.size), r.lastPage ? t.resourceOpenedAt(r.lastPage) : '', versionNote(r), !course && r.courses.length ? `${t.resourceInCourses} ${r.courses.map(titleOfCourse).join(', ')}` : '', r.labels.map((l) => labelDefs.find((d) => d.id === l)?.name).filter(Boolean).map((n) => `#${n}`).join(' ')].filter(Boolean).join(' · ')}
         </div>
       </div>
       <div className="flex shrink-0 gap-0.5">
@@ -172,6 +178,25 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
           <Link href={otherLink.href} className="mt-1 inline-block text-sm font-medium text-accent hover:underline">
             {otherLink.label}
           </Link>
+        ) : null}
+        {usedLabels.length ? (
+          <div className="mt-4 flex flex-wrap items-center gap-1.5" role="group" aria-label={t.resourceLabelFilter}>
+            {usedLabels.map((l) => {
+              const on = labelFilter.includes(l.id);
+              return (
+                <button
+                  key={l.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setLabelFilter(on ? labelFilter.filter((x) => x !== l.id) : [...labelFilter, l.id])}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[13px] ${on ? 'border-accent bg-accent-soft font-medium' : 'border-line text-ink-2 hover:bg-sunk'}`}
+                >
+                  <span className="size-2 rounded-full" style={{ background: l.color }} />
+                  {l.name}
+                </button>
+              );
+            })}
+          </div>
         ) : null}
         {empty ? (
           <div className="mt-10">

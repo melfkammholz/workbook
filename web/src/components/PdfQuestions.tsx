@@ -171,7 +171,7 @@ export function PdfQuestionList({ resource, questions, current, labelOf, onGo }:
           )}
           <ul className="divide-y divide-line">
             {g.items.map((q) => (
-              <QuestionRow key={q.id} item={null} q={q} extra={<Quote q={q} />} />
+              <CompactQuestion key={q.id} q={q} />
             ))}
           </ul>
         </div>
@@ -182,6 +182,31 @@ export function PdfQuestionList({ resource, questions, current, labelOf, onGo }:
         </button>
       ) : null}
     </FoldSection>
+  );
+}
+
+/** One line: the question (or, without text, its passage), truncated; a click opens the full row, a click on its text closes it. */
+function CompactQuestion({ q }: { q: Question }) {
+  const [open, setOpen] = useState(false);
+  const t = useT();
+  if (open) {
+    return (
+      <div>
+        <QuestionRow item={null} q={q} extra={<Quote q={q} />} />
+        <button type="button" onClick={() => setOpen(false)} className="mb-1 ml-6 text-[12px] text-ink-3 hover:text-ink">
+          {t.collapse}
+        </button>
+      </div>
+    );
+  }
+  const quote = (q.anchor.kind === 'page' ? q.anchor.quote?.trim() || q.anchor.snippet?.trim() : '')?.replace(/\s+/g, ' ');
+  return (
+    <li>
+      <button type="button" onClick={() => setOpen(true)} title={q.text || quote || undefined} className="flex w-full items-baseline gap-2 py-1 text-left text-[13.5px] hover:bg-sunk/60">
+        <span className={`min-w-0 flex-1 truncate ${q.status === 'done' ? 'text-ink-3 line-through' : ''}`}>{q.text || <span className="italic text-ink-3">{quote}</span>}</span>
+        {q.text && quote ? <span className="hidden max-w-[40%] shrink truncate text-[12px] italic text-ink-3 sm:inline">{quote}</span> : null}
+      </button>
+    </li>
   );
 }
 

@@ -40,6 +40,7 @@ const ON_RESOURCE = "json_extract(anchor, '$.kind') = 'page' AND json_extract(an
 const COLUMNS = `r.id, r.title, r.type, r.author, r.date, r.series, r.position, r.last_page, r.created_at, r.updated_at,
   v.sha256, v.filename, v.mime, v.size, v.uploaded_at,
   (SELECT group_concat(course, char(31)) FROM resource_courses WHERE resource = r.id) AS courses,
+  (SELECT group_concat(label_id, char(31)) FROM resource_labels WHERE resource = r.id) AS labels,
   (SELECT COUNT(*) FROM resource_versions WHERE resource = r.id) AS versions,
   (SELECT COUNT(*) FROM pdf_annotations WHERE resource = r.id AND version <> v.sha256)
     + (SELECT COUNT(*) FROM pdf_pages WHERE resource = r.id AND version <> v.sha256)
@@ -63,6 +64,7 @@ function toResource(r: Row): Resource {
     position: Number(r.position),
     lastPage: r.last_page === null ? null : Number(r.last_page),
     courses: r.courses ? (r.courses as string).split('\x1f').sort() : [],
+    labels: r.labels ? (r.labels as string).split('\x1f') : [],
     file: { sha256: r.sha256 as string, filename: r.filename as string, mime: r.mime as string, size: Number(r.size), uploadedAt: Number(r.uploaded_at) },
     versions: Number(r.versions),
     stale: Number(r.stale),
@@ -196,6 +198,7 @@ export class Resources {
       const version = Number(this.sql.get('SELECT last_insert_rowid() AS id')!.id);
       this.sql.run('UPDATE resources SET current_version = ? WHERE id = ?', version, id);
       this.setCourses(id, fields.courses);
+      this.setLabels(id, fields.labels);
     });
     this.indexText();
     return this.get(id);
@@ -208,6 +211,7 @@ export class Resources {
       const position = series === before.series ? before.position : series ? Number(this.sql.get('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM resources WHERE series = ?', series)!.p) : 0;
       this.sql.run('UPDATE resources SET title = ?, type = ?, author = ?, date = ?, series = ?, position = ?, updated_at = ? WHERE id = ?', fields.title, fields.type, fields.author, fields.date, series, position, this.now(), id);
       this.setCourses(id, fields.courses);
+      this.setLabels(id, fields.labels);
       this.dropEmptySeries();
     });
     return this.get(id);
@@ -627,6 +631,11 @@ export class Resources {
     if (this.sql.get('SELECT 1 AS x FROM resources r JOIN resource_versions v ON v.id = r.current_version WHERE v.sha256 = ? LIMIT 1', sha256)) return;
     const file = this.filePath(sha256);
     if (file) fs.rmSync(file, { force: true });
+  }
+
+  private setLabels(id: string, labels: string[]): void {
+    this.sql.run('DELETE FROM resource_labels WHERE resource = ?', id);
+    for (const l of new Set(labels)) this.sql.run("INSERT INTO resource_labels (resource, label_id) SELECT ?, id FROM labels WHERE id = ?", id, l);
   }
 
   private setCourses(id: string, courses: string[]): void {

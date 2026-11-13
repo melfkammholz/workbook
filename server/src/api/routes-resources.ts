@@ -18,6 +18,7 @@ const fields = {
   author: z.string().trim().max(300).default(''),
   date: z.union([z.literal(''), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)]).default(''),
   courses: z.array(z.string().min(1).max(200)).max(50).default([]),
+  labels: z.array(z.string().min(1).max(100)).max(50).default([]),
   series: z.string().max(100).nullable().default(null),
   newSeries: z.string().trim().max(300).optional(),
 };
@@ -27,6 +28,7 @@ const upload = z.object({
   ...fields,
   filename: z.string().trim().min(1).max(300),
   courses: z.string().max(5000).default('').transform((s) => s.split(',').map((c) => c.trim()).filter(Boolean)),
+  labels: z.string().max(5000).default('').transform((s) => s.split(',').map((c) => c.trim()).filter(Boolean)),
   series: z.string().max(100).optional().transform((s) => s || null),
 });
 

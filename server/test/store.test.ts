@@ -289,6 +289,25 @@ describe('migration 7', () => {
   }
 });
 
+describe('migration 27 (paper type, resource labels)', () => {
+  it('keeps existing materials and accepts the new type', () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'wb-mig27-')), 'workbook.db');
+    oldDatabase(file, 26, "INSERT INTO resources (id, title, type, created_at, updated_at) VALUES ('r1','Old','slides',1,1); INSERT INTO resource_series (id, title, type, created_at) VALUES ('s1','Ser','notes',1); INSERT INTO resource_courses (resource, course) VALUES ('r1','c'); INSERT INTO resource_versions (resource, sha256, filename, mime, size, uploaded_at) VALUES ('r1','h','f.pdf','application/pdf',1,1);");
+    const store = new Store(file);
+    expect(store.sql.get('SELECT type FROM resources WHERE id = ?', 'r1')).toMatchObject({ type: 'slides' });
+    expect(store.sql.all('SELECT * FROM resource_courses')).toHaveLength(1);
+    expect(store.sql.all('SELECT * FROM resource_versions')).toHaveLength(1);
+    expect(store.sql.all('PRAGMA foreign_key_check')).toHaveLength(0);
+    store.sql.run("INSERT INTO resources (id, title, type, created_at, updated_at) VALUES ('r2','New','paper',1,1)");
+    store.sql.run("INSERT INTO resource_series (id, title, type, created_at) VALUES ('s2','Ser2','paper',1)");
+    store.sql.run("INSERT INTO resource_labels (resource, label_id) VALUES ('r2','lb')");
+    expect(() => store.sql.run("INSERT INTO resources (id, title, type, created_at, updated_at) VALUES ('r3','Bad','video',1,1)")).toThrow();
+    store.sql.run("DELETE FROM resources WHERE id = 'r2'");
+    expect(store.sql.all('SELECT * FROM resource_labels')).toHaveLength(0);
+    store.close();
+  });
+});
+
 /** A database file as an earlier version left it: migrations up to `version` only. */
 function oldDatabase(file: string, version: number, sql = ''): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });

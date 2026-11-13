@@ -24,7 +24,7 @@ export const MAX_FILE_BYTES = 500 * 1024 * 1024;
 
 /** Uploads one file as the raw body; its details go in the query. */
 export async function uploadResource(file: File, f: ResourceFields): Promise<Resource> {
-  const q = new URLSearchParams({ filename: file.name, title: f.title, type: f.type, author: f.author, date: f.date, courses: f.courses.join(',') });
+  const q = new URLSearchParams({ filename: file.name, title: f.title, type: f.type, author: f.author, date: f.date, courses: f.courses.join(','), labels: f.labels.join(',') });
   if (f.newSeries) q.set('newSeries', f.newSeries);
   else if (f.series) q.set('series', f.series);
   const res = await fetch(`/api/resources/upload?${q}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: file });

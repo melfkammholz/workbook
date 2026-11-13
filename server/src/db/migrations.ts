@@ -655,6 +655,49 @@ export const MIGRATIONS: Migration[] = [
   ALTER TABLE questions DROP COLUMN pass_id;
   DROP TABLE question_passes;
   `,
+  /*
+   * 27: the "paper" type, and labels on materials (the student's own labels, like `question_labels`). The two CHECK
+   * lists need a table rebuild (SQLite cannot alter a CHECK).
+   */
+  (db) => {
+    // `migrate` runs with foreign keys off, so dropping the old tables does not cascade into their children.
+    db.exec(`
+      CREATE TABLE resource_series_new (
+        id         TEXT PRIMARY KEY,
+        title      TEXT NOT NULL,
+        type       TEXT NOT NULL CHECK (type IN ('notes','slides','paper','other')),
+        created_at INTEGER NOT NULL
+      );
+      INSERT INTO resource_series_new SELECT id, title, type, created_at FROM resource_series;
+      DROP TABLE resource_series;
+      ALTER TABLE resource_series_new RENAME TO resource_series;
+      CREATE TABLE resources_new (
+        id              TEXT PRIMARY KEY,
+        title           TEXT NOT NULL,
+        type            TEXT NOT NULL CHECK (type IN ('notes','slides','paper','other')),
+        author          TEXT NOT NULL DEFAULT '',
+        date            TEXT NOT NULL DEFAULT '',
+        series          TEXT REFERENCES resource_series(id) ON DELETE SET NULL,
+        position        INTEGER NOT NULL DEFAULT 0,
+        last_page       INTEGER,
+        current_version INTEGER,
+        created_at      INTEGER NOT NULL,
+        updated_at      INTEGER NOT NULL
+      );
+      INSERT INTO resources_new SELECT id, title, type, author, date, series, position, last_page, current_version, created_at, updated_at FROM resources;
+      DROP TABLE resources;
+      ALTER TABLE resources_new RENAME TO resources;
+      CREATE INDEX resources_series ON resources (series, position);
+    `);
+    db.exec(`
+      CREATE TABLE resource_labels (
+        resource TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+        label_id TEXT NOT NULL,
+        PRIMARY KEY (resource, label_id)
+      ) WITHOUT ROWID;
+      CREATE INDEX resource_labels_label ON resource_labels (label_id, resource);
+    `);
+  },
 ];
 
 /** The course a mounted `/content` folder is. */
@@ -687,6 +730,17 @@ export const COURSE_TABLES = [
 /** Brings a database up to the current schema. */
 export function migrate(db: DatabaseSync): void {
   const current = Number((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version);
+  if (current >= MIGRATIONS.length) return;
+  // A table rebuild must not cascade into the tables that point at it; this cannot be switched inside a transaction.
+  db.exec('PRAGMA foreign_keys = OFF');
+  try {
+    run(db, current);
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+}
+
+function run(db: DatabaseSync, current: number): void {
   for (let v = current; v < MIGRATIONS.length; v++) {
     db.exec('BEGIN');
     try {

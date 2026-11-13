@@ -1181,7 +1181,10 @@ export class Store {
   private replaceLabels(scope: 'any' | 'page', labels: { id: string; name: string; color: string }[]): void {
     const t = this.now();
     const keep = new Set(labels.map((l) => l.id));
-    for (const r of this.all('SELECT id FROM labels WHERE scope = ?', scope)) if (!keep.has(r.id as string)) this.run('DELETE FROM labels WHERE id = ?', r.id as string);
+    for (const r of this.all('SELECT id FROM labels WHERE scope = ?', scope)) if (!keep.has(r.id as string)) {
+        this.run('DELETE FROM labels WHERE id = ?', r.id as string);
+        this.run('DELETE FROM resource_labels WHERE label_id = ?', r.id as string);
+      }
     labels.forEach((l, i) =>
       this.run(
         `INSERT INTO labels (id, name, color, scope, sort, created_at, updated_at) VALUES (?,?,?,?,?,?,?)

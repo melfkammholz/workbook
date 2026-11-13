@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useT } from '@/lib/i18n';
 import { isPdf, pdfMetadata } from '@/lib/pdf';
 import { MAX_FILE_BYTES, deleteResource, formatSize, naturalCompare, refreshResources, titleFromFilename, updateResource, uploadResource } from '@/lib/resources';
+import { LabelPicker } from './LabelPicker';
 import { Button, Dialog, Segmented } from './ui';
 
 type Course = ResourcesResponse['courses'][number];
@@ -49,6 +50,10 @@ function Details({ fields, set, courses, series, many }: { fields: ResourceField
         ) : null}
         {fields.courses.length === 0 ? <p className="text-[13px] text-ink-2">{t.resourceCoursesNone}</p> : null}
       </fieldset>
+      <fieldset>
+        <legend className="mb-1 text-sm font-medium">{t.resourceLabels}</legend>
+        <LabelPicker value={fields.labels} onChange={(labels) => set({ labels })} />
+      </fieldset>
       <label className="block text-sm">
         <span className="mb-1 block font-medium">{t.resourceSeries}</span>
         <select
@@ -73,7 +78,7 @@ function Details({ fields, set, courses, series, many }: { fields: ResourceField
   );
 }
 
-const blank = (course: string | null): ResourceFields => ({ title: '', type: 'notes', author: '', date: '', courses: course ? [course] : [], series: null });
+const blank = (course: string | null): ResourceFields => ({ title: '', type: 'notes', author: '', date: '', courses: course ? [course] : [], labels: [], series: null });
 
 /** Choose files, say what they are, upload them one after the other. */
 export function UploadDialog({ open, onClose, courses, series, course, initial }: { open: boolean; onClose: () => void; courses: Course[]; series: ResourceSeries[]; course: string | null; initial?: File[] | null }) {
@@ -194,7 +199,7 @@ export function EditDialog({ resource, onClose, courses, series }: { resource: R
 }
 
 function EditForm({ resource, onClose, courses, series, qc, t }: { resource: Resource; onClose: () => void; courses: Course[]; series: ResourceSeries[]; qc: ReturnType<typeof useQueryClient>; t: ReturnType<typeof useT> }) {
-  const [fields, setFields] = useState<ResourceFields>({ title: resource.title, type: resource.type, author: resource.author, date: resource.date, courses: resource.courses, series: resource.series });
+  const [fields, setFields] = useState<ResourceFields>({ title: resource.title, type: resource.type, author: resource.author, date: resource.date, courses: resource.courses, labels: resource.labels, series: resource.series });
   const [busy, setBusy] = useState(false);
   const save = async () => {
     if (!fields.title.trim() || busy) return;

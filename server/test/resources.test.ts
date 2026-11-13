@@ -30,6 +30,20 @@ const up = (query: Record<string, string>, body: Buffer | string) =>
   app.inject({ method: 'POST', url: `/api/resources/upload?${new URLSearchParams(query)}`, headers: { 'content-type': 'application/octet-stream' }, payload: body });
 
 describe('materials', () => {
+  it('has the paper type and keeps the student labels on a material', async () => {
+    await app.inject({ method: 'PUT', url: '/api/settings', payload: { highlightLabels: [{ id: 'lb-a', name: 'To read', color: 'blue' }, { id: 'lb-b', name: 'Core', color: 'green' }] } });
+    const made = await up({ filename: 'paper.pdf', title: 'A paper', type: 'paper', labels: 'lb-a,lb-nope' }, Buffer.from('%PDF-1.4 paper'));
+    expect(made.statusCode).toBe(200);
+    const r = made.json() as Resource;
+    expect(r).toMatchObject({ type: 'paper', labels: ['lb-a'] });
+    const put = await app.inject({ method: 'PUT', url: `/api/resources/${r.id}`, payload: { title: 'A paper', type: 'paper', labels: ['lb-b', 'lb-a'], courses: [], series: null } });
+    expect((put.json() as Resource).labels.sort()).toEqual(['lb-a', 'lb-b']);
+    await app.inject({ method: 'PUT', url: '/api/settings', payload: { highlightLabels: [{ id: 'lb-b', name: 'Core', color: 'green' }] } });
+    const list = (await app.inject('/api/resources')).json() as ResourcesResponse;
+    expect(list.resources.find((x) => x.id === r.id)!.labels).toEqual(['lb-b']);
+    await app.inject({ method: 'DELETE', url: `/api/resources/${r.id}` });
+  });
+
   it('stores an upload by its hash, once, and lists it by course', async () => {
     const body = Buffer.from('%PDF-1.4 hello');
     const sha = crypto.createHash('sha256').update(body).digest('hex');

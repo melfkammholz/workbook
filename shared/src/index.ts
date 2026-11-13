@@ -416,7 +416,7 @@ export const DEFAULT_SETTINGS: Settings = {
 
 // ───────────────────────── materials ─────────────────────────
 
-export const RESOURCE_TYPES = ['notes', 'slides', 'other'] as const;
+export const RESOURCE_TYPES = ['notes', 'slides', 'paper', 'other'] as const;
 export type ResourceType = (typeof RESOURCE_TYPES)[number];
 
 /** A file the student uploaded (a script, a slide deck, anything). It belongs to the student, with references to courses. */
@@ -434,6 +434,8 @@ export interface Resource {
   lastPage: number | null;
   /** Ids of the courses (`workbook.yml`'s id) it is listed under. Empty: only in the library. */
   courses: string[];
+  /** Ids of the student's labels on it. */
+  labels: string[];
   file: { sha256: string; filename: string; mime: string; size: number; uploadedAt: number };
   /** How many files it has had (1: never replaced). */
   versions: number;
@@ -465,6 +467,8 @@ export interface ResourceFields {
   author: string;
   date: string;
   courses: string[];
+  /** Ids of the student's labels. */
+  labels: string[];
   /** An existing series, or null. */
   series: string | null;
   /** The title of a series to make and put it in (wins over `series`). */
