@@ -15,7 +15,7 @@ import { IconButton, Segmented, Spinner, Empty } from '@/components/ui';
 import { api, useSettings } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
-import { usePageKeys } from '@/lib/keys';
+import { altKey, usePageKeys } from '@/lib/keys';
 import { keepPdf, openedPdf } from '@/lib/pdf';
 import { swatchProps } from '@/lib/annotations';
 import { usePdfAnnotations, usePdfAnnotationsOn } from '@/lib/pdfAnnotations';
@@ -358,6 +358,66 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
     },
     [],
   );
+  /** The spots links were followed from, newest last: Alt+← goes back to the exact one. Only in this viewer. */
+  const [trail, setTrail] = useState<Array<{ page: number; offset: number }>>([]);
+  const trailRef = useRef(trail);
+  trailRef.current = trail;
+  /** Page `n`, `frac` of the way down it, at the reading spot. Pages not drawn yet change height, so it looks again, until the student scrolls. */
+  const placeAt = useCallback(
+    (n: number, frac: number) => {
+      centerTimers.current.forEach((x) => clearTimeout(x));
+      centerTimers.current = [];
+      goto(n);
+      if (layout !== 'notes') return;
+      offset.current = frac;
+      const sc = scroller.current;
+      const run = () => {
+        const el = sc?.querySelector<HTMLElement>(`[data-page="${n}"]`);
+        if (sc && el) sc.scrollTop = el.offsetTop + frac * el.offsetHeight - sc.clientHeight / 3;
+      };
+      run();
+      for (const ms of [60, 350, 900]) centerTimers.current.push(window.setTimeout(run, ms));
+      const cancel = () => {
+        centerTimers.current.forEach((x) => clearTimeout(x));
+        centerTimers.current = [];
+        sc?.removeEventListener('wheel', cancel);
+        sc?.removeEventListener('pointerdown', cancel);
+      };
+      sc?.addEventListener('wheel', cancel, { passive: true, once: true });
+      sc?.addEventListener('pointerdown', cancel, { once: true });
+    },
+    [goto, layout],
+  );
+  const followLink = useCallback(
+    (to: { page: number; y: number | null }) => {
+      setTrail((tr) => [...tr.slice(-49), { page: latest.current, offset: offset.current }]);
+      placeAt(to.page, to.y ?? 0);
+    },
+    [placeAt],
+  );
+  const followRef = useRef(followLink);
+  followRef.current = followLink;
+  const follow = useCallback((to: { page: number; y: number | null }) => followRef.current(to), []);
+  const linkBack = useCallback(() => {
+    const last = trailRef.current[trailRef.current.length - 1];
+    if (!last) return;
+    setTrail(trailRef.current.slice(0, -1));
+    placeAt(last.page, last.offset);
+  }, [placeAt]);
+  const backRef = useRef(linkBack);
+  backRef.current = linkBack;
+  useEffect(() => {
+    if (!doc) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowLeft' || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !trailRef.current.length) return;
+      const el = e.target as HTMLElement | null;
+      if (el?.closest?.('input, textarea, select, [contenteditable=true], .cm-editor') || document.querySelector('[role=dialog]')) return;
+      e.preventDefault();
+      backRef.current();
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, [doc]);
   // Arriving from a reference: the highlight is opened and shown once the pages are there.
   const arrived = useRef<string | null>(null);
   useEffect(() => {
@@ -498,9 +558,9 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
         <Spinner />
       </div>
     ) : layout === 'notes' ? (
-      <NotesView doc={doc} count={count} guess={guess} zoom={zoom} current={current} onCurrent={setCurrent} scroller={scroller} marks={marks} offset={offset} />
+      <NotesView doc={doc} count={count} guess={guess} zoom={zoom} current={current} onCurrent={setCurrent} scroller={scroller} marks={marks} offset={offset} follow={follow} />
     ) : (
-      <SlidesView doc={doc} count={count} guess={guess} zoom={zoom} current={current} area={scroller} marks={marks} />
+      <SlidesView doc={doc} count={count} guess={guess} zoom={zoom} current={current} area={scroller} marks={marks} follow={follow} />
     );
 
   return (
@@ -582,7 +642,18 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
             <ColumnHandle side="left" width={leftW} onWidth={setLeftW} label={t.pdfResizeToc} />
           </>
         ) : null}
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="relative flex min-w-0 flex-1 flex-col">
+          {trail.length ? (
+            <button
+              type="button"
+              data-tip={`${altKey}+←`}
+              onClick={linkBack}
+              className="absolute left-3 top-3 z-20 inline-flex items-center gap-1 rounded-full border border-line-strong bg-sheet px-3 py-1 text-[13px] shadow-md hover:bg-sunk"
+            >
+              <ChevronLeft size={14} />
+              {t.pdfBackTo(labelOf(trail[trail.length - 1]!.page))}
+            </button>
+          ) : null}
           <div ref={scroller} data-pdf-scroller={resource.id} className="min-h-0 flex-1 overflow-auto bg-sunk">
             {view}
           </div>

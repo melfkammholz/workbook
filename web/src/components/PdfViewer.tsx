@@ -5,6 +5,7 @@ import { flushSync } from 'react-dom';
 import type { PdfAnnotation } from '@wb/shared';
 import { keepBitmap, loadPdfjs, pagesOf, takeBitmap } from '@/lib/pdf';
 import { markStyle } from '@/lib/pdfAnnotations';
+import { PdfLinkLayer, type FollowLink } from '@/components/PdfLinks';
 import { paintAsked, useAsked } from '@/lib/pdfAsked';
 
 export type PdfLayout = 'notes' | 'slides';
@@ -74,10 +75,11 @@ interface PageProps {
   hidden?: boolean;
   cache: PageCache;
   marks?: Marks;
+  follow?: FollowLink;
 }
 
 /** One page: a box of the right size at once, the canvas and the text on top of it while the page is near. */
-const PageView = memo(function PageView({ doc, n, fit, guess, near, hidden, cache, marks }: PageProps) {
+const PageView = memo(function PageView({ doc, n, fit, guess, near, hidden, cache, marks, follow }: PageProps) {
   // A page loaded before (this visit or an earlier one) has its size at once.
   const [page, setPage] = useState<PDFPageProxy | null>(() => pagesOf(doc).get(n) ?? null);
   const [base, setBase] = useState<Size | null>(() => (page ? sizeOf(page) : null));
@@ -206,6 +208,7 @@ const PageView = memo(function PageView({ doc, n, fit, guess, near, hidden, cach
         )}
       </div>
       <div ref={textHost} className="absolute inset-0" />
+      {follow && near && page ? <PdfLinkLayer doc={doc} page={page} follow={follow} /> : null}
     </div>
   );
 });
@@ -254,10 +257,11 @@ interface ViewProps {
   current: number;
   onCurrent: (n: number) => void;
   marks?: Marks;
+  follow?: FollowLink;
 }
 
 /** Notes: every page one below the other, drawn as they come near. */
-export function NotesView({ doc, count, guess, zoom, current, onCurrent, scroller, marks, offset }: ViewProps & { scroller: RefObject<HTMLDivElement | null>; offset: { current: number } }) {
+export function NotesView({ doc, count, guess, zoom, current, onCurrent, scroller, marks, offset, follow }: ViewProps & { scroller: RefObject<HTMLDivElement | null>; offset: { current: number } }) {
   const list = useRef<HTMLDivElement>(null);
   const cache = useRef(new PageCache()).current;
   const size = useSize(scroller);
@@ -334,14 +338,14 @@ export function NotesView({ doc, count, guess, zoom, current, onCurrent, scrolle
   return (
     <div ref={list} className="relative mx-auto flex w-max min-w-full flex-col items-center" style={{ gap: GAP, padding: `${GAP}px ${PAD}px` }}>
       {ready
-        ? Array.from({ length: count }, (_, i) => <PageView key={i} doc={doc} n={i + 1} fit={fit} guess={guess} near={i + 1 >= range[0] && i + 1 <= range[1]} cache={cache} marks={marks} />)
+        ? Array.from({ length: count }, (_, i) => <PageView key={i} doc={doc} n={i + 1} fit={fit} guess={guess} near={i + 1 >= range[0] && i + 1 <= range[1]} cache={cache} marks={marks} follow={follow} />)
         : null}
     </div>
   );
 }
 
 /** Slides: one page, as large as the space allows; the next one is drawn already. */
-export function SlidesView({ doc, count, guess, zoom, current, area, marks }: Omit<ViewProps, 'onCurrent'> & { area: RefObject<HTMLDivElement | null> }) {
+export function SlidesView({ doc, count, guess, zoom, current, area, marks, follow }: Omit<ViewProps, 'onCurrent'> & { area: RefObject<HTMLDivElement | null> }) {
   const cache = useRef(new PageCache()).current;
   const size = useSize(area);
   useCenterOnZoom(area, zoom, size.w > 0);
@@ -353,7 +357,7 @@ export function SlidesView({ doc, count, guess, zoom, current, area, marks }: Om
   return (
     <div className="flex min-h-full min-w-full">
       <div className="m-auto" style={{ padding: PAD }}>
-        {size.w > 0 ? shown.map((n) => <PageView key={n} doc={doc} n={n} fit={fit} guess={guess} near={n === current || n === current + 1} hidden={n !== current} cache={cache} marks={marks} />) : null}
+        {size.w > 0 ? shown.map((n) => <PageView key={n} doc={doc} n={n} fit={fit} guess={guess} near={n === current || n === current + 1} hidden={n !== current} cache={cache} marks={marks} follow={follow} />) : null}
       </div>
     </div>
   );
