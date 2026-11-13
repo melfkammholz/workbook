@@ -10,6 +10,7 @@ import { PagesWithNotes, PdfPageNotes } from '@/components/PdfPageNotes';
 import { PdfUnplaced } from '@/components/PdfUnplaced';
 import { PdfQuestionBar, PdfQuestionList, usePdfQuestions } from '@/components/PdfQuestions';
 import { PdfToc, type TocActions } from '@/components/PdfToc';
+import { useBibImport } from '@/components/BibImport';
 import { PdfReferences } from '@/components/PdfReferences';
 import { fixEntry, rereadBibliography, setWantToRead, useBibliography, useBibliographyReader, type Fix } from '@/lib/bibliography';
 import { NotesView, SlidesView, type Marks, type PdfLayout, type Size } from '@/components/PdfViewer';
@@ -197,6 +198,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   const questions = usePdfQuestions(resource);
   const bibliography = useBibliography(resource.id).data;
   useBibliographyReader(qc, resource.id, resource.file.sha256, doc, bibliography);
+  const bibImport = useBibImport();
   const settings = useSettings().data;
   const cards = !!settings?.showFlashcards;
   const [pageCard, setPageCard] = useState<{ text: string; anchor: Anchor } | null>(null);
@@ -569,6 +571,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
 
   return (
     <div className="flex h-full flex-col">
+      {bibImport.node}
       <div className="flex h-11 shrink-0 flex-wrap items-center gap-1 border-b border-line bg-sheet px-2">
         <BackLink fallback="/materials" label={t.back} className="mr-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm text-ink-2 hover:bg-sunk hover:text-ink">
           {t.back}

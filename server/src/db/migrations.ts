@@ -742,6 +742,8 @@ export const MIGRATIONS: Migration[] = [
     PRIMARY KEY (a, b)
   );
   `,
+  /* 30: works the student imported (BibTeX, Hayagriva) stay in the library without a PDF citing them. */
+  `ALTER TABLE works ADD COLUMN imported INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 /** The course a mounted `/content` folder is. */

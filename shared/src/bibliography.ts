@@ -332,3 +332,20 @@ export interface LibraryWork extends Work {
   citedBy: { resource: string; title: string; count: number }[];
   similar: SimilarWork[];
 }
+
+/** A work read from a pasted or uploaded BibTeX/Hayagriva text, with the library's works it looks like. */
+export interface ImportCandidate extends WorkFields {
+  raw: string;
+  similar: SimilarWork[];
+}
+
+export interface ImportPreview {
+  format: 'bibtex' | 'hayagriva' | null;
+  items: ImportCandidate[];
+}
+
+/** What the student decided for one candidate: add it, or (`into`) fill the library's work with it. Skipped ones are not sent. */
+export interface ImportChoice extends WorkFields {
+  raw: string;
+  into?: string | null | undefined;
+}

@@ -1,9 +1,10 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { BibEntry, BibEntryInput, LibraryWork, SimilarWork, Work, Anchor, Placed, Reanchored, StaleItems, UnplacedItems, AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
+import type { ImportCandidate, ImportChoice, ImportPreview, BibEntry, BibEntryInput, LibraryWork, SimilarWork, Work, Anchor, Placed, Reanchored, StaleItems, UnplacedItems, AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
 import { MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_ENTRY_TEXT, normalizeTitle, workFields, workKeys } from '@wb/shared';
 import type { Store } from '../db/store.js';
+import { parseBibText, type ImportedWork } from './bibimport.js';
 import { extractPdfText } from './text.js';
 
 export class ResourceError extends Error {
@@ -559,7 +560,7 @@ export class Resources {
       });
       // Works that lost their entry here and have no other reason to stay.
       this.sql.run(
-        `DELETE FROM works WHERE want_to_read = 0 AND resource IS NULL AND NOT EXISTS (SELECT 1 FROM work_citations c WHERE c.work = works.id)`,
+        `DELETE FROM works WHERE want_to_read = 0 AND imported = 0 AND resource IS NULL AND NOT EXISTS (SELECT 1 FROM work_citations c WHERE c.work = works.id)`,
       );
     });
     return this.listBibliography(resource);
@@ -631,6 +632,58 @@ export class Resources {
       );
       this.sql.run('DELETE FROM works WHERE id = ?', from);
     });
+  }
+
+  /** What a pasted or uploaded text holds, and for each work the ones in the library it looks like. Nothing is stored. */
+  previewImport(text: string): ImportPreview {
+    const { format, works } = parseBibText(text);
+    if (works.length === 0) return { format, items: [] };
+    const rows = this.sql.all('SELECT id, title, authors, year, doi FROM works') as Row[];
+    const byKey = new Map<string, Row[]>();
+    for (const w of rows) {
+      for (const k of workKeys({ title: w.title as string, year: w.year === null ? null : Number(w.year), doi: w.doi as string })) (byKey.get(k) ?? byKey.set(k, []).get(k)!).push(w);
+    }
+    const cited = new Map<string, number>();
+    for (const c of this.sql.all('SELECT work, COUNT(DISTINCT resource) AS n FROM work_citations GROUP BY work') as Row[]) cited.set(c.work as string, Number(c.n));
+    const items = works.map((w): ImportCandidate => {
+      const similar: SimilarWork[] = [];
+      for (const k of workKeys(w)) {
+        for (const o of byKey.get(k) ?? []) {
+          if (similar.some((x) => x.id === o.id)) continue;
+          similar.push({ id: o.id as string, title: o.title as string, authors: o.authors as string, year: o.year === null ? null : Number(o.year), cited: cited.get(o.id as string) ?? 0 });
+        }
+      }
+      return { ...w, similar };
+    });
+    return { format, items };
+  }
+
+  /**
+   * Adds the chosen works to the library (they stay with no PDF citing them). A choice with `into` adds nothing new:
+   * it fills the fields the library's work lacks. Returns how many were added and how many were merged into others.
+   */
+  importWorks(choices: ImportChoice[]): { added: number; merged: number } {
+    const t = this.now();
+    let added = 0;
+    let merged = 0;
+    this.sql.tx(() => {
+      for (const c of choices.slice(0, 2000)) {
+        const w: ImportedWork = { title: c.title.slice(0, 300), authors: c.authors.slice(0, 400), year: c.year, venue: c.venue.slice(0, 300), doi: c.doi.slice(0, 200), url: c.url.slice(0, 500), raw: c.raw.slice(0, MAX_ENTRY_TEXT) };
+        const into = c.into ? (this.sql.get('SELECT * FROM works WHERE id = ?', c.into) as Row | undefined) : undefined;
+        if (into) {
+          const keep = (field: string, v: string) => (into[field] as string) || v;
+          this.sql.run(
+            'UPDATE works SET title = ?, authors = ?, year = ?, venue = ?, doi = ?, url = ?, imported = 1, updated_at = ? WHERE id = ?',
+            keep('title', w.title), keep('authors', w.authors), into.year === null ? w.year : Number(into.year), keep('venue', w.venue), keep('doi', w.doi), keep('url', w.url), t, c.into!,
+          );
+          merged++;
+        } else {
+          this.sql.run('INSERT INTO works (id, title, authors, year, venue, doi, url, raw, imported, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,1,?,?)', crypto.randomUUID(), w.title, w.authors, w.year, w.venue, w.doi, w.url, w.raw, t, t);
+          added++;
+        }
+      }
+    });
+    return { added, merged };
   }
 
   /** "Not the same": the pair is not suggested again. */

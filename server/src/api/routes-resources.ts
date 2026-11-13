@@ -220,6 +220,17 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
     }
   });
   app.get('/api/works', async () => r().listWorks());
+  app.post('/api/works/import/preview', async (req, reply) => {
+    const b = parse(z.object({ text: z.string().max(3_000_000) }), req.body, reply);
+    if (!b) return;
+    return r().previewImport(b.text);
+  });
+  app.post('/api/works/import', async (req, reply) => {
+    const work = z.object({ title: z.string(), authors: z.string(), year: z.number().int().nullable(), venue: z.string(), doi: z.string(), url: z.string(), raw: z.string(), into: z.string().nullable().optional() });
+    const b = parse(z.object({ works: z.array(work).max(2000) }), req.body, reply);
+    if (!b) return;
+    return r().importWorks(b.works);
+  });
   app.post<{ Params: { wid: string } }>('/api/works/:wid/merge', async (req, reply) => {
     const b = parse(z.object({ into: z.string() }), req.body, reply);
     if (!b) return;

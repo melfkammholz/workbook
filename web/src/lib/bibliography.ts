@@ -1,5 +1,5 @@
 import { useQuery, type QueryClient } from '@tanstack/react-query';
-import { entryAt, linesOf, parseBibliography, textItems, type BibEntry, type BibEntryInput, type LibraryWork, type PageLines, type Work } from '@wb/shared';
+import { entryAt, type ImportChoice, linesOf, parseBibliography, textItems, type BibEntry, type BibEntryInput, type LibraryWork, type PageLines, type Work } from '@wb/shared';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useEffect } from 'react';
 import { api, useSettings } from './api';
@@ -190,4 +190,18 @@ export async function rereadBibliography(qc: QueryClient, resource: string, vers
   const entries = await readBibliography(doc);
   markChecked(version);
   return saveBibliography(qc, resource, version, entries);
+}
+
+/** Adds the works the student chose from a pasted or uploaded BibTeX/Hayagriva text. */
+export function importWorks(qc: QueryClient, works: ImportChoice[]): Promise<{ added: number; merged: number }> {
+  return api.post<{ added: number; merged: number }>('/api/works/import', { works }).then(
+    (r) => {
+      refreshWorks(qc);
+      return r;
+    },
+    (e: unknown) => {
+      reportSaveFailed();
+      throw e;
+    },
+  );
 }

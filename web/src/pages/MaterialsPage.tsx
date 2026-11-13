@@ -2,6 +2,7 @@ import type { Resource, ResourceSeries, ResourceType } from '@wb/shared';
 import { Download, FileText, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { Link } from 'wouter';
+import { useBibImport } from '@/components/BibImport';
 import { WorksLibrary } from '@/components/WorksLibrary';
 import { NewVersionButton } from '@/components/NewVersionButton';
 import { DeleteDialog, EditDialog, UploadDialog } from '@/components/ResourceDialogs';
@@ -46,6 +47,7 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
   const data = list.data;
   const labelDefs = useSettings().data?.highlightLabels ?? [];
   const [tab, setTab] = useState<'files' | 'references'>('files');
+  const bib = useBibImport();
   const refs = !course && tab === 'references';
   const [labelFilter, setLabelFilter] = useState<string[]>([]);
   const usedLabels = labelDefs.filter((l) => data?.resources.some((r) => r.labels.includes(l.id)));
@@ -191,6 +193,15 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
             ))}
           </div>
         ) : null}
+        {refs ? (
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <Button size="sm" onClick={bib.pickFile}>
+              {t.bibImportFile}
+            </Button>
+            <span className="text-[12px] text-ink-3">{t.bibImportHint}</span>
+          </div>
+        ) : null}
+        {bib.node}
         {refs ? <WorksLibrary /> : null}
         {!refs && usedLabels.length ? (
           <div className="mt-4 flex flex-wrap items-center gap-1.5" role="group" aria-label={t.resourceLabelFilter}>
