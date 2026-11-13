@@ -755,6 +755,74 @@ export const MIGRATIONS: Migration[] = [
     looked_at INTEGER NOT NULL
   );
   `,
+  /*
+   * 33: one tag concept. `labels` (highlight labels, page marks, question and material labels) become global `tags`,
+   * attached to anything through `tag_links` (`kind` + `ref`: question, resource, pdfPage; later highlights and works).
+   * Ids are kept so stored references stay valid; a page mark named like a highlight label becomes that tag. The color
+   * is optional (''); `highlight` color stays a property of the highlight. "Interesting" is a default tag.
+   */
+  (db) => {
+    db.exec(`
+    CREATE TABLE tags (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      color      TEXT NOT NULL DEFAULT '',
+      sort       INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX tags_sort ON tags (sort, id);
+    CREATE TABLE tag_links (
+      tag_id     TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+      kind       TEXT NOT NULL,
+      ref        TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (tag_id, kind, ref)
+    ) WITHOUT ROWID;
+    CREATE INDEX tag_links_ref ON tag_links (kind, ref);
+    `);
+    const t = Date.now();
+    const map = new Map<string, string>();
+    const byName = new Map<string, string>();
+    let sort = 0;
+    const rows = db.prepare("SELECT id, name, color, scope FROM labels ORDER BY CASE scope WHEN 'any' THEN 0 ELSE 1 END, sort, id").all() as { id: string; name: string; color: string; scope: string }[];
+    const insert = db.prepare('INSERT INTO tags (id, name, color, sort, created_at, updated_at) VALUES (?,?,?,?,?,?)');
+    for (const r of rows) {
+      const same = byName.get(r.name.trim().toLowerCase());
+      if (same && r.scope === 'page') {
+        map.set(r.id, same);
+        continue;
+      }
+      insert.run(r.id, r.name, r.color, sort++, t, t);
+      map.set(r.id, r.id);
+      if (!byName.has(r.name.trim().toLowerCase())) byName.set(r.name.trim().toLowerCase(), r.id);
+    }
+    if (!byName.has('interesting')) insert.run('tg-interesting', 'Interesting', '', sort++, t, t);
+    const link = db.prepare('INSERT OR IGNORE INTO tag_links (tag_id, kind, ref, created_at) VALUES (?,?,?,?)');
+    for (const r of db.prepare('SELECT question_id, label_id FROM question_labels').all() as { question_id: string; label_id: string }[]) {
+      const id = map.get(r.label_id);
+      if (id) link.run(id, 'question', r.question_id, t);
+    }
+    for (const r of db.prepare('SELECT resource, label_id FROM resource_labels').all() as { resource: string; label_id: string }[]) {
+      const id = map.get(r.label_id);
+      if (id) link.run(id, 'resource', r.resource, t);
+    }
+    for (const r of db.prepare('SELECT id, marks FROM pdf_pages').all() as { id: string; marks: string }[]) {
+      let marks: unknown = [];
+      try {
+        marks = JSON.parse(r.marks);
+      } catch {
+        /* none */
+      }
+      if (!Array.isArray(marks)) continue;
+      for (const m of marks) {
+        const id = typeof m === 'string' ? map.get(m) : undefined;
+        if (id) link.run(id, 'pdfPage', r.id, t);
+      }
+    }
+    // Highlights keep their one label (its id is a tag id now; a merged page mark was never one).
+    db.exec('ALTER TABLE pdf_pages DROP COLUMN marks; DROP TABLE labels; DROP TABLE question_labels; DROP TABLE resource_labels;');
+  },
 ];
 
 /** The course a mounted `/content` folder is. */

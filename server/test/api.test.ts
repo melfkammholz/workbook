@@ -387,3 +387,18 @@ describe.skipIf(!haveGhc)('running code', () => {
     await closed;
   });
 });
+
+describe('tags', () => {
+  it('are made by typing a name, found again in any case, and cleaned up when merged or deleted', async () => {
+    const post = async (name: string) => (await app.inject({ method: 'POST', url: '/api/tags', payload: { name } })).json() as { id: string; name: string };
+    const a = await post('Rekursion');
+    expect((await post('rekursion')).id).toBe(a.id);
+    const b = await post('Monaden');
+    await app.inject({ method: 'PUT', url: `/api/tags/on/question/q9`, payload: { ids: [b.id, 'nope'] } });
+    expect((await app.inject({ method: 'PATCH', url: `/api/tags/${b.id}`, payload: { name: 'REKURSION' } })).statusCode).toBe(409);
+    expect((await app.inject({ method: 'POST', url: `/api/tags/${b.id}/merge`, payload: { into: a.id } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'PUT', url: '/api/tags/on/bogus/x', payload: { ids: [] } })).statusCode).toBe(404);
+    const left = (await app.inject({ method: 'DELETE', url: `/api/tags/${a.id}` })).json() as { id: string }[];
+    expect(left.some((t) => t.id === a.id || t.id === b.id)).toBe(false);
+  });
+});

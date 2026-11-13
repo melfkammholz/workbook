@@ -37,7 +37,8 @@ import {
   type QuestionKind,
   QUESTION_KINDS,
   MAX_PENDING_CHANGES,
-  ANNOTATION_COLORS,
+  type Tag,
+  type TagKind,
   MAX_QUESTION,
   type ProgressEntry,
   type Reflection,
@@ -443,14 +444,13 @@ export class Store {
       params.push(filter.resource);
     }
     const rows = this.all(`SELECT * FROM questions ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at, rowid`, ...params);
-    const labels = new Map<string, string[]>();
-    for (const l of this.all('SELECT question_id, label_id FROM question_labels ORDER BY rowid')) (labels.get(l.question_id as string) ?? labels.set(l.question_id as string, []).get(l.question_id as string)!).push(l.label_id as string);
+    const labels = this.tagLinks('question');
     return rows.map((r) => rowToQuestion(r, labels.get(r.id as string) ?? []));
   }
 
   getQuestion(id: string): Question | null {
     const r = this.get('SELECT * FROM questions WHERE id = ?', id);
-    return r ? rowToQuestion(r, this.all('SELECT label_id FROM question_labels WHERE question_id = ? ORDER BY rowid', id).map((l) => l.label_id as string)) : null;
+    return r ? rowToQuestion(r, this.tagsOf('question', id)) : null;
   }
 
   addQuestion(q: { id?: string | undefined; text: string; anchor: Anchor; highlightId?: string | null; who?: string }): Question {
@@ -504,7 +504,10 @@ export class Store {
     if (review === null) {
       if (!cur) return;
       if (cur.text) this.run('UPDATE questions SET highlight_id = NULL WHERE id = ?', cur.id as string);
-      else this.run('DELETE FROM questions WHERE id = ?', cur.id as string);
+      else {
+        this.run('DELETE FROM questions WHERE id = ?', cur.id as string);
+        this.unlinkAll('question', cur.id as string);
+      }
       return;
     }
     const status = review === 'resolved' ? 'done' : 'open';
@@ -526,7 +529,7 @@ export class Store {
       // Duplicates that were merged into it are open questions again.
       this.run("UPDATE questions SET merged_into = NULL, status = 'open', done_at = NULL WHERE merged_into = ?", id);
       this.run('DELETE FROM questions WHERE id = ?', id);
-      this.run('DELETE FROM question_labels WHERE question_id = ?', id);
+      this.unlinkAll('question', id);
     }
     return had;
   }
@@ -534,24 +537,12 @@ export class Store {
   // ───────────────────────── changes (the assistant inbox) ─────────────────────────
 
   private labelNames(ids: string[]): string[] {
-    const names = new Map(this.listLabels('any').map((l) => [l.id, l.name]));
+    const names = new Map(this.listTags().map((l) => [l.id, l.name]));
     return ids.flatMap((i) => (names.has(i) ? [names.get(i)!] : []));
   }
 
-  /** The student's label of this name (any case), made if there is none. */
-  private ensureLabel(name: string): string {
-    const found = this.listLabels('any').find((l) => l.name.toLowerCase() === name.toLowerCase());
-    if (found) return found.id;
-    const all = this.listLabels('any');
-    const t = this.now();
-    const id = `lb-${randomUUID()}`;
-    this.run('INSERT INTO labels (id, name, color, scope, sort, created_at, updated_at) VALUES (?,?,?,?,?,?,?)', id, name, ANNOTATION_COLORS[all.length % ANNOTATION_COLORS.length]!, 'any', all.length, t, t);
-    return id;
-  }
-
   private setQuestionLabels(id: string, names: string[]): void {
-    this.run('DELETE FROM question_labels WHERE question_id = ?', id);
-    for (const n of new Set(names.map((x) => x.trim()).filter(Boolean))) this.run('INSERT OR IGNORE INTO question_labels (question_id, label_id) VALUES (?,?)', id, this.ensureLabel(n));
+    this.setTags('question', id, [...new Set(names.map((x) => x.trim()).filter(Boolean))].map((n) => this.ensureTag(n)));
   }
 
   /**
@@ -708,8 +699,7 @@ export class Store {
       const s = u.survivor;
       if (this.getQuestion(c.ref.id)) {
         this.run('UPDATE questions SET text = ?, answer = ?, status = ?, done_at = ?, updated_at = ? WHERE id = ?', s.text, s.answer, s.status, s.doneAt, s.updatedAt, c.ref.id);
-        this.run('DELETE FROM question_labels WHERE question_id = ?', c.ref.id);
-        for (const l of s.labels) this.run('INSERT OR IGNORE INTO question_labels (question_id, label_id) VALUES (?,?)', c.ref.id, l);
+        this.setTags('question', c.ref.id, s.labels);
       }
       for (const d of u.duplicates) {
         if (!this.getQuestion(d.id)) continue;
@@ -732,7 +722,7 @@ export class Store {
     const answers = [s.answer, ...all.map((q) => q.answer)].map((a) => a?.trim() ?? '').filter((a, i, l) => a && l.indexOf(a) === i);
     const t = this.now();
     this.run('UPDATE questions SET text = ?, answer = ?, updated_at = ? WHERE id = ?', (p.text?.trim() ?? s.text).slice(0, MAX_QUESTION), answers.length ? answers.join('\n\n') : null, t, s.id);
-    for (const q of all) for (const l of q.labels) this.run('INSERT OR IGNORE INTO question_labels (question_id, label_id) VALUES (?,?)', s.id, l);
+    this.setTags('question', s.id, [...new Set(all.flatMap((q) => q.labels))]);
     for (const q of all) this.run("UPDATE questions SET merged_into = ?, status = 'done', done_at = ? WHERE id = ?", s.id, q.status === 'done' ? (q.doneAt ?? t) : t, q.id);
     this.run('UPDATE changes SET before = ? WHERE id = ?', JSON.stringify(undo_), c.id);
     return null;
@@ -1183,14 +1173,16 @@ export class Store {
   /** The student's settings, the same from every view. The labels live in their own table and are put in here. */
   getSettings(): Settings {
     const raw = this.getRaw<Partial<Settings>>(GLOBAL, 'settings', {});
-    return { ...DEFAULT_SETTINGS, ...raw, highlightLabels: this.listLabels('any') as HighlightLabel[], pdfPageMarks: this.listLabels('page').map(({ id, name }) => ({ id, name })) };
+    // Until the tag manager replaces them, the old lists are views of the tags: highlight labels are the colored ones.
+    const tags = this.listTags();
+    return { ...DEFAULT_SETTINGS, ...raw, highlightLabels: tags.filter((t) => t.color) as HighlightLabel[], pdfPageMarks: tags.map(({ id, name }) => ({ id, name })) };
   }
 
   saveSettings(patch: Partial<Settings>): Settings {
     const { highlightLabels, pdfPageMarks, ...rest } = patch;
     this.tx(() => {
-      if (highlightLabels) this.replaceLabels('any', highlightLabels);
-      if (pdfPageMarks) this.replaceLabels('page', pdfPageMarks.map((m) => ({ ...m, color: '' })));
+      if (highlightLabels) this.replaceTags((t) => t.color !== '', highlightLabels);
+      if (pdfPageMarks) this.replaceTags((t) => t.color === '', pdfPageMarks.map((m) => ({ ...m, color: undefined })));
       const { highlightLabels: _a, pdfPageMarks: _b, ...stored } = { ...this.getSettings(), ...rest };
       this.setRaw(GLOBAL, 'settings', stored);
     });
@@ -1241,28 +1233,110 @@ export class Store {
     return r ? (r.text as string) : null;
   }
 
-  // ───────────────────────── labels ─────────────────────────
+  // ───────────────────────── tags ─────────────────────────
 
-  /** The student's names for highlights (`any`, with a color) or for kinds of PDF pages (`page`), in their order. */
-  listLabels(scope: 'any' | 'page'): { id: string; name: string; color: string }[] {
-    return this.all('SELECT id, name, color FROM labels WHERE scope = ? ORDER BY sort, id', scope).map((r) => ({ id: r.id as string, name: r.name as string, color: r.color as string }));
+  /** The student's tags in their order. Global, like decks: a tag is not tied to a course. */
+  listTags(): Tag[] {
+    return this.all('SELECT id, name, color FROM tags ORDER BY sort, id').map((r) => ({ id: r.id as string, name: r.name as string, color: r.color as string }));
   }
 
-  /** Makes the labels of a scope exactly this list: new ones are added, changed ones updated, missing ones removed. */
-  private replaceLabels(scope: 'any' | 'page', labels: { id: string; name: string; color: string }[]): void {
+  /** The tag of this name (any case), made if there is none. Returns its id. */
+  ensureTag(name: string): string {
+    name = name.trim().slice(0, 60);
+    const found = this.get('SELECT id FROM tags WHERE name = ? COLLATE NOCASE', name);
+    if (found) return found.id as string;
+    return this.createTag(name, '').id;
+  }
+
+  createTag(name: string, color: string): Tag {
     const t = this.now();
-    const keep = new Set(labels.map((l) => l.id));
-    for (const r of this.all('SELECT id FROM labels WHERE scope = ?', scope)) if (!keep.has(r.id as string)) {
-        this.run('DELETE FROM labels WHERE id = ?', r.id as string);
-        this.run('DELETE FROM resource_labels WHERE label_id = ?', r.id as string);
+    const id = `tg-${randomUUID()}`;
+    const sort = Number(this.get('SELECT COALESCE(MAX(sort), -1) + 1 AS n FROM tags')!.n);
+    this.run('INSERT INTO tags (id, name, color, sort, created_at, updated_at) VALUES (?,?,?,?,?,?)', id, name.trim().slice(0, 60), color, sort, t, t);
+    return { id, name: name.trim().slice(0, 60), color };
+  }
+
+  /** Changes a tag's name or color. False when it is unknown or the name is another tag's (any case). */
+  updateTag(id: string, patch: { name?: string; color?: string }): boolean {
+    const cur = this.get('SELECT name, color FROM tags WHERE id = ?', id);
+    if (!cur) return false;
+    const name = (patch.name ?? (cur.name as string)).trim().slice(0, 60);
+    if (!name) return false;
+    if (this.get('SELECT 1 AS x FROM tags WHERE name = ? COLLATE NOCASE AND id <> ?', name, id)) return false;
+    this.run('UPDATE tags SET name = ?, color = ?, updated_at = ? WHERE id = ?', name, patch.color ?? (cur.color as string), this.now(), id);
+    return true;
+  }
+
+  /** Deletes a tag from everything it is on. */
+  deleteTag(id: string): boolean {
+    return this.tx(() => {
+      const had = this.get('SELECT 1 AS x FROM tags WHERE id = ?', id) !== null;
+      this.run('DELETE FROM tag_links WHERE tag_id = ?', id);
+      this.run('DELETE FROM tags WHERE id = ?', id);
+      // Highlights keep one label of their own for now (a tag id).
+      this.run('UPDATE annotations SET label = NULL WHERE label = ?', id);
+      this.run('UPDATE pdf_annotations SET label = NULL WHERE label = ?', id);
+      return had;
+    });
+  }
+
+  /** Everything `from` is on gets `into` instead; `from` goes. */
+  mergeTags(from: string, into: string): boolean {
+    if (from === into || !this.get('SELECT 1 AS x FROM tags WHERE id = ?', from) || !this.get('SELECT 1 AS x FROM tags WHERE id = ?', into)) return false;
+    this.tx(() => {
+      this.run('INSERT OR IGNORE INTO tag_links (tag_id, kind, ref, created_at) SELECT ?, kind, ref, created_at FROM tag_links WHERE tag_id = ?', into, from);
+      this.run('UPDATE annotations SET label = ? WHERE label = ?', into, from);
+      this.run('UPDATE pdf_annotations SET label = ? WHERE label = ?', into, from);
+      this.deleteTag(from);
+    });
+    return true;
+  }
+
+  /** The ids of the tags on one thing, oldest link first. */
+  tagsOf(kind: TagKind, ref: string): string[] {
+    return this.all('SELECT tag_id FROM tag_links WHERE kind = ? AND ref = ? ORDER BY created_at, tag_id', kind, ref).map((r) => r.tag_id as string);
+  }
+
+  /** The tags on every thing of one kind: ref to tag ids. */
+  tagLinks(kind: TagKind): Map<string, string[]> {
+    const out = new Map<string, string[]>();
+    for (const r of this.all('SELECT tag_id, ref FROM tag_links WHERE kind = ? ORDER BY created_at, tag_id', kind)) {
+      const ref = r.ref as string;
+      (out.get(ref) ?? out.set(ref, []).get(ref)!).push(r.tag_id as string);
+    }
+    return out;
+  }
+
+  /** Makes the tags on one thing exactly these (unknown ids are skipped). */
+  setTags(kind: TagKind, ref: string, ids: string[]): void {
+    this.tx(() => {
+      const keep = [...new Set(ids)];
+      for (const id of this.tagsOf(kind, ref)) if (!keep.includes(id)) this.run('DELETE FROM tag_links WHERE tag_id = ? AND kind = ? AND ref = ?', id, kind, ref);
+      const t = this.now();
+      for (const id of keep) this.run('INSERT OR IGNORE INTO tag_links (tag_id, kind, ref, created_at) SELECT id, ?, ?, ? FROM tags WHERE id = ?', kind, ref, t, id);
+    });
+  }
+
+  /** Takes every tag off one thing, for when it is deleted. */
+  unlinkAll(kind: TagKind, ref: string): void {
+    this.run('DELETE FROM tag_links WHERE kind = ? AND ref = ?', kind, ref);
+  }
+
+  /**
+   * The old two lists of the settings (highlight labels, page marks) write through here: tags matching `owns` are
+   * made exactly this list (a missing one is deleted), others are left alone. A color of undefined keeps the old one.
+   */
+  private replaceTags(owns: (t: Tag) => boolean, list: { id: string; name: string; color?: string | undefined }[]): void {
+    const keep = new Set(list.map((l) => l.id));
+    for (const t of this.listTags()) if (owns(t) && !keep.has(t.id)) this.deleteTag(t.id);
+    const now = this.now();
+    for (const l of list) {
+      if (this.get('SELECT 1 AS x FROM tags WHERE id = ?', l.id)) this.run('UPDATE tags SET name = ?, color = ?, updated_at = ? WHERE id = ?', l.name, l.color ?? (this.get('SELECT color FROM tags WHERE id = ?', l.id)!.color as string), now, l.id);
+      else {
+        const sort = Number(this.get('SELECT COALESCE(MAX(sort), -1) + 1 AS n FROM tags')!.n);
+        this.run('INSERT INTO tags (id, name, color, sort, created_at, updated_at) VALUES (?,?,?,?,?,?)', l.id, l.name, l.color ?? '', sort, now, now);
       }
-    labels.forEach((l, i) =>
-      this.run(
-        `INSERT INTO labels (id, name, color, scope, sort, created_at, updated_at) VALUES (?,?,?,?,?,?,?)
-         ON CONFLICT(id) DO UPDATE SET name = excluded.name, color = excluded.color, sort = excluded.sort, updated_at = excluded.updated_at WHERE scope = excluded.scope`,
-        l.id, l.name, l.color, scope, i, t, t,
-      ),
-    );
+    }
   }
 
   /** Forgets all work in this course, and nothing else. */
@@ -1280,7 +1354,7 @@ export class Store {
   /** Back to the defaults, as on the first start. */
   resetSettings(): void {
     this.run("DELETE FROM settings WHERE course = '' AND key = 'settings'");
-    this.run('DELETE FROM labels');
+    this.run('DELETE FROM tags');
   }
 
   /** Every highlight on a course's text, in every course: part of starting over, not of resetting one course. */

@@ -142,12 +142,13 @@ describe('highlights in PDFs', () => {
     const res = (await up({ filename: 'p.pdf', title: 'P', type: 'slides' }, Buffer.from('%PDF-1.4 pages'))).json() as Resource;
     const id = crypto.randomUUID();
     const base = { version: res.file.sha256, fingerprint: 'index:2' };
-    const made = await app.inject({ method: 'PUT', url: `/api/resources/${res.id}/pages/2`, payload: { ...base, id, marks: ['m1'], review: 'open' } });
+    const m1 = ((await app.inject({ method: 'POST', url: '/api/tags', payload: { name: 'Klausur' } })).json() as { id: string }).id;
+    const made = await app.inject({ method: 'PUT', url: `/api/resources/${res.id}/pages/2`, payload: { ...base, id, marks: [m1], review: 'open' } });
     expect(made.statusCode).toBe(200);
-    expect(made.json()).toMatchObject({ id, pageIndex: 2, note: '', marks: ['m1'], review: 'open' });
+    expect(made.json()).toMatchObject({ id, pageIndex: 2, note: '', marks: [m1], review: 'open' });
     // The same page again keeps the id and only changes what is sent.
     const changed = await app.inject({ method: 'PUT', url: `/api/resources/${res.id}/pages/2`, payload: { ...base, id: crypto.randomUUID(), note: 'Kernidee' } });
-    expect(changed.json()).toMatchObject({ id, note: 'Kernidee', marks: ['m1'], review: 'open' });
+    expect(changed.json()).toMatchObject({ id, note: 'Kernidee', marks: [m1], review: 'open' });
     const cleared = await app.inject({ method: 'PUT', url: `/api/resources/${res.id}/pages/2`, payload: { ...base, review: null, marks: [] } });
     expect(cleared.json()).toMatchObject({ id, note: 'Kernidee', marks: [], review: null });
     expect((await app.inject({ method: 'GET', url: `/api/resources/${res.id}/pages` })).json()).toHaveLength(1);

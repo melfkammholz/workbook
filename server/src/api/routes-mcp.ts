@@ -307,7 +307,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
           .filter((q) => (!status || q.status === status) && (Number.isNaN(since) || q.createdAt >= since))
           .sort((x, y) => y.createdAt - x.createdAt)
           .slice(0, Math.min(int(a.limit) ?? 50, 200));
-        const names = new Map(g().listLabels('any').map((l) => [l.id, l.name]));
+        const names = new Map(g().listTags().map((l) => [l.id, l.name]));
         return qs.map((q) => ({ id: q.id, text: q.text, status: q.status, ...(q.mergedInto ? { mergedInto: q.mergedInto } : {}), answer: q.answer, type: q.kind, labels: q.labels.flatMap((l) => (names.has(l) ? [names.get(l)!] : [])), where: where(q), created: new Date(q.createdAt).toISOString() }));
       }
       case 'search': {
@@ -425,7 +425,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
           .map((x) => ({ ...x, updatedAt: new Date(x.updatedAt).toISOString() }));
       }
       case 'list_labels':
-        return g().listLabels('any').map((l) => l.name);
+        return g().listTags().map((l) => l.name);
       case 'propose': {
         const q = str(a.question);
         if (!q) throw new ToolError('question is required');

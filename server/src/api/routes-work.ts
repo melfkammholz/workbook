@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { isAnnotationColor, type AchievementsResponse, type HowSolved, type ReviewChecklistEntry, type ReviewData } from '@wb/shared';
+import { isAnnotationColor, MAX_TAGS, MAX_TAGS_ON_ONE, TAG_KINDS, type TagKind, type AchievementsResponse, type HowSolved, type ReviewChecklistEntry, type ReviewData } from '@wb/shared';
 import { qualifiesFor } from '../achievements.js';
 import { hasTests, sharedOwner } from '../content/loader.js';
 import type { Deps } from './deps.js';
@@ -10,7 +10,13 @@ import path from 'node:path';
 const status = z.enum(['todo', 'in_progress', 'done', 'review']);
 const HOW = ['alone', 'hints', 'solution', 'asked', 'ai'] as const;
 
+const tagColor = z.string().transform((c) => c.toLowerCase()).refine((c) => c === '' || isAnnotationColor(c), 'a palette color or #rrggbb');
+
 const bodies = {
+  tagNew: z.object({ name: z.string().trim().min(1).max(60), color: tagColor.default('') }),
+  tagPatch: z.object({ name: z.string().trim().min(1).max(60), color: tagColor }).partial(),
+  tagMerge: z.object({ into: z.string().min(1).max(100) }),
+  tagLinks: z.object({ ids: z.array(z.string().min(1).max(100)).max(MAX_TAGS_ON_ONE) }),
   answer: z.object({ slot: z.string().min(1).max(200), content: z.string().max(500_000), reason: z.enum(['autosave', 'run', 'check', 'done', 'reset', 'restore', 'retry']).default('autosave') }),
   note: z.object({ format: z.enum(['typst', 'markdown']), content: z.string().max(500_000) }),
   status: z.object({ status }),
@@ -231,10 +237,48 @@ export function workRoutes(app: FastifyInstance, d: Deps): void {
     const b = parse(bodies.settings, req.body, reply);
     if (!b) return;
     const saved = d.courses.global.saveSettings(b);
-    // A removed mark must not stay on any page.
-    if (b.pdfPageMarks) d.courses.resources.pruneMarks(saved.pdfPageMarks.map((m) => m.id));
     if (b.lookupReferences) d.courses.resources.startLookups();
     return saved;
+  });
+
+  // Tags: global, made by typing a name anywhere (`POST` returns the tag of that name if there is one).
+  app.get('/api/tags', async () => d.courses.global.listTags());
+
+  app.post('/api/tags', async (req, reply) => {
+    const b = parse(bodies.tagNew, req.body, reply);
+    if (!b) return;
+    const g = d.courses.global;
+    const found = g.listTags().find((t) => t.name.toLowerCase() === b.name.toLowerCase());
+    if (found) return found;
+    if (g.listTags().length >= MAX_TAGS) return reply.code(400).send({ error: 'too many tags' });
+    return g.createTag(b.name, b.color);
+  });
+
+  app.patch<{ Params: { id: string } }>('/api/tags/:id', async (req, reply) => {
+    const b = parse(bodies.tagPatch, req.body, reply);
+    if (!b) return;
+    if (!d.courses.global.updateTag(req.params.id, b)) return reply.code(409).send({ error: 'unknown tag, or the name is taken' });
+    return d.courses.global.listTags();
+  });
+
+  app.post<{ Params: { id: string } }>('/api/tags/:id/merge', async (req, reply) => {
+    const b = parse(bodies.tagMerge, req.body, reply);
+    if (!b) return;
+    if (!d.courses.global.mergeTags(req.params.id, b.into)) return reply.code(404).send({ error: 'unknown tag' });
+    return d.courses.global.listTags();
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/tags/:id', async (req, reply) => {
+    if (!d.courses.global.deleteTag(req.params.id)) return reply.code(404).send({ error: 'unknown tag' });
+    return d.courses.global.listTags();
+  });
+
+  app.put<{ Params: { kind: string; ref: string } }>('/api/tags/on/:kind/:ref', async (req, reply) => {
+    const b = parse(bodies.tagLinks, req.body, reply);
+    if (!b) return;
+    if (!(TAG_KINDS as readonly string[]).includes(req.params.kind)) return reply.code(404).send({ error: 'unknown kind' });
+    d.courses.global.setTags(req.params.kind as TagKind, req.params.ref, b.ids);
+    return d.courses.global.tagsOf(req.params.kind as TagKind, req.params.ref);
   });
 
   app.get('/api/achievements', async (): Promise<AchievementsResponse> => {

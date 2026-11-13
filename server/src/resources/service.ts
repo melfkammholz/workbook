@@ -42,7 +42,7 @@ const ON_RESOURCE = "json_extract(anchor, '$.kind') = 'page' AND json_extract(an
 const COLUMNS = `r.id, r.title, r.type, r.author, r.date, r.series, r.position, r.last_page, r.created_at, r.updated_at,
   v.sha256, v.filename, v.mime, v.size, v.uploaded_at,
   (SELECT group_concat(course, char(31)) FROM resource_courses WHERE resource = r.id) AS courses,
-  (SELECT group_concat(label_id, char(31)) FROM resource_labels WHERE resource = r.id) AS labels,
+  (SELECT group_concat(tag_id, char(31)) FROM tag_links WHERE kind = 'resource' AND ref = r.id) AS labels,
   (SELECT COUNT(*) FROM resource_versions WHERE resource = r.id) AS versions,
   (SELECT COUNT(*) FROM pdf_annotations WHERE resource = r.id AND version <> v.sha256)
     + (SELECT COUNT(*) FROM pdf_pages WHERE resource = r.id AND version <> v.sha256)
@@ -114,14 +114,7 @@ function toToc(r: Row): TocEdit {
   };
 }
 
-function toPage(r: Row, reviews: Map<string, AnnotationReview>): PdfPageItem {
-  let marks: string[] = [];
-  try {
-    const m = JSON.parse(r.marks as string) as unknown;
-    if (Array.isArray(m)) marks = m.filter((x): x is string => typeof x === 'string');
-  } catch {
-    /* none */
-  }
+function toPage(r: Row, reviews: Map<string, AnnotationReview>, marks: string[]): PdfPageItem {
   return {
     id: r.id as string,
     resource: r.resource as string,
@@ -248,7 +241,9 @@ export class Resources {
     this.get(id);
     const shas = (this.sql.all('SELECT DISTINCT sha256 FROM resource_versions WHERE resource = ?', id) as { sha256: string }[]).map((x) => x.sha256);
     this.sql.tx(() => {
+      for (const p of this.sql.all('SELECT id FROM pdf_pages WHERE resource = ?', id)) this.store.unlinkAll('pdfPage', p.id as string);
       this.sql.run('DELETE FROM resources WHERE id = ?', id);
+      this.store.unlinkAll('resource', id);
       // Like its highlights, the questions asked about it go with it.
       this.sql.run("DELETE FROM questions WHERE json_extract(anchor, '$.resource') = ?", id);
       this.dropEmptySeries();
@@ -409,12 +404,13 @@ export class Resources {
   listPages(resource?: string): PdfPageItem[] {
     const rows = resource ? this.sql.all('SELECT * FROM pdf_pages WHERE resource = ? AND unplaced = 0 ORDER BY page_index', resource) : this.sql.all('SELECT * FROM pdf_pages WHERE unplaced = 0 ORDER BY resource, page_index');
     const reviews = this.store.reviews();
-    return rows.map((r) => toPage(r, reviews));
+    const marks = this.store.tagLinks('pdfPage');
+    return rows.map((r) => toPage(r, reviews, marks.get(r.id as string) ?? []));
   }
 
   getPage(id: string): PdfPageItem | null {
     const r = this.sql.get('SELECT * FROM pdf_pages WHERE id = ?', id);
-    return r ? toPage(r, this.store.reviews()) : null;
+    return r ? toPage(r, this.store.reviews(), this.store.tagsOf('pdfPage', r.id as string)) : null;
   }
 
   /**
@@ -429,36 +425,21 @@ export class Resources {
       const id = f.id ?? crypto.randomUUID();
       this.sql.tx(() => {
         this.sql.run(
-          'INSERT INTO pdf_pages (id, resource, version, page_index, fingerprint, note, marks, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)',
-          id, resource, f.version, pageIndex, f.fingerprint, f.note ?? '', JSON.stringify([...new Set(f.marks ?? [])]), t, t,
+          'INSERT INTO pdf_pages (id, resource, version, page_index, fingerprint, note, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)',
+          id, resource, f.version, pageIndex, f.fingerprint, f.note ?? '', t, t,
         );
+        if (f.marks) this.store.setTags('pdfPage', id, f.marks);
         if (f.review) this.store.setReview(id, f.review, this.pageAnchor(id));
       });
       return this.getPage(id)!;
     }
-    const cur = toPage(prev, new Map());
-    const marks = f.marks ? [...new Set(f.marks)] : cur.marks;
+    const cur = toPage(prev, new Map(), []);
     this.sql.tx(() => {
-      this.sql.run('UPDATE pdf_pages SET note = ?, marks = ?, updated_at = ? WHERE id = ?', f.note ?? cur.note, JSON.stringify(marks), t, cur.id);
+      this.sql.run('UPDATE pdf_pages SET note = ?, updated_at = ? WHERE id = ?', f.note ?? cur.note, t, cur.id);
+      if (f.marks) this.store.setTags('pdfPage', cur.id, f.marks);
       if (f.review !== undefined) this.store.setReview(cur.id, f.review, this.pageAnchor(cur.id));
     });
     return this.getPage(cur.id)!;
-  }
-
-  /** Takes mark ids that no longer exist off every page, so no page keeps a dead one. Returns how many pages changed. */
-  pruneMarks(keep: string[]): number {
-    const ok = new Set(keep);
-    let n = 0;
-    this.sql.tx(() => {
-      for (const r of this.sql.all('SELECT * FROM pdf_pages')) {
-        const p = toPage(r, new Map());
-        const marks = p.marks.filter((id) => ok.has(id));
-        if (marks.length === p.marks.length) continue;
-        this.sql.run('UPDATE pdf_pages SET marks = ? WHERE id = ?', JSON.stringify(marks), p.id);
-        n++;
-      }
-    });
-    return n;
   }
 
   // ───────────────────────── table of contents ─────────────────────────
@@ -859,7 +840,7 @@ export class Resources {
     const reviews = this.store.reviews();
     return {
       highlights: this.sql.all('SELECT * FROM pdf_annotations WHERE resource = ? AND unplaced = 1 ORDER BY page_index, created_at', id).map((r) => toHighlight(r, reviews)),
-      pages: this.sql.all('SELECT * FROM pdf_pages WHERE resource = ? AND unplaced = 1 ORDER BY page_index', id).map((r) => toPage(r, reviews)),
+      pages: this.sql.all('SELECT * FROM pdf_pages WHERE resource = ? AND unplaced = 1 ORDER BY page_index', id).map((r) => toPage(r, reviews, this.store.tagsOf('pdfPage', r.id as string))),
       toc: this.sql.all('SELECT * FROM pdf_toc WHERE resource = ? AND unplaced = 1 ORDER BY page_index', id).map(toToc),
       questions: this.store.listQuestions({ resource: id }).filter((q) => q.unplaced),
     };
@@ -925,8 +906,7 @@ export class Resources {
   }
 
   private setLabels(id: string, labels: string[]): void {
-    this.sql.run('DELETE FROM resource_labels WHERE resource = ?', id);
-    for (const l of new Set(labels)) this.sql.run("INSERT INTO resource_labels (resource, label_id) SELECT ?, id FROM labels WHERE id = ?", id, l);
+    this.store.setTags('resource', id, labels);
   }
 
   private setCourses(id: string, courses: string[]): void {

@@ -300,10 +300,43 @@ describe('migration 27 (paper type, resource labels)', () => {
     expect(store.sql.all('PRAGMA foreign_key_check')).toHaveLength(0);
     store.sql.run("INSERT INTO resources (id, title, type, created_at, updated_at) VALUES ('r2','New','paper',1,1)");
     store.sql.run("INSERT INTO resource_series (id, title, type, created_at) VALUES ('s2','Ser2','paper',1)");
-    store.sql.run("INSERT INTO resource_labels (resource, label_id) VALUES ('r2','lb')");
+    store.sql.run("INSERT INTO tag_links (tag_id, kind, ref, created_at) VALUES ('tg-interesting','resource','r2',1)");
     expect(() => store.sql.run("INSERT INTO resources (id, title, type, created_at, updated_at) VALUES ('r3','Bad','video',1,1)")).toThrow();
     store.sql.run("DELETE FROM resources WHERE id = 'r2'");
-    expect(store.sql.all('SELECT * FROM resource_labels')).toHaveLength(0);
+    store.close();
+  });
+});
+
+describe('migration 33 (one tag concept)', () => {
+  it('turns labels, question and material labels and page marks into tags with links, keeping ids', () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'wb-mig33-')), 'workbook.db');
+    const pageMarks = JSON.stringify(['m1', 'l1', 'gone']);
+    oldDatabase(
+      file,
+      32,
+      `INSERT INTO labels (id, name, color, scope, sort, created_at, updated_at) VALUES ('l1','Wichtig','yellow','any',0,1,1), ('m1','Klausur','','page',0,1,1), ('m2','wichtig','','page',1,1,1);
+       INSERT INTO question_labels (question_id, label_id) VALUES ('q1','l1'), ('q1','m2');
+       INSERT INTO resources (id, title, type, created_at, updated_at) VALUES ('r1','Old','notes',1,1);
+       INSERT INTO resource_labels (resource, label_id) VALUES ('r1','m1');
+       INSERT INTO pdf_pages (id, resource, version, page_index, fingerprint, note, marks, created_at, updated_at) VALUES ('p1','r1','v',0,'f','', '${pageMarks}',1,1);`,
+    );
+    const store = new Store(file);
+    // The page mark named like a highlight label is that tag; the default tag comes last.
+    expect(store.listTags()).toEqual([{ id: 'l1', name: 'Wichtig', color: 'yellow' }, { id: 'm1', name: 'Klausur', color: '' }, { id: 'tg-interesting', name: 'Interesting', color: '' }]);
+    expect(store.tagsOf('question', 'q1')).toEqual(['l1']);
+    expect(store.tagsOf('resource', 'r1')).toEqual(['m1']);
+    expect([...store.tagsOf('pdfPage', 'p1')].sort()).toEqual(['l1', 'm1']);
+    expect(store.sql.get("SELECT name FROM sqlite_master WHERE name IN ('labels','question_labels','resource_labels')")).toBeUndefined();
+    // Typing a name finds the tag of that name in any case; merge and delete clean up the links.
+    expect(store.ensureTag('KLAUSUR')).toBe('m1');
+    const t = store.ensureTag('Neu');
+    store.setTags('question', 'q1', ['l1', t, 'nope']);
+    expect(store.tagsOf('question', 'q1')).toHaveLength(2);
+    expect(store.mergeTags(t, 'm1')).toBe(true);
+    expect([...store.tagsOf('question', 'q1')].sort()).toEqual(['l1', 'm1']);
+    expect(store.updateTag('m1', { name: 'wichtig' })).toBe(false);
+    expect(store.deleteTag('l1')).toBe(true);
+    expect(store.tagsOf('pdfPage', 'p1')).toEqual(['m1']);
     store.close();
   });
 });
@@ -477,12 +510,13 @@ describe('migration 16', () => {
     const got = store.getSettings();
     expect(got.displayName).toBe('Ada');
     expect(got.highlightLabels).toEqual([{ id: 'l1', name: 'Wichtig', color: '#ff0000' }, { id: 'l2', name: '', color: 'blue' }]);
-    expect(got.pdfPageMarks).toEqual([{ id: 'm1', name: 'Klausur' }, { id: 'm2', name: 'Unklar' }]);
+    // Page marks are tags now: the colored labels first, then the marks, then the default tag.
+    expect(got.pdfPageMarks).toEqual([{ id: 'l1', name: 'Wichtig' }, { id: 'l2', name: '' }, { id: 'm1', name: 'Klausur' }, { id: 'm2', name: 'Unklar' }, { id: 'tg-interesting', name: 'Interesting' }]);
     expect(String(store.sql.get("SELECT value FROM settings WHERE course = '' AND key = 'settings'")!.value)).not.toContain('Wichtig');
     // Changing one list leaves the other alone.
     store.saveSettings({ pdfPageMarks: [{ id: 'm2', name: 'Unklar!' }] });
     expect(store.getSettings().highlightLabels).toHaveLength(2);
-    expect(store.getSettings().pdfPageMarks).toEqual([{ id: 'm2', name: 'Unklar!' }]);
+    expect(store.getSettings().pdfPageMarks.map((m) => m.name)).toEqual(['Wichtig', '', 'Unklar!']);
     store.close();
     fs.rmSync(dir, { recursive: true, force: true });
   });
