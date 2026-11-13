@@ -1,5 +1,6 @@
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
-import { useEffect, useRef, useState } from 'react';
+import { findCitations, textItems, type BibEntry } from '@wb/shared';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useT } from '@/lib/i18n';
 import { cropOf, CROP_H, CROP_W, linksOf, resolveDest, type PageLink, type Target } from '@/lib/pdfLinks';
@@ -7,10 +8,15 @@ import { cropOf, CROP_H, CROP_W, linksOf, resolveDest, type PageLink, type Targe
 /** What a click on an internal link does; the viewer keeps the way back. */
 export type FollowLink = (target: Target) => void;
 
-const HOVER_MS = 350;
+export const HOVER_MS = 350;
+
+/** The entries to link plain-text citations to (V6, a setting of the viewer); undefined when it is off or there are none. */
+export const CitationContext = createContext<readonly BibEntry[] | undefined>(undefined);
+
+const overlaps = (a: PageLink, b: PageLink) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 /** A picture of the target, shown by the link, drawn once per target. */
-function Peek({ doc, target, at }: { doc: PDFDocumentProxy; target: Target; at: DOMRect }) {
+export function Peek({ doc, target, at }: { doc: PDFDocumentProxy; target: Target; at: DOMRect }) {
   const host = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -38,9 +44,12 @@ function Peek({ doc, target, at }: { doc: PDFDocumentProxy; target: Target; at: 
   );
 }
 
+const targetOf = (doc: PDFDocumentProxy, l: PageLink): Promise<Target | null> => (l.target ? Promise.resolve(l.target) : resolveDest(doc, l.dest));
+
 /** The links of one page, laid over it: they lead to places in the PDF or to addresses. */
 export function PdfLinkLayer({ doc, page, follow }: { doc: PDFDocumentProxy; page: PDFPageProxy; follow: FollowLink }) {
   const label = useT().pdfLinkGo;
+  const entries = useContext(CitationContext);
   const [list, setList] = useState<PageLink[]>([]);
   const [peek, setPeek] = useState<{ target: Target; at: DOMRect } | null>(null);
   const timer = useRef(0);
@@ -48,19 +57,35 @@ export function PdfLinkLayer({ doc, page, follow }: { doc: PDFDocumentProxy; pag
 
   useEffect(() => {
     let live = true;
-    void linksOf(page).then((l) => live && setList(l));
+    void (async () => {
+      const real = await linksOf(page);
+      if (!live) return;
+      setList(real);
+      if (!entries?.length) return;
+      const content = await page.getTextContent().catch(() => null);
+      if (!live || !content) return;
+      const first = entries[0]!;
+      const here = page.pageNumber - 1;
+      // Not in the references themselves, and not where the PDF links already.
+      if (here > first.pageIndex) return;
+      const cites = findCitations(textItems(content.items, page.getViewport({ scale: 1 })), entries)
+        .filter((c) => here < first.pageIndex || c.y < first.y - 0.01)
+        .map((c): PageLink => ({ x: c.x, y: c.y, w: c.w, h: c.h, target: { page: entries[c.entry]!.pageIndex + 1, y: entries[c.entry]!.y } }))
+        .filter((c) => !real.some((r) => overlaps(c, r)));
+      if (cites.length) setList([...real, ...cites]);
+    })();
     return () => {
       live = false;
     };
-  }, [page]);
+  }, [page, entries]);
   useEffect(() => () => clearTimeout(timer.current), []);
 
   const enter = (l: PageLink, el: HTMLElement) => {
-    if (!l.dest) return;
+    if (!l.dest && !l.target) return;
     hovered.current = l;
     clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
-      void resolveDest(doc, l.dest).then((target) => {
+      void targetOf(doc, l).then((target) => {
         if (target && hovered.current === l) setPeek({ target, at: el.getBoundingClientRect() });
       });
     }, HOVER_MS);
@@ -72,7 +97,7 @@ export function PdfLinkLayer({ doc, page, follow }: { doc: PDFDocumentProxy; pag
   };
   const go = (l: PageLink) => {
     leave();
-    void resolveDest(doc, l.dest).then((t) => t && follow(t));
+    void targetOf(doc, l).then((t) => t && follow(t));
   };
 
   if (!list.length) return null;

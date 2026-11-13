@@ -49,6 +49,7 @@ import {
 import { typstContext } from '@/lib/typstContext';
 import { AnnotationLayer } from '@/components/AnnotationLayer';
 import { QuestionPopup } from '@/components/QuestionPopup';
+import { PdfRefPeek } from '@/components/PdfRefPeek';
 import { PdfRefPicker } from '@/components/PdfRefPicker';
 import { useRewards } from '@/lib/rewards';
 import { THREAD_KINDS, type ThreadKind } from '@wb/shared';
@@ -64,6 +65,7 @@ export function App() {
       <Shell />
       <SaveNotice />
       <TipLayer />
+      <PdfRefPeek />
     </Router>
   );
 }

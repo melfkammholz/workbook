@@ -13,13 +13,14 @@ import { PdfToc, type TocActions } from '@/components/PdfToc';
 import { useBibImport } from '@/components/BibImport';
 import { PdfReferences } from '@/components/PdfReferences';
 import { fixEntry, rereadBibliography, setWantToRead, useBibliography, useBibliographyReader, type Fix } from '@/lib/bibliography';
+import { CitationContext } from '@/components/PdfLinks';
 import { NotesView, SlidesView, type Marks, type PdfLayout, type Size } from '@/components/PdfViewer';
 import { IconButton, Segmented, Spinner, Empty } from '@/components/ui';
 import { api, useSettings } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { altKey, usePageKeys } from '@/lib/keys';
-import { keepPdf, openedPdf } from '@/lib/pdf';
+import { holdPdf, keepPdf, openedPdf } from '@/lib/pdf';
 import { swatchProps } from '@/lib/annotations';
 import { usePdfAnnotations, usePdfAnnotationsOn } from '@/lib/pdfAnnotations';
 import { pdfPageRefText, savePdfPage, usePdfPages, type PagePatch } from '@/lib/pdfPages';
@@ -212,6 +213,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   // The PDF stays open after leaving (`keepPdf`), the last few of them; this only marks it as used when it was open.
   useEffect(() => {
     let live = true;
+    const release = holdPdf(resource.id, resource.file.sha256);
     keepPdf(resource.id, resource.file.sha256, fileUrl(resource)).then(
       (o) => {
         if (!live) return;
@@ -234,6 +236,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
     );
     return () => {
       live = false;
+      release();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resource.id, resource.file.sha256]);
@@ -554,6 +557,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
     return pdfPageRefText(resource.id, item, (await pageInfo(n)).quote);
   };
 
+  const [citations, setCitationsOn] = useState(() => stored('wb-pdf-citations') === '1');
   const view =
     failed ? (
       <div className="grid h-full place-items-center">
@@ -644,6 +648,20 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
                   }
                 />
               </div>
+              {bibliography?.length ? (
+                <label className="mt-2 flex items-start gap-2 text-[13px]" data-tip={t.pdfCitationsHint}>
+                  <input
+                    type="checkbox"
+                    checked={citations}
+                    onChange={(e) => {
+                      setCitationsOn(e.target.checked);
+                      store('wb-pdf-citations', e.target.checked ? '1' : '0');
+                    }}
+                    className="mt-0.5"
+                  />
+                  {t.pdfCitations}
+                </label>
+              ) : null}
               {doc && toc ? <PdfToc entries={toc} current={current} currentKey={chapter?.key ?? null} labelOf={labelOf} onGo={goto} actions={tocActions} hasOutline={!!outline?.length} /> : null}
             </aside>
             <ColumnHandle side="left" width={leftW} onWidth={setLeftW} label={t.pdfResizeToc} />
@@ -662,7 +680,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
             </button>
           ) : null}
           <div ref={scroller} data-pdf-scroller={resource.id} className="min-h-0 flex-1 overflow-auto bg-sunk">
-            {view}
+            <CitationContext.Provider value={citations ? bibliography : undefined}>{view}</CitationContext.Provider>
           </div>
           {doc ? <PdfQuestionBar resource={resource} current={current} pageInfo={pageInfo} scroller={scroller} /> : null}
         </div>

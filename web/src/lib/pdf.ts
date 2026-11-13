@@ -57,6 +57,14 @@ interface Kept {
 const kept = new Map<string, Kept>();
 const keyOf = (id: string, sha256: string) => `${id}@${sha256}`;
 
+/** Keys of the PDFs a viewer shows right now: never evicted, whatever else is opened (a hover on a reference opens others). */
+const shown = new Set<string>();
+export function holdPdf(id: string, sha256: string): () => void {
+  const key = keyOf(id, sha256);
+  shown.add(key);
+  return () => void shown.delete(key);
+}
+
 function drop(key: string): void {
   const k = kept.get(key);
   if (!k) return;
@@ -97,7 +105,10 @@ export function keepPdf(id: string, sha256: string, url: string): Promise<Opened
   };
   entry.promise.catch(() => kept.get(key) === entry && kept.delete(key));
   kept.set(key, entry);
-  while (kept.size > KEEP_DOCS) drop(kept.keys().next().value!);
+  for (const k of [...kept.keys()]) {
+    if (kept.size <= KEEP_DOCS) break;
+    if (k !== key && !shown.has(k)) drop(k);
+  }
   return entry.promise;
 }
 

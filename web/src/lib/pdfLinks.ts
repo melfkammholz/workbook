@@ -10,6 +10,8 @@ export interface PageLink {
   url?: string;
   /** A place in the PDF: a name, or an explicit destination array. */
   dest?: unknown;
+  /** A place found by matching the text (a citation without a link), already resolved. */
+  target?: Target;
 }
 
 /** Where a link leads in the PDF: a page (1-based) and how far down it (0-1), `null` when the page as a whole. */

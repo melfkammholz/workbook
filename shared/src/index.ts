@@ -965,3 +965,4 @@ export * from './pdfToc';
 export * from './pdfReanchor';
 export * from './questions';
 export * from './bibliography';
+export * from './citations';
