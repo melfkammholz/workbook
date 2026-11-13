@@ -27,13 +27,16 @@ export function preloadPdf(): void {
   });
 }
 
+/** Fonts and character maps for PDFs that do not embed them: without these their math symbols and CJK text are not drawn. */
+const FONT_ASSETS = { standardFontDataUrl: '/pdfjs/standard_fonts/', cMapUrl: '/pdfjs/cmaps/', cMapPacked: true };
+
 /**
  * The whole file is sent in one response (`disableRange`): the server is on this computer, and the browser keeps the
  * file because a version of it never changes.
  */
 export async function openPdf(url: string): Promise<PDFDocumentProxy> {
   const pdfjs = await loadPdfjs();
-  return pdfjs.getDocument({ url, disableRange: true, disableStream: false, disableAutoFetch: true }).promise;
+  return pdfjs.getDocument({ ...FONT_ASSETS, url, disableRange: true, disableStream: false, disableAutoFetch: true }).promise;
 }
 
 /** An open PDF with what the viewer needs before its first paint. */
@@ -162,7 +165,7 @@ export const isPdf = (filename: string) => /\.pdf$/i.test(filename);
 export async function pdfMetadata(file: File): Promise<{ title: string; author: string }> {
   const pdfjs = await loadPdfjs();
   const url = URL.createObjectURL(file);
-  const task = pdfjs.getDocument({ url, disableAutoFetch: true });
+  const task = pdfjs.getDocument({ ...FONT_ASSETS, url, disableAutoFetch: true });
   try {
     const doc = await task.promise;
     const info = ((await doc.getMetadata()).info ?? {}) as { Title?: unknown; Author?: unknown };

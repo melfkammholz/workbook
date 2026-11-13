@@ -560,7 +560,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
     return pdfPageRefText(resource.id, item, (await pageInfo(n)).quote);
   };
 
-  const [citations, setCitationsOn] = useState(() => stored('wb-pdf-citations') === '1');
+  const [citations, setCitationsOn] = useState(() => stored('wb-pdf-citations') !== '0');
   const view =
     failed ? (
       <div className="grid h-full place-items-center">

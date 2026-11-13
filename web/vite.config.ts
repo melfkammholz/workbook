@@ -45,8 +45,32 @@ function precompress(): Plugin {
   };
 }
 
+/** The font files and character maps pdf.js needs for PDFs that do not embed their fonts (served at /pdfjs/, copied into the build). */
+function pdfjsAssets(): Plugin {
+  const root = path.resolve(import.meta.dirname, '../node_modules/pdfjs-dist');
+  const dirs = ['standard_fonts', 'cmaps'];
+  return {
+    name: 'wb-pdfjs-assets',
+    configureServer(server) {
+      server.middlewares.use('/pdfjs', (req, res, next) => {
+        const file = path.join(root, decodeURIComponent((req.url ?? '').split('?')[0]!));
+        if (!dirs.some((d) => file.startsWith(path.join(root, d) + path.sep)) || !fs.existsSync(file)) return next();
+        res.setHeader('Content-Type', 'application/octet-stream');
+        fs.createReadStream(file).pipe(res);
+      });
+    },
+    generateBundle() {
+      for (const d of dirs) {
+        for (const f of fs.readdirSync(path.join(root, d))) {
+          this.emitFile({ type: 'asset', fileName: `pdfjs/${d}/${f}`, source: fs.readFileSync(path.join(root, d, f)) });
+        }
+      }
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), preloadFonts(), precompress()],
+  plugins: [react(), tailwindcss(), preloadFonts(), pdfjsAssets(), precompress()],
   resolve: { alias: { '@': path.resolve(import.meta.dirname, 'src') } },
   server: {
     port: 5173,
