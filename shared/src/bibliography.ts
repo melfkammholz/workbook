@@ -6,12 +6,52 @@ export interface TextLine {
   text: string;
   x: number;
   y: number;
+  /** 1 for a line of a right-hand column (see `linesOf`), else absent. */
+  col?: number;
 }
 export type PageLines = TextLine[];
 
-/** Lines from the text items of a page (`textItems` of pdfReanchor): items on one baseline, left to right, in reading order. */
-export function linesOf(items: readonly { str: string; x: number; y: number; w: number; h: number }[]): PageLines {
-  const rows: { y: number; h: number; items: typeof items[number][] }[] = [];
+type Item = { str: string; x: number; y: number; w: number; h: number };
+
+/**
+ * The x position (fraction of the page) of the empty strip between two text columns, or null for a one-column page.
+ * It is the emptiest stretch around the middle of the page that few items cross (titles and figures may), with a good
+ * amount of text on both sides.
+ */
+export function columnGutter(items: readonly Item[]): number | null {
+  const text = items.filter((i) => i.str.trim());
+  if (text.length < 12) return null;
+  const BINS = 100;
+  const cover = new Array<number>(BINS).fill(0);
+  for (const it of text) {
+    const from = Math.max(0, Math.floor(it.x * BINS));
+    const to = Math.min(BINS - 1, Math.floor((it.x + it.w) * BINS));
+    for (let b = from; b <= to; b++) cover[b]!++;
+  }
+  // The widest run of bins in 0.35-0.65 that at most a few items cross.
+  const limit = Math.max(2, Math.floor(text.length * 0.06));
+  let best: [number, number] | null = null;
+  for (let b = 35; b <= 65; ) {
+    if (cover[b]! > limit) {
+      b++;
+      continue;
+    }
+    let e = b;
+    while (e + 1 <= 65 && cover[e + 1]! <= limit) e++;
+    if (!best || e - b > best[1] - best[0]) best = [b, e];
+    b = e + 1;
+  }
+  // At least 1.5% of the page wide (a word space is narrower).
+  if (!best || best[1] - best[0] + 1 < 2) return null;
+  const g = (best[0] + best[1] + 1) / 2 / BINS;
+  const left = text.filter((i) => i.x + i.w <= g).length;
+  const right = text.filter((i) => i.x >= g).length;
+  return Math.min(left, right) >= Math.max(8, text.length * 0.25) ? g : null;
+}
+
+/** Items on one baseline, left to right, as lines. */
+function rowsOf(items: readonly Item[]): PageLines {
+  const rows: { y: number; h: number; items: Item[] }[] = [];
   for (const it of items) {
     if (!it.str.trim()) continue;
     const mid = it.y + it.h / 2;
@@ -32,6 +72,32 @@ export function linesOf(items: readonly { str: string; x: number; y: number; w: 
     }
     return { text, x: sorted[0]!.x, y: r.y - r.h / 2 };
   });
+}
+
+/**
+ * Lines from the text items of a page (`textItems` of pdfReanchor): items on one baseline, left to right, in reading
+ * order. On a two-column page each column is read on its own (the left one, then the right one; lines across both
+ * columns, like a title, stay where they are), and the lines of the right column carry `col: 1`.
+ */
+export function linesOf(items: readonly Item[]): PageLines {
+  const g = columnGutter(items);
+  if (g === null) return rowsOf(items);
+  const wide = items.filter((i) => i.x < g && i.x + i.w > g);
+  const lefts = items.filter((i) => i.x + i.w <= g || (i.x < g && !wide.includes(i)));
+  const rights = items.filter((i) => i.x >= g);
+  const wideLines = rowsOf(wide);
+  // Each stretch between two lines that span the page holds a left and a right column.
+  const bounds = [-1, ...wideLines.map((l) => l.y), 2];
+  const out: PageLines = [];
+  for (let k = 0; k + 1 < bounds.length; k++) {
+    const [top, bottom] = [bounds[k]!, bounds[k + 1]!];
+    const within = (i: Item) => i.y + i.h / 2 >= top && i.y + i.h / 2 < bottom;
+    out.push(...rowsOf(lefts.filter(within)));
+    out.push(...rowsOf(rights.filter(within)).map((l) => ({ ...l, col: 1 })));
+    const w = wideLines[k];
+    if (w) out.push(w);
+  }
+  return out;
 }
 
 /** What the parser makes of one entry: where it starts, its text, and the fields that could be read. */
@@ -62,6 +128,8 @@ const END_HEADING = /^(?:[A-Z]\.?\s+|\d+\.?\s+)?(appendix|appendices|anhang|anh[
 const MARKER = /^(\[\s*\d{1,4}\s*\]|\d{1,4}\s*\.(?=\s)|\(\d{1,4}\))\s*/;
 // "J. Comp. Phys." continues a title's venue; initials only start an entry when a surname is followed by a comma, "and", "&" or "et al".
 const SURNAME_START = /^(?:[A-ZÄÖÜ][\p{L}'’-]+(?:\s+(?:van|von|de|der|den|du|di|la|le))?,\s+(?:[A-Z]\.|[A-ZÄÖÜ][\p{L}]+)|[A-Z]\.\s?(?:[A-Z]\.\s?)*[A-ZÄÖÜ][\p{L}'’-]+(?:\s[A-ZÄÖÜ][\p{L}'’-]+)?(?=\s*(?:,|&|and\b|et al\b)))/u;
+/** Figure captions and panel labels ("(a) (b)") that sit among the references on the last page. */
+const FIGURE_JUNK = /^(?:(?:figure|fig\.|table|abbildung|tabelle)\s*\d+\s*[.:]|(?:\([a-z]\)\s*)+$)/i;
 const ENDS_ENTRY = /(?:[.?!)\]"”]|\d)\s*$/;
 
 /** The index (page, line) of the last line that is the heading of a references section, looking back from the end. */
@@ -103,17 +171,22 @@ export function parseBibliography(pages: readonly PageLines[]): ParsedEntry[] {
         p = pages.length;
         break;
       }
-      if (isNoise(t)) continue;
+      if (isNoise(t) || FIGURE_JUNK.test(t)) continue;
       flat.push({ ...l, text: t, page: p });
     }
   }
   if (flat.length === 0) return [];
 
   // Left margin of the section; a hanging indent (first lines out, the rest in) tells entries apart.
-  const xs = flat.map((l) => l.x).sort((a, b) => a - b);
-  const left = xs[Math.floor(xs.length * 0.1)]!;
+  // Each column has its own margin.
+  const lefts = new Map<number, number>();
+  for (const c of new Set(flat.map((l) => l.col ?? 0))) {
+    const xs = flat.filter((l) => (l.col ?? 0) === c).map((l) => l.x).sort((a, b) => a - b);
+    lefts.set(c, xs[Math.floor(xs.length * 0.1)]!);
+  }
+  const marginOf = (l: Flat) => lefts.get(l.col ?? 0)!;
   const tol = 0.012;
-  const indented = flat.filter((l) => l.x > left + tol).length / flat.length;
+  const indented = flat.filter((l) => l.x > marginOf(l) + tol).length / flat.length;
   const hanging = indented > 0.3;
   const markers = flat.filter((l) => MARKER.test(l.text)).length;
   const numbered = markers >= Math.max(2, flat.length * 0.15);
@@ -127,16 +200,18 @@ export function parseBibliography(pages: readonly PageLines[]): ParsedEntry[] {
     cur = null;
   };
   let prev: Flat | null = null;
+  let lastNumber = 0;
   for (const l of flat) {
     const m = MARKER.exec(l.text);
     let starts: boolean;
     if (!cur || !prev) starts = true;
-    else if (numbered) starts = !!m;
-    else if (hanging) starts = l.x <= left + tol && ENDS_ENTRY.test(prev.text);
+    else if (numbered) starts = !!m && isNextMarker(m[1]!, lastNumber);
+    else if (hanging) starts = l.x <= marginOf(l) + tol && ENDS_ENTRY.test(prev.text);
     else starts = ENDS_ENTRY.test(prev.text) && SURNAME_START.test(l.text);
     if (starts) {
       flush();
       cur = { start: l, marker: m ? m[1]!.replace(/\s+/g, '') : null, parts: [m ? l.text.slice(m[0].length) : l.text] };
+      if (m) lastNumber = Number(/\d+/.exec(m[1]!)![0]);
     } else cur!.parts.push(l.text);
     prev = l;
   }
@@ -145,14 +220,27 @@ export function parseBibliography(pages: readonly PageLines[]): ParsedEntry[] {
   return entries.length >= 2 ? entries.slice(0, MAX_BIB_ENTRIES) : [];
 }
 
+/** A bracketed marker always starts an entry; a bare "12." only when it follows the previous number ("1992. Publisher" at a line start does not). */
+function isNextMarker(marker: string, last: number): boolean {
+  if (marker.startsWith('[')) return true;
+  const n = Number(/\d+/.exec(marker)![0]);
+  return last === 0 ? n === 1 : n === last + 1;
+}
+
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
+
+/** Words that take a hyphen in a compound ("Two-dimensional"), so a break after them is kept. */
+const COMPOUND_PREFIX = /(?:^|\s)(?:two|three|four|one|multi|non|self|semi|anti|real|high|low|long|short|well|large|small|first|second|higher|lower)-$/i;
 
 /** Joins the lines of an entry, mending words broken with a hyphen at the end of a line (but not in "well-known" style compounds at a break). */
 export function joinLines(lines: readonly string[]): string {
   let out = '';
   for (const l of lines) {
     if (!out) out = l;
-    else if (/[a-zäöü]-$/.test(out) && /^[a-zäöü]/.test(l)) out = out.slice(0, -1) + l;
+    else if (/[a-zäöü]-$/.test(out) && /^[a-zäöü]/.test(l) && !COMPOUND_PREFIX.test(out)) out = out.slice(0, -1) + l;
+    else if (/[A-Z]{2,}-$/.test(out) && /^[A-Z]{2,}/.test(l)) out = out.slice(0, -1) + l;
+    // A kept hyphen ("Two-" "dimensional") or a page range broken after its dash ("471–" "483") is joined without a space.
+    else if ((/[a-zäöü]-$/.test(out) && /^[a-zäöü]/.test(l)) || (/\d[–-]$/.test(out) && /^\d/.test(l))) out += l;
     else out += ' ' + l;
   }
   return out.trim();
@@ -189,15 +277,32 @@ export function workFields(text: string): WorkFields {
       url,
     };
   }
+  // ACM style: "Authors. 2014. Title. Venue."
+  const acm = /^(.{3,300}?)\.\s+(?:19|20)\d{2}[a-z]?\.\s+(\S.*)$/s.exec(bare);
+  if (acm && !/\d/.test(acm[1]!)) {
+    const parts = splitSentences(acm[2]!);
+    return {
+      title: (parts[0] ?? '').replace(/^["“„']|["”“']$/g, '').trim().slice(0, 300),
+      authors: acm[1]!.trim().slice(0, 400),
+      year,
+      venue: parts.slice(1).join('. ').replace(/^(in|published in)[:\s]+/i, '').replace(/[\s,.;]+$/, '').slice(0, 300),
+      doi,
+      url,
+    };
+  }
   const paren = /^(.*?)\(\s*(?:19|20)\d{2}[a-z]?\s*\)\.?\s*(.*)$/s.exec(bare);
   if (paren && paren[1]!.length < 250) {
     authors = paren[1]!.trim().replace(/[.,:]$/, '');
     rest = splitSentences(paren[2]!);
   } else if (sentences.length >= 2) {
     // IEEE without quotes (books): "G. Hutton, Programming in Haskell. Publisher, 2016": the authors, then the title.
-    const person = String.raw`(?:[A-ZÄÖÜ]\.\s?)+[\p{L}'’-]+(?:\s[\p{L}'’-]+)?`;
+    const person = String.raw`(?:[A-ZÄÖÜ]\.\s?)+(?:(?:van|von|de|der|den|da|di|du|la|le|dos|del)\s)*[\p{L}'’-]+(?:\s[\p{L}'’-]+)?`;
+    const only = new RegExp(String.raw`^${person}(?:(?:,\s+(?:and\s+)?|\s+and\s+|\s*&\s*)${person})*$`, 'u');
     const lead = new RegExp(String.raw`^(${person}(?:,\s+(?:and\s+)?${person})*),\s+(?:and\s+${person},\s+)?(\S.*)$`, 'u').exec(sentences[0]!);
-    if (lead) {
+    if (only.test(sentences[0]!)) {
+      authors = sentences[0]!;
+      rest = sentences.slice(1);
+    } else if (lead) {
       authors = lead[1]!;
       rest = [lead[2]!, ...sentences.slice(1)];
     } else {
@@ -359,6 +464,8 @@ export interface BibEntryInput {
 export interface LibraryWork extends Work {
   citedBy: { resource: string; title: string; count: number }[];
   similar: SimilarWork[];
+  /** Ids of the student's tags on this work. */
+  tags: string[];
 }
 
 /** A work read from a pasted or uploaded BibTeX/Hayagriva text, with the library's works it looks like. */
@@ -377,5 +484,3 @@ export interface ImportChoice extends WorkFields {
   raw: string;
   into?: string | null | undefined;
 }
-  /** Ids of the student's tags on this work. */
-  tags: string[];

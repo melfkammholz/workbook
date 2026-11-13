@@ -206,3 +206,83 @@ describe('unsure entries', () => {
     expect(entries.some((e) => e.text.includes('cascades. J. Comp. Phys.'))).toBe(true);
   });
 });
+
+describe('two-column pages', () => {
+  const item = (str: string, x: number, y: number, w = 0.3) => ({ str, x, y, w, h: 0.012 });
+  /** A page whose rows each hold a left and a right column text, as pdf.js reports them. */
+  const twoColumns = (rows: [string, string][]) =>
+    rows.flatMap(([l, r], i) => [item(l, 0.1, 0.1 + i * 0.02, 0.37), item(r, 0.55, 0.1 + i * 0.02, 0.35)].filter((x) => x.str));
+
+  it('reads the left column, then the right one, instead of joining them on a baseline', () => {
+    const rows: [string, string][] = Array.from({ length: 12 }, (_, i) => [`left ${i}`, `right ${i}`]);
+    const lines = linesOf(twoColumns(rows));
+    expect(lines.map((l) => l.text)).toEqual([...rows.map((r) => r[0]), ...rows.map((r) => r[1])]);
+    expect(lines.filter((l) => l.col === 1)).toHaveLength(12);
+  });
+
+  it('keeps a line across both columns in place and a one-column page as it was', () => {
+    const rows: [string, string][] = Array.from({ length: 10 }, (_, i) => [`left ${i}`, `right ${i}`]);
+    const items = [item('A title across the whole page', 0.1, 0.05, 0.8), ...twoColumns(rows)];
+    expect(linesOf(items)[0]!.text).toBe('A title across the whole page');
+    const single = Array.from({ length: 12 }, (_, i) => item(`line ${i}`, 0.1, 0.1 + i * 0.02, 0.8));
+    expect(linesOf(single).map((l) => l.text)).toEqual(single.map((i) => i.str));
+  });
+
+  it('parses a numbered bibliography in two columns', () => {
+    const col = (text: string, x: number, y: number) => item(text, x, y, 0.35);
+    const items = [
+      ...Array.from({ length: 8 }, (_, i) => col(`ordinary text ${i} of the left column`, 0.1, 0.1 + i * 0.02)),
+      col('References', 0.1, 0.5),
+      col('[1] A. First. A very long title that is', 0.1, 0.52),
+      col('broken over lines. Venue, 1990.', 0.12, 0.54),
+      col('[2] B. Second. A title. Venue, 1995.', 0.1, 0.56),
+      col('[3] A. Third. Another work that goes on', 0.55, 0.1),
+      col('and ends here. Venue, 1999.', 0.57, 0.12),
+      ...Array.from({ length: 7 }, (_, i) => col(`[${i + 4}] C. Other. Title ${i}. Venue, 200${i}.`, 0.55, 0.14 + i * 0.02)),
+    ];
+    const entries = parseBibliography([linesOf(items)]);
+    expect(entries.map((e) => e.marker)).toEqual(['[1]', '[2]', '[3]', '[4]', '[5]', '[6]', '[7]', '[8]', '[9]', '[10]']);
+    expect(entries[0]!.text).toBe('A. First. A very long title that is broken over lines. Venue, 1990.');
+    expect(entries[2]!.text).toBe('A. Third. Another work that goes on and ends here. Venue, 1999.');
+  });
+
+  it('does not take "1992. Publisher" at a line start for the marker of a new entry', () => {
+    const p = page([
+      [0.1, 'References'],
+      [0.1, '[1] First, A. Title one. Venue, October'],
+      [0.1, '1992. IEEE CS Press.'],
+      [0.1, '[2] Second, B. Title two. Venue, 2002.'],
+    ]);
+    const e = parseBibliography([p]);
+    expect(e).toHaveLength(2);
+    expect(e[0]!.text).toContain('October 1992. IEEE CS Press.');
+    const bare = page([[0.1, 'References'], [0.1, '1. First, A. Title one. Venue, 2001.'], [0.1, '2. Second, B. Title two. Venue, 2002.']]);
+    expect(parseBibliography([bare])).toHaveLength(2);
+  });
+
+  it('keeps compound words, page ranges and author lists of several names whole', () => {
+    expect(joinLines(['Two-', 'dimensional simulation', 'pages 471–', '483, SIG-', 'GRAPH', 'Introduc-', 'tion'])).toBe('Two-dimensional simulation pages 471–483, SIGGRAPH Introduction');
+    const f = workFields('J. X. Chen, N. da Vittoria Lobo, C. E. Hughes, and J. M. Moshell. Real-Time Fluid Simulation. IEEE CG&A, pages 52–61, 1997.');
+    expect(f.authors).toBe('J. X. Chen, N. da Vittoria Lobo, C. E. Hughes, and J. M. Moshell');
+    expect(f.title).toBe('Real-Time Fluid Simulation');
+  });
+
+  it('skips figure captions that follow the references', () => {
+    const p = page([
+      [0.1, 'References'],
+      [0.1, '[1] First, A. Title one. Venue, 2001.'],
+      [0.1, '[2] Second, B. Title two. Venue, 2002.'],
+      [0.1, '(a) (b) (c)'],
+      [0.1, 'Figure 4: Snapshots from our solver.'],
+    ]);
+    expect(parseBibliography([p])[1]!.text).toBe('Second, B. Title two. Venue, 2002.');
+  });
+
+  it('reads the ACM reference format', () => {
+    const f = workFields('Daniela Anderl, Simon Bogner, and Antonio Delgado. 2014. Free surface lattice Boltzmann with enhanced bubble model. Computers & Mathematics with Applications 67, 2, 331–339.');
+    expect(f.authors).toBe('Daniela Anderl, Simon Bogner, and Antonio Delgado');
+    expect(f.title).toBe('Free surface lattice Boltzmann with enhanced bubble model');
+    expect(f.year).toBe(2014);
+    expect(fieldsConfidence(f)).toBeGreaterThanOrEqual(MIN_CONFIDENCE);
+  });
+});
