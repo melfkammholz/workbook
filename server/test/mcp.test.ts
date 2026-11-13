@@ -258,7 +258,7 @@ describe('assistant bridge', () => {
   it('offers prompts for the shipped workflows', async () => {
     expect((await rpc('initialize', {})).json().result.capabilities.prompts).toBeDefined();
     const names = (await rpc('prompts/list')).json().result.prompts.map((p: { name: string }) => p.name);
-    expect(names).toEqual(['triage-questions', 'answer-recent', 'draft-flashcards', 'fix-references', 'review-exercise']);
+    expect(names).toEqual(['triage-questions', 'answer-recent', 'cards-from-confusion', 'draft-flashcards', 'fix-references', 'review-exercise']);
     const got = (await rpc('prompts/get', { name: 'review-exercise', arguments: { exercise: 'x1' } })).json().result;
     expect(got.messages[0].content.text).toContain('x1');
     expect((await rpc('prompts/get', { name: 'review-exercise' })).json().error.code).toBe(-32602);
@@ -319,6 +319,22 @@ describe('assistant bridge', () => {
     const bad = await decide(gone!.id, 'accept', { after: { ...gone!.after, deck: { id: deckDoc.id } } });
     expect(bad.statusCode).toBe(409);
     await decide(gone!.id, 'reject');
+
+    // an answer and a card for one question share a group; accepting the card writes the link, undo removes it
+    const qq = g().addQuestion({ text: 'Was ist foldr?', anchor: { kind: 'exercise', course: outline, id: ex.meta.id } as never });
+    expect((await tool('propose_card', { question: 'nope', front: 'F', back: 'B', deck: 'Q' })).error).toBe(true);
+    await tool('propose', { question: qq.id, answer: 'Eine Faltung.' });
+    await tool('propose_card', { question: qq.id, front: 'F', back: 'B', deck: 'Q' });
+    const group = ((await app.inject({ method: 'GET', url: '/api/changes' })).json() as { id: string; status: string; group: string; field: string }[]).filter((c) => c.status === 'pending');
+    expect(new Set(group.map((c) => c.group)).size).toBe(1);
+    expect(group).toHaveLength(2);
+    const [qc] = await pending();
+    await decide(qc!.id, 'accept');
+    expect(g().getQuestion(qq.id)!.links).toMatchObject([{ kind: 'card' }]);
+    await decide(qc!.id, 'undo');
+    expect(g().getQuestion(qq.id)!.links).toHaveLength(0);
+    const rres = (await rpc('resources/read', { uri: 'workbook://questions' })).json().result;
+    expect(JSON.parse(rres.contents[0].text).find((x: { id: string }) => x.id === qq.id)).toMatchObject({ closed: false });
 
     // a note on a page of a material, added below what is there
     const body = Buffer.from('%PDF-1.4 notes');

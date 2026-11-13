@@ -126,9 +126,11 @@ export function InboxPage() {
             ) : null}
             <ul className="mt-4 space-y-4">
               {byGroup.map((group) => {
-                const making = group[0]!.field === 'create';
+                // A group about a question (changes to it, cards and notes made from it) is headed by the question.
+                const qid = group.map((c) => (c.field === 'create' ? (c.after as Partial<CardPayload & HighlightPayload>).question : c.field === 'work' ? undefined : c.ref.id)).find((x) => x);
+                const making = group[0]!.field === 'create' && !qid;
                 const isWork = group[0]!.field === 'work';
-                const q = making || isWork ? undefined : question(group[0]!.ref.id);
+                const q = qid ? question(qid) : undefined;
                 return (
                   <li key={group[0]!.group} className="rounded-lg border border-line bg-surface p-3">
                     <div className="flex items-start gap-2">

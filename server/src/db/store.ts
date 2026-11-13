@@ -623,7 +623,7 @@ export class Store {
     const replaced = wanted.filter(([f]) => this.get("SELECT 1 FROM changes WHERE status = 'pending' AND ref_kind = 'question' AND ref_id = ? AND field = ?", questionId, f)).length;
     if (pending - replaced + wanted.length > MAX_PENDING_CHANGES) return { error: 'inbox full: the student has to go through what is waiting first' };
     const t = this.now();
-    const group = `g-${randomUUID()}`;
+    const group = this.pendingGroup(questionId) ?? `g-${randomUUID()}`;
     const ids: string[] = [];
     this.tx(() => {
       for (const [field, before, after] of wanted) {
@@ -639,6 +639,16 @@ export class Store {
     return { ids };
   }
 
+  /** The group of what waits for this question (changes to it, cards and notes made from it), so one question's proposals show together. */
+  private pendingGroup(questionId: string): string | undefined {
+    const r = this.get(
+      `SELECT group_id FROM changes WHERE status = 'pending' AND ((ref_kind = 'question' AND ref_id = ? AND field NOT IN ('create','merge','work'))
+         OR (field = 'create' AND ref_kind IN ('card','highlight') AND json_extract(after, '$.question') = ?)) ORDER BY created_at LIMIT 1`,
+      questionId, questionId,
+    );
+    return r ? (r.group_id as string) : undefined;
+  }
+
   /**
    * The assistant proposes making something: a card, a note on a PDF page, a question. It waits in the inbox as a
    * `create` change whose `after` is the payload. Returns the id of the change, or why not.
@@ -647,10 +657,12 @@ export class Store {
     if (Number(this.get("SELECT COUNT(*) AS n FROM changes WHERE status = 'pending'")!.n) >= MAX_PENDING_CHANGES) return { error: 'inbox full: the student has to go through what is waiting first' };
     const err = this.checkCreate(kind, payload);
     if (err) return { error: err };
+    const question = kind === 'question' ? undefined : (payload as CardPayload | HighlightPayload).question;
+    if (question !== undefined && !this.get('SELECT 1 FROM questions WHERE id = ?', question)) return { error: 'unknown question' };
     const id = `ch-${randomUUID()}`;
     this.run(
       `INSERT INTO changes (id, who, ref_kind, ref_id, field, before, after, base_version, group_id, status, reason, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?,?)`,
-      id, who, kind, '', 'create', null, JSON.stringify(payload), 0, `g-${randomUUID()}`, reason.slice(0, 500), this.now(),
+      id, who, kind, '', 'create', null, JSON.stringify(payload), 0, (question && this.pendingGroup(question)) || `g-${randomUUID()}`, reason.slice(0, 500), this.now(),
     );
     return { id };
   }
@@ -985,6 +997,8 @@ export class Store {
     if (undo) {
       const made = c.before as Created | null;
       if (!made?.id) return null;
+      const from = kind === 'question' ? undefined : (c.after as CardPayload | HighlightPayload).question;
+      if (from) this.removeQuestionLink(from, kind === 'card' ? 'card' : 'note', made.id);
       if (kind === 'question') this.deleteQuestion(made.id);
       else this.db.creators?.remove(kind, made);
       this.run("UPDATE changes SET ref_id = '' WHERE id = ?", c.id);
@@ -1006,6 +1020,9 @@ export class Store {
       }
     }
     this.run('UPDATE changes SET ref_id = ?, before = ? WHERE id = ?', made.id, JSON.stringify(made), c.id);
+    // The student may have edited the payload; the question it comes from is the proposal's own.
+    const from = kind === 'question' ? undefined : ((c.after as CardPayload | HighlightPayload).question ?? (payload as CardPayload | HighlightPayload).question);
+    if (from) this.addQuestionLink(from, kind === 'card' ? 'card' : 'note', made.id);
     return null;
   }
 

@@ -77,12 +77,12 @@ const TOOLS = [
   {
     name: 'propose_card',
     description: `Propose ONE flashcard; it waits in the student's inbox and changes nothing until accepted (they can edit it and pick the deck). front and back are Typst text (code in backticks); one idea per card, ground it in the text. kind "cloze" needs only front with gaps written {{like this}}. deck is a title: an existing deck's (see list_decks) or a new one. Point at where it comes from with resource + page (+ quote) or item (+ course), so the card links back to it. Never re-propose what was rejected: read list_proposals first.`,
-    inputSchema: { type: 'object', properties: { front: { type: 'string' }, back: { type: 'string' }, kind: { type: 'string', enum: ['basic', 'both', 'cloze'], description: 'Default basic; both = also asked backwards' }, deck: { type: 'string' }, resource: { type: 'string', description: 'Material id' }, page: { type: 'integer', description: 'Page of the material, 1-based' }, quote: { type: 'string', description: 'Words of that page, copied exactly' }, item: { type: 'string', description: 'Or a workbook item id' }, course: { type: 'string', description: 'Workbook id, if the item id is not unique' }, reason: { type: 'string' } }, required: ['front', 'deck'] },
+    inputSchema: { type: 'object', properties: { question: { type: 'string', description: 'Id of the question this card answers or comes from (list_questions); it is grouped under it in the inbox and accepting links them' }, front: { type: 'string' }, back: { type: 'string' }, kind: { type: 'string', enum: ['basic', 'both', 'cloze'], description: 'Default basic; both = also asked backwards' }, deck: { type: 'string' }, resource: { type: 'string', description: 'Material id' }, page: { type: 'integer', description: 'Page of the material, 1-based' }, quote: { type: 'string', description: 'Words of that page, copied exactly' }, item: { type: 'string', description: 'Or a workbook item id' }, course: { type: 'string', description: 'Workbook id, if the item id is not unique' }, reason: { type: 'string' } }, required: ['front', 'deck'] },
   },
   {
     name: 'propose_highlight',
     description: `Propose marking a passage of a material with a note; it waits in the inbox and, once accepted, becomes a note on that page quoting the passage. quote must be words of that page, copied exactly (read_page first).`,
-    inputSchema: { type: 'object', properties: { resource: { type: 'string' }, page: { type: 'integer', description: '1-based' }, quote: { type: 'string' }, note: { type: 'string' }, reason: { type: 'string' } }, required: ['resource', 'page', 'quote'] },
+    inputSchema: { type: 'object', properties: { question: { type: 'string', description: 'Id of the question this note answers or comes from (list_questions); it is grouped under it in the inbox and accepting links them' }, resource: { type: 'string' }, page: { type: 'integer', description: '1-based' }, quote: { type: 'string' }, note: { type: 'string' }, reason: { type: 'string' } }, required: ['resource', 'page', 'quote'] },
   },
   {
     name: 'propose_question',
@@ -129,7 +129,14 @@ const PROMPTS = [
     description: 'Propose short answers for the questions made since a time, from the text they were asked about.',
     arguments: [{ name: 'since', description: 'ISO time; questions made at or after it (see list_questions)', required: true }],
     text: (a: Json) =>
-      `Answer the open questions made since ${str(a.since) ?? '(ask the student from when)'} in the student's workbook. Read list_proposals first. For each such question from list_questions (use its since filter), read get_context and, if needed, search or read_page. Then propose an answer: short, in the student's language, grounded in the text they were reading, saying where in it. If the text does not answer it, say so in the reason instead of guessing. Do not reveal solutions of exercises unless the question asks for one. Summarize what you proposed.`,
+      `Answer the open questions made since ${str(a.since) ?? '(ask the student from when)'} in the student's workbook. Read list_proposals first. For each such question from list_questions (use its since filter), read get_context and, if needed, search or read_page. Then propose an answer with propose: short, in the student's language, grounded in the text they were reading, saying where in it. Where the answer is a definition or fact worth remembering, also call propose_card with the same question id (and resource + page + quote or item), so the card is grouped under the question and accepting it links them; one card at most per question, none where a card would not help. If the text does not answer it, say so in the reason instead of guessing. Do not reveal solutions of exercises unless the question asks for one. Summarize what you proposed.`,
+  },
+  {
+    name: 'cards-from-confusion',
+    description: 'Turn what the student found confusing in their questions ("x makes no sense") into flashcards, grouped under each question.',
+    arguments: [{ name: 'since', description: 'ISO time; questions made at or after it', required: false }],
+    text: (a: Json) =>
+      `Look for what the student finds unclear in their open questions${str(a.since) ? ` made since ${str(a.since)}` : ''}: wording like "definition x makes no sense", "I do not get ...", "what is the difference between ...". Read the resource workbook://questions (or list_proposals first, so you do not repeat what was rejected), then get_context for each such question. Where the confusion is about one idea that a card could pin down, call propose_card with question set to that question's id, a front that asks the idea plainly, a short back that clears the confusion, and where it comes from (resource + page + exact quote, or item). Also propose an answer with propose where the text gives one. Leave out questions that are about their own code or that you cannot ground in the text. Finish with a short list of what you proposed.`,
   },
   {
     name: 'draft-flashcards',
@@ -157,6 +164,8 @@ const PROMPTS = [
   },
 ];
 
+const QUESTIONS_URI = 'workbook://questions';
+
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
 const int = (v: unknown): number | undefined => (typeof v === 'number' && Number.isInteger(v) ? v : undefined);
 const cut = (s: string) => (s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT)}\n… (cut, ${s.length - MAX_TEXT} more characters)` : s);
@@ -172,6 +181,22 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
   app.post('/api/bridge/token', async () => newToken());
   app.get('/api/bridge/digests', async () => g().listDigests());
   app.delete<{ Params: { id: string } }>('/api/bridge/digests/:id', async (req, reply) => (g().deleteDigest(req.params.id) ? { ok: true } : reply.code(404).send({ error: 'unknown digest' })));
+
+  const questionsOverview = () =>
+    g()
+      .listQuestions()
+      .filter((q) => !q.mergedInto)
+      .map((q) => ({
+        id: q.id,
+        text: q.text,
+        closed: q.status === 'done',
+        type: q.kind,
+        labels: q.labels,
+        answer: q.answer,
+        answeredBy: q.answerBy ?? null,
+        links: q.links.map((l) => ({ kind: l.kind, ...(l.deck ? { deck: l.deck } : {}) })),
+        madeAt: new Date(q.createdAt).toISOString(),
+      }));
 
   const filed = (r: { id: string } | { error: string }) => {
     if ('error' in r) throw new ToolError(r.error);
@@ -453,7 +478,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         const back = str(a.back) ?? '';
         if (kind !== 'cloze' && !back) throw new ToolError('back is required (except for cloze)');
         const anchor = a.resource || a.item ? anchorOf(a) : null;
-        return filed(g().proposeCreate('assistant', 'card', { deck: { title: deck }, cardKind: kind, front, back, anchor }, str(a.reason)));
+        return filed(g().proposeCreate('assistant', 'card', { deck: { title: deck }, cardKind: kind, front, back, anchor, ...(str(a.question) ? { question: str(a.question)! } : {}) }, str(a.reason)));
       }
       case 'propose_highlight': {
         const resource = str(a.resource);
@@ -462,7 +487,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         if (!resource || !page || !quote) throw new ToolError('resource, page and quote are required');
         const an = anchorOf(a);
         if (an.kind !== 'page' || !an.quote) throw new ToolError('quote is required');
-        return filed(g().proposeCreate('assistant', 'highlight', { resource, pageIndex: page - 1, quote: an.quote, note: str(a.note) ?? '' }, str(a.reason)));
+        return filed(g().proposeCreate('assistant', 'highlight', { resource, pageIndex: page - 1, quote: an.quote, note: str(a.note) ?? '', ...(str(a.question) ? { question: str(a.question)! } : {}) }, str(a.reason)));
       }
       case 'propose_question': {
         const text = str(a.text);
@@ -522,7 +547,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         const asked = str(params.protocolVersion);
         return ok({
           protocolVersion: asked && PROTOCOLS.includes(asked) ? asked : PROTOCOLS[0],
-          capabilities: { tools: {}, prompts: {} },
+          capabilities: { tools: {}, prompts: {}, resources: {} },
           serverInfo: { name: 'workbook', version: '1' },
           instructions: "The student's workbook: their open questions, their own text and the text of their materials. You cannot change anything yourself: propose changes (type, labels, answers) or new things (cards, page notes, questions) and the student decides in their inbox. Read list_proposals first so you do not repeat a rejected one. For exercises you can read the student's saved work and run their tests, but you never propose changes to their code. You may also keep your own digests.",
         });
@@ -540,6 +565,12 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         const missing = p.arguments.find((x) => x.required && !str(args[x.name]));
         if (missing) return error(-32602, `${missing.name} is required`);
         return ok({ description: p.description, messages: [{ role: 'user', content: { type: 'text', text: p.text(args) } }] });
+      }
+      case 'resources/list':
+        return ok({ resources: [{ uri: QUESTIONS_URI, name: 'questions', description: "The student's questions with their answers, what was made from them (cards, notes, highlights) and whether they are closed. Read-only.", mimeType: 'application/json' }] });
+      case 'resources/read': {
+        if (params.uri !== QUESTIONS_URI) return error(-32002, `unknown resource "${String(params.uri)}"`);
+        return ok({ contents: [{ uri: QUESTIONS_URI, mimeType: 'application/json', text: JSON.stringify(questionsOverview(), null, 1) }] });
       }
       case 'tools/call':
         try {

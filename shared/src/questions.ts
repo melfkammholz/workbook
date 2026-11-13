@@ -79,6 +79,8 @@ export interface CardPayload {
   anchor: Anchor | null;
   /** The card's own tags (ids or new labels), when the student added some while editing. */
   tags?: string[];
+  /** The question this card answers or comes from: it is grouped under it in the inbox, and accepting writes the link. */
+  question?: string;
 }
 /** A passage of a material with the assistant's note, made as a note on that page (highlights need page positions only the viewer knows). */
 export interface HighlightPayload {
@@ -87,6 +89,8 @@ export interface HighlightPayload {
   pageIndex: number;
   quote: string;
   note: string;
+  /** The question this note comes from (see `CardPayload.question`). */
+  question?: string;
 }
 export interface QuestionPayload {
   text: string;
