@@ -734,6 +734,14 @@ export const MIGRATIONS: Migration[] = [
   CREATE INDEX work_citations_resource ON work_citations (resource, position);
   CREATE INDEX work_citations_work ON work_citations (work);
   `,
+  /* 29: pairs of works the student said are not the same, so they are not suggested for merging again (a < b). */
+  `
+  CREATE TABLE work_distinct (
+    a TEXT NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+    b TEXT NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+    PRIMARY KEY (a, b)
+  );
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

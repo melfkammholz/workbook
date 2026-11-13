@@ -1,13 +1,13 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { BibEntry, BibEntryInput, Work, Anchor, Placed, Reanchored, StaleItems, UnplacedItems, AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
-import { MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_ENTRY_TEXT, normalizeTitle, workFields } from '@wb/shared';
+import type { BibEntry, BibEntryInput, LibraryWork, SimilarWork, Work, Anchor, Placed, Reanchored, StaleItems, UnplacedItems, AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
+import { MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_ENTRY_TEXT, normalizeTitle, workFields, workKeys } from '@wb/shared';
 import type { Store } from '../db/store.js';
 import { extractPdfText } from './text.js';
 
 export class ResourceError extends Error {
-  constructor(readonly code: 'unknown-resource' | 'unknown-series' | 'unknown-item' | 'same-file' | 'page-taken' | 'no-file') {
+  constructor(readonly code: 'unknown-resource' | 'unknown-series' | 'unknown-item' | 'same-file' | 'page-taken' | 'no-file' | 'bad-merge') {
     super(code);
   }
 }
@@ -505,6 +505,7 @@ export class Resources {
   /** The reference entries of a PDF in reading order, each with its work. */
   listBibliography(resource: string): BibEntry[] {
     this.get(resource);
+    const similar = this.similarWorks();
     return this.sql
       .all(
         `SELECT c.id AS cid, c.resource AS cresource, c.version, c.position, c.entry_text, c.page_index, c.y, c.cited_at, w.*
@@ -519,7 +520,7 @@ export class Resources {
         } catch {
           /* none */
         }
-        return { id: r.cid as string, resource: r.cresource as string, version: r.version as string, position: Number(r.position), text: r.entry_text as string, pageIndex: Number(r.page_index), y: Number(r.y), citedAt, work: toWork(r) };
+        return { id: r.cid as string, resource: r.cresource as string, version: r.version as string, position: Number(r.position), text: r.entry_text as string, pageIndex: Number(r.page_index), y: Number(r.y), citedAt, work: toWork(r), similar: similar.get(r.id as string) ?? [] };
       });
   }
 
@@ -562,6 +563,90 @@ export class Resources {
       );
     });
     return this.listBibliography(resource);
+  }
+
+  /**
+   * For every work the others it looks like: same DOI, or same title and year. Not the ones the student kept separate,
+   * and not the ones cited by a common PDF (two entries of one list are two works, whatever they look like).
+   */
+  private similarWorks(): Map<string, SimilarWork[]> {
+    const rows = this.sql.all('SELECT id, title, authors, year, doi FROM works') as Row[];
+    const groups = new Map<string, Row[]>();
+    for (const w of rows) {
+      for (const k of workKeys({ title: w.title as string, year: w.year === null ? null : Number(w.year), doi: w.doi as string })) (groups.get(k) ?? groups.set(k, []).get(k)!).push(w);
+    }
+    const out = new Map<string, SimilarWork[]>();
+    const multi = [...groups.values()].filter((g) => g.length > 1);
+    if (multi.length === 0) return out;
+    const cites = new Map<string, Set<string>>();
+    for (const c of this.sql.all('SELECT work, resource FROM work_citations') as Row[]) (cites.get(c.work as string) ?? cites.set(c.work as string, new Set()).get(c.work as string)!).add(c.resource as string);
+    const apart = new Set((this.sql.all('SELECT a, b FROM work_distinct') as Row[]).map((r) => `${r.a}|${r.b}`));
+    const share = (a: string, b: string) => [...(cites.get(a) ?? [])].some((x) => cites.get(b)?.has(x));
+    for (const g of multi) {
+      for (const w of g) {
+        for (const o of g) {
+          const id = w.id as string;
+          const oid = o.id as string;
+          if (id === oid || apart.has(id < oid ? `${id}|${oid}` : `${oid}|${id}`) || share(id, oid)) continue;
+          const list = out.get(id) ?? out.set(id, []).get(id)!;
+          if (list.some((x) => x.id === oid)) continue;
+          list.push({ id: oid, title: o.title as string, authors: o.authors as string, year: o.year === null ? null : Number(o.year), cited: cites.get(oid)?.size ?? 0 });
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Every work of the student's library, with the PDFs that cite it. */
+  listWorks(): LibraryWork[] {
+    const similar = this.similarWorks();
+    const by = new Map<string, LibraryWork['citedBy']>();
+    for (const c of this.sql.all(
+      `SELECT c.work, c.resource, r.title, COUNT(*) AS n FROM work_citations c JOIN resources r ON r.id = c.resource GROUP BY c.work, c.resource ORDER BY r.title`,
+    ) as Row[]) {
+      (by.get(c.work as string) ?? by.set(c.work as string, []).get(c.work as string)!).push({ resource: c.resource as string, title: c.title as string, count: Number(c.n) });
+    }
+    return (this.sql.all('SELECT * FROM works ORDER BY year DESC, title') as Row[]).map((r) => ({ ...toWork(r), citedBy: by.get(r.id as string) ?? [], similar: similar.get(r.id as string) ?? [] }));
+  }
+
+  /**
+   * Two works that are one: the citations of `from` move to `into`, which keeps its own link to a material (or takes
+   * the other's) and the reading wish of either. Two works cited by one PDF are two entries, never one.
+   */
+  mergeWorks(from: string, into: string): void {
+    if (from === into) throw new ResourceError('bad-merge');
+    const a = this.sql.get('SELECT * FROM works WHERE id = ?', from);
+    const b = this.sql.get('SELECT * FROM works WHERE id = ?', into);
+    if (!a || !b) throw new ResourceError('unknown-item');
+    if (this.sql.get('SELECT 1 AS x FROM work_citations x JOIN work_citations y ON y.resource = x.resource WHERE x.work = ? AND y.work = ?', from, into)) throw new ResourceError('bad-merge');
+    this.sql.tx(() => {
+      this.sql.run('UPDATE work_citations SET work = ? WHERE work = ?', into, from);
+      this.sql.run(
+        'UPDATE works SET want_to_read = ?, resource = ?, doi = ?, updated_at = ? WHERE id = ?',
+        Number(a.want_to_read) === 1 || Number(b.want_to_read) === 1 ? 1 : 0,
+        (b.resource as string | null) ?? (a.resource as string | null),
+        (b.doi as string) || (a.doi as string),
+        this.now(),
+        into,
+      );
+      this.sql.run('DELETE FROM works WHERE id = ?', from);
+    });
+  }
+
+  /** "Not the same": the pair is not suggested again. */
+  keepSeparate(a: string, b: string): void {
+    if (a === b || !this.sql.get('SELECT id FROM works WHERE id = ?', a) || !this.sql.get('SELECT id FROM works WHERE id = ?', b)) throw new ResourceError('unknown-item');
+    this.sql.run('INSERT OR IGNORE INTO work_distinct (a, b) VALUES (?, ?)', a < b ? a : b, a < b ? b : a);
+  }
+
+  /** "I have this": the work is that material (null: it is not). */
+  linkWork(work: string, resource: string | null): Work {
+    if (!this.sql.get('SELECT id FROM works WHERE id = ?', work)) throw new ResourceError('unknown-item');
+    if (resource !== null) this.get(resource);
+    this.sql.run('UPDATE works SET resource = ?, updated_at = ? WHERE id = ?', resource, this.now(), work);
+    const row = this.sql.get('SELECT * FROM works WHERE id = ?', work)!;
+    // A work nothing else needs goes when its link is taken away.
+    return toWork(row);
   }
 
   setWantToRead(work: string, want: boolean): Work {

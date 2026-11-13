@@ -103,7 +103,7 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
     return null;
   }
   const fail = (e: unknown, reply: FastifyReply) => {
-    if (e instanceof ResourceError) return reply.code(e.code === 'same-file' || e.code === 'page-taken' ? 409 : e.code === 'no-file' ? 400 : 404).send({ error: e.code });
+    if (e instanceof ResourceError) return reply.code(e.code === 'same-file' || e.code === 'page-taken' || e.code === 'bad-merge' ? 409 : e.code === 'no-file' ? 400 : 404).send({ error: e.code });
     throw e;
   };
 
@@ -215,6 +215,36 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
     if (!b) return;
     try {
       return r().saveBibliography(req.params.id, b.version, b.entries);
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+  app.get('/api/works', async () => r().listWorks());
+  app.post<{ Params: { wid: string } }>('/api/works/:wid/merge', async (req, reply) => {
+    const b = parse(z.object({ into: z.string() }), req.body, reply);
+    if (!b) return;
+    try {
+      r().mergeWorks(req.params.wid, b.into);
+      return { ok: true };
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+  app.post<{ Params: { wid: string } }>('/api/works/:wid/separate', async (req, reply) => {
+    const b = parse(z.object({ other: z.string() }), req.body, reply);
+    if (!b) return;
+    try {
+      r().keepSeparate(req.params.wid, b.other);
+      return { ok: true };
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+  app.put<{ Params: { wid: string } }>('/api/works/:wid/resource', async (req, reply) => {
+    const b = parse(z.object({ resource: z.string().nullable() }), req.body, reply);
+    if (!b) return;
+    try {
+      return r().linkWork(req.params.wid, b.resource);
     } catch (e) {
       return fail(e, reply);
     }

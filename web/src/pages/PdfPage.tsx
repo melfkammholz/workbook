@@ -675,6 +675,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
               {doc ? <PdfUnplaced resource={resource} current={current} pageInfo={pageInfo} /> : null}
               {doc && bibliography?.length ? (
                 <PdfReferences
+                  resource={resource.id}
                   entries={bibliography}
                   current={current}
                   labelOf={labelOf}

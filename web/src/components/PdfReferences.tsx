@@ -3,6 +3,7 @@ import { Bookmark, Merge, Pencil, RefreshCw, Split } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useT } from '@/lib/i18n';
 import type { Fix } from '@/lib/bibliography';
+import { SimilarWorks, WorkHave } from './WorkBits';
 import { FoldSection } from './FoldSection';
 import { IconButton, clsx } from './ui';
 
@@ -11,6 +12,7 @@ import { IconButton, clsx } from './ui';
  * read" is a wish (never counted); a wrongly split entry is fixed in place (new text, join with the one above, split).
  */
 export function PdfReferences({
+  resource,
   entries,
   current,
   labelOf,
@@ -19,6 +21,8 @@ export function PdfReferences({
   onFix,
   onReread,
 }: {
+  /** The PDF these entries are of: it is not offered as the material a work in its own list is. */
+  resource: string;
   entries: BibEntry[];
   current: number;
   labelOf: (n: number) => string;
@@ -73,6 +77,8 @@ export function PdfReferences({
                   </IconButton>
                 </div>
                 <Cited entry={e} labelOf={labelOf} onGo={onGo} />
+                <WorkHave work={e.work} except={resource} />
+                <SimilarWorks work={e.work} similar={e.similar} />
               </div>
             )}
           </li>

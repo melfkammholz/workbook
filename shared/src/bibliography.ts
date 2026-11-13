@@ -193,8 +193,16 @@ export function workFields(text: string): WorkFields {
     authors = paren[1]!.trim().replace(/[.,:]$/, '');
     rest = splitSentences(paren[2]!);
   } else if (sentences.length >= 2) {
-    authors = sentences[0]!;
-    rest = sentences.slice(1);
+    // IEEE without quotes (books): "G. Hutton, Programming in Haskell. Publisher, 2016": the authors, then the title.
+    const person = String.raw`(?:[A-ZÄÖÜ]\.\s?)+[\p{L}'’-]+(?:\s[\p{L}'’-]+)?`;
+    const lead = new RegExp(String.raw`^(${person}(?:,\s+(?:and\s+)?${person})*),\s+(?:and\s+${person},\s+)?(\S.*)$`, 'u').exec(sentences[0]!);
+    if (lead) {
+      authors = lead[1]!;
+      rest = [lead[2]!, ...sentences.slice(1)];
+    } else {
+      authors = sentences[0]!;
+      rest = sentences.slice(1);
+    }
   }
   const title = (rest[0] ?? '').replace(/^["“„']|["”“']$/g, '').trim();
   const venue = rest
@@ -255,6 +263,34 @@ export function splitEntry(text: string, at: number): [string, string] | null {
   return a && b ? [a, b] : null;
 }
 
+/** The key two spellings of one DOI share. */
+export function normalizeDoi(s: string): string {
+  return s.toLowerCase().replace(/^https?:\/\/(dx\.)?doi\.org\//, '').replace(/^doi:\s*/, '').trim();
+}
+
+/**
+ * The keys under which a work may be the same as another: its DOI, or its title together with its year (a title of
+ * at least 8 letters and digits, and a year). Two works sharing a key look like one work.
+ */
+export function workKeys(w: Pick<WorkFields, 'title' | 'year' | 'doi'>): string[] {
+  const keys: string[] = [];
+  const doi = normalizeDoi(w.doi);
+  if (doi) keys.push(`doi:${doi}`);
+  const title = normalizeTitle(w.title);
+  if (title.length >= 8 && w.year !== null) keys.push(`title:${title}:${w.year}`);
+  return keys;
+}
+
+/** A work another one looks like, with what the student needs to decide. */
+export interface SimilarWork {
+  id: string;
+  title: string;
+  authors: string;
+  year: number | null;
+  /** How many PDFs cite it. */
+  cited: number;
+}
+
 /** An entry as stored and shown (one per citing PDF and reference). */
 export interface BibEntry {
   id: string;
@@ -267,6 +303,8 @@ export interface BibEntry {
   /** Where the PDF cites it: page index and height of the link. */
   citedAt: { pageIndex: number; y: number }[];
   work: Work;
+  /** Works in the library that look like this one (same DOI, or same title and year) and were not kept separate. */
+  similar: SimilarWork[];
 }
 
 /** A work in the student's library; one per distinct reference, shared by the PDFs that cite it. */
@@ -287,4 +325,10 @@ export interface BibEntryInput {
   pageIndex: number;
   y: number;
   citedAt: { pageIndex: number; y: number }[];
+}
+
+/** A work of the library page: who cites it, and what it looks like. */
+export interface LibraryWork extends Work {
+  citedBy: { resource: string; title: string; count: number }[];
+  similar: SimilarWork[];
 }

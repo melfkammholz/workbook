@@ -1,5 +1,5 @@
 import { useQuery, type QueryClient } from '@tanstack/react-query';
-import { entryAt, linesOf, parseBibliography, textItems, type BibEntry, type BibEntryInput, type PageLines, type Work } from '@wb/shared';
+import { entryAt, linesOf, parseBibliography, textItems, type BibEntry, type BibEntryInput, type LibraryWork, type PageLines, type Work } from '@wb/shared';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useEffect } from 'react';
 import { api, useSettings } from './api';
@@ -123,10 +123,37 @@ export function fixEntry(qc: QueryClient, resource: string, version: string, lis
   return saveBibliography(qc, resource, version, next);
 }
 
+export const worksKey = ['works'] as const;
+
+/** Every work of the student's library (the References tab of the materials page). */
+export function useWorks(enabled = true) {
+  return useQuery({ queryKey: worksKey, queryFn: () => api.get<LibraryWork[]>('/api/works'), enabled, staleTime: 30_000 });
+}
+
+/** A change to the library: the library and every PDF's list are read again. */
+function refreshWorks(qc: QueryClient): void {
+  void qc.invalidateQueries({ queryKey: worksKey });
+  void qc.invalidateQueries({ queryKey: ['pdf-bibliography'] });
+}
+
+const done = (qc: QueryClient) => () => refreshWorks(qc);
+const failed = (qc: QueryClient) => () => {
+  refreshWorks(qc);
+  reportSaveFailed();
+};
+
+/** "Same work": the citations of `from` go to `into`. */
+export const mergeWork = (qc: QueryClient, from: string, into: string) => api.post(`/api/works/${encodeURIComponent(from)}/merge`, { into }).then(done(qc), failed(qc));
+/** "Not the same": the pair is not suggested again. */
+export const keepWorksSeparate = (qc: QueryClient, a: string, b: string) => api.post(`/api/works/${encodeURIComponent(a)}/separate`, { other: b }).then(done(qc), failed(qc));
+/** "I have this": the work is that material, or none. */
+export const linkWork = (qc: QueryClient, work: string, resource: string | null) => api.put(`/api/works/${encodeURIComponent(work)}/resource`, { resource }).then(done(qc), failed(qc));
+
 export function setWantToRead(qc: QueryClient, resource: string, work: Work, want: boolean): void {
-  qc.setQueryData<BibEntry[]>(bibliographyKey(resource), (list) => list?.map((e) => (e.work.id === work.id ? { ...e, work: { ...e.work, wantToRead: want } } : e)));
-  void api.put(`/api/works/${encodeURIComponent(work.id)}/want`, { want }).catch(() => {
-    void qc.invalidateQueries({ queryKey: bibliographyKey(resource) });
+  if (resource) qc.setQueryData<BibEntry[]>(bibliographyKey(resource), (list) => list?.map((e) => (e.work.id === work.id ? { ...e, work: { ...e.work, wantToRead: want } } : e)));
+  else qc.setQueryData<LibraryWork[]>(worksKey, (list) => list?.map((w) => (w.id === work.id ? { ...w, wantToRead: want } : w)));
+  void api.put(`/api/works/${encodeURIComponent(work.id)}/want`, { want }).then(() => void qc.invalidateQueries({ queryKey: worksKey })).catch(() => {
+    void qc.invalidateQueries({ queryKey: resource ? bibliographyKey(resource) : worksKey });
     reportSaveFailed();
   });
 }

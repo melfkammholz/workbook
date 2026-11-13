@@ -158,6 +158,14 @@ describe('stored bibliography', () => {
   });
 });
 
+describe('IEEE style without quotes', () => {
+  it('reads authors, then the title of a book', () => {
+    expect(workFields('G. Hutton, Programming in Haskell. Cambridge University Press, 2016.')).toMatchObject({ authors: 'G. Hutton', title: 'Programming in Haskell', year: 2016 });
+    expect(workFields('I. Bratko, Prolog Programming for Artificial Intelligence. Pearson, 2012.')).toMatchObject({ authors: 'I. Bratko', title: 'Prolog Programming for Artificial Intelligence' });
+    expect(workFields('A. B. Smith, C. Jones, and D. Lee, Logic, Programs and Proofs. MIT Press, 2001.')).toMatchObject({ authors: 'A. B. Smith, C. Jones, and D. Lee', title: 'Logic, Programs and Proofs' });
+  });
+});
+
 describe('IEEE style', () => {
   it('reads a quoted title', () => {
     const f = workFields('J. A. Robinson, “A machine-oriented logic based on the resolution principle,” Journal of the ACM, vol. 12, 1965.');

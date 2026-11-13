@@ -2,6 +2,7 @@ import type { Resource, ResourceSeries, ResourceType } from '@wb/shared';
 import { Download, FileText, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { Link } from 'wouter';
+import { WorksLibrary } from '@/components/WorksLibrary';
 import { NewVersionButton } from '@/components/NewVersionButton';
 import { DeleteDialog, EditDialog, UploadDialog } from '@/components/ResourceDialogs';
 import { Button, Empty, IconButton, Spinner } from '@/components/ui';
@@ -44,6 +45,8 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
   const [deleting, setDeleting] = useState<Resource | null>(null);
   const data = list.data;
   const labelDefs = useSettings().data?.highlightLabels ?? [];
+  const [tab, setTab] = useState<'files' | 'references'>('files');
+  const refs = !course && tab === 'references';
   const [labelFilter, setLabelFilter] = useState<string[]>([]);
   const usedLabels = labelDefs.filter((l) => data?.resources.some((r) => r.labels.includes(l.id)));
   const matches = (r: Resource) => labelFilter.every((l) => r.labels.includes(l));
@@ -179,7 +182,17 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
             {otherLink.label}
           </Link>
         ) : null}
-        {usedLabels.length ? (
+        {!course ? (
+          <div className="mt-4 flex gap-4 border-b border-line" role="tablist">
+            {(['files', 'references'] as const).map((k) => (
+              <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`-mb-px border-b-2 px-0.5 pb-1.5 text-[14px] ${tab === k ? 'border-accent font-medium' : 'border-transparent text-ink-2 hover:text-ink'}`}>
+                {k === 'files' ? t.workTabFiles : t.workTabReferences}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {refs ? <WorksLibrary /> : null}
+        {!refs && usedLabels.length ? (
           <div className="mt-4 flex flex-wrap items-center gap-1.5" role="group" aria-label={t.resourceLabelFilter}>
             {usedLabels.map((l) => {
               const on = labelFilter.includes(l.id);
@@ -198,7 +211,7 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
             })}
           </div>
         ) : null}
-        {empty ? (
+        {refs ? null : empty ? (
           <div className="mt-10">
             <Empty title={course ? t.resourceNoneCourse : t.resourceNone} />
           </div>
