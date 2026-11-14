@@ -603,8 +603,14 @@ export class Resources {
     ) as Row[]) {
       (by.get(c.work as string) ?? by.set(c.work as string, []).get(c.work as string)!).push({ resource: c.resource as string, title: c.title as string, count: Number(c.n) });
     }
+    const shown = new Set(this.courses().map((c) => c.id));
+    const on = new Map<string, LibraryWork['citedOn']>();
+    for (const c of this.sql.all('SELECT work, course, page, title, href FROM work_page_citations ORDER BY title') as Row[]) {
+      if (!shown.has(c.course as string)) continue;
+      (on.get(c.work as string) ?? on.set(c.work as string, []).get(c.work as string)!).push({ course: c.course as string, page: c.page as string, title: c.title as string, href: c.href as string });
+    }
     const tags = this.store.tagLinks('work');
-    return (this.sql.all('SELECT * FROM works ORDER BY year DESC, title') as Row[]).map((r) => ({ ...toWork(r), citedBy: by.get(r.id as string) ?? [], similar: similar.get(r.id as string) ?? [], tags: tags.get(r.id as string) ?? [] }));
+    return (this.sql.all('SELECT * FROM works ORDER BY year DESC, title') as Row[]).map((r) => ({ ...toWork(r), citedBy: by.get(r.id as string) ?? [], citedOn: on.get(r.id as string) ?? [], similar: similar.get(r.id as string) ?? [], tags: tags.get(r.id as string) ?? [] }));
   }
 
   private lookupRun: Promise<void> | null = null;
@@ -739,6 +745,44 @@ export class Resources {
       }
     });
     return { added, merged };
+  }
+
+  /**
+   * The works a page of a workbook cites enter the library: one that is there already (same DOI, or same title and
+   * year) is reused and only gets the fields it lacked; the others are added. Returns the work of each key, and records
+   * that the page cites it. Nothing is removed, and opening the page again changes nothing.
+   */
+  citeWorks(course: string, page: { id: string; title: string; href: string }, works: ImportedWork[]): Record<string, string> {
+    const t = this.now();
+    const out: Record<string, string> = {};
+    this.sql.tx(() => {
+      const rows = this.sql.all('SELECT id, title, year, doi FROM works') as Row[];
+      const byKey = new Map<string, string>();
+      for (const r of rows) for (const k of workKeys({ title: r.title as string, year: r.year === null ? null : Number(r.year), doi: r.doi as string })) if (!byKey.has(k)) byKey.set(k, r.id as string);
+      for (const w of works.slice(0, 500)) {
+        const f = { title: w.title.slice(0, 300), authors: w.authors.slice(0, 400), year: w.year, venue: w.venue.slice(0, 300), doi: w.doi.slice(0, 200), url: w.url.slice(0, 500) };
+        const keys = workKeys(f);
+        let id = keys.map((k) => byKey.get(k)).find(Boolean);
+        const existing = id ? (this.sql.get('SELECT * FROM works WHERE id = ?', id) as Row | undefined) : undefined;
+        if (id && existing) {
+          const keep = (field: string, v: string) => (existing[field] as string) || v;
+          this.sql.run(
+            'UPDATE works SET title = ?, authors = ?, year = ?, venue = ?, doi = ?, url = ?, updated_at = ? WHERE id = ?',
+            keep('title', f.title), keep('authors', f.authors), existing.year === null ? f.year : Number(existing.year), keep('venue', f.venue), keep('doi', f.doi), keep('url', f.url), t, id,
+          );
+        } else {
+          id = crypto.randomUUID();
+          this.sql.run(
+            'INSERT INTO works (id, title, authors, year, venue, doi, url, raw, confidence, imported, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,1,1,?,?)',
+            id, f.title, f.authors, f.year, f.venue, f.doi, f.url, (w.raw || [f.authors, f.year, f.title, f.venue].filter(Boolean).join('. ')).slice(0, MAX_ENTRY_TEXT), t, t,
+          );
+          for (const k of keys) byKey.set(k, id);
+        }
+        out[w.key] = id;
+        this.sql.run('INSERT OR REPLACE INTO work_page_citations (work, course, page, title, href) VALUES (?,?,?,?,?)', id, course, page.id, page.title.slice(0, 300), page.href.slice(0, 300));
+      }
+    });
+    return out;
   }
 
   /** "Not the same": the pair is not suggested again. */

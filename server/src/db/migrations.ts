@@ -851,6 +851,21 @@ export const MIGRATIONS: Migration[] = [
     PRIMARY KEY (question_id, kind, ref)
   ) WITHOUT ROWID;
   `,
+  /*
+   * 36: works a workbook's text cites (`#cite-work`): opening the page puts them into `works`, and this says which page
+   * cites which work. `course` is the workbook's id, `page` its item or text id; the title and link are kept so the
+   * library can name the page without opening the workbook.
+   */
+  `
+  CREATE TABLE work_page_citations (
+    work   TEXT NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+    course TEXT NOT NULL,
+    page   TEXT NOT NULL,
+    title  TEXT NOT NULL,
+    href   TEXT NOT NULL,
+    PRIMARY KEY (work, course, page)
+  ) WITHOUT ROWID;
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

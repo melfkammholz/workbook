@@ -8,7 +8,7 @@ import { useT } from '@/lib/i18n';
 import { Empty, Spinner, clsx } from './ui';
 import { useTagMap } from '@/lib/tags';
 import { TagDot, TagPicker } from './TagPicker';
-import { SimilarWorks, WorkHave, sure } from './WorkBits';
+import { SimilarWorks, WorkEntry, WorkHave } from './WorkBits';
 
 type Filter = 'all' | 'want' | 'have' | 'missing';
 
@@ -73,8 +73,7 @@ function WorkRow({ work: w, onWant }: { work: LibraryWork; onWant: () => void })
     <li className="py-2.5">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <p className={clsx('break-words text-[15px]', sure(w) && 'font-medium')}>{sure(w) ? w.title : w.raw}</p>
-          {sure(w) ? <p className="break-words text-[13px] text-ink-2">{[w.authors, w.year, w.venue].filter(Boolean).join(' · ')}</p> : null}
+          <WorkEntry work={w} fallback={w.raw} />
           <p className="mt-0.5 flex flex-wrap items-center gap-1 text-[12px] text-ink-3">
             {w.citedBy.length ? (
               <>
@@ -85,9 +84,19 @@ function WorkRow({ work: w, onWant }: { work: LibraryWork; onWant: () => void })
                   </Link>
                 ))}
               </>
-            ) : (
+            ) : w.citedOn.length ? null : (
               <span>{t.workNotCited}</span>
             )}
+            {w.citedOn.length ? (
+              <>
+                <span>{t.workCitedOn}</span>
+                {w.citedOn.map((c) => (
+                  <Link key={`${c.course}/${c.page}`} href={c.href} className="max-w-[16rem] truncate rounded border border-line px-1.5 text-ink-2 hover:bg-sunk">
+                    {c.title}
+                  </Link>
+                ))}
+              </>
+            ) : null}
           </p>
           <WorkHave work={w} />
           <SimilarWorks work={w} similar={w.similar} />

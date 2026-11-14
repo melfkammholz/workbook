@@ -61,6 +61,9 @@
 #let _cite-work(works, key, body) = {
   if key not in works { panic("cite-work: unknown key \"" + key + "\" (not in references.bib or references.yml)") }
   let w = works.at(key)
+  // The entry is part of the text, so nothing in it changes when the app has read it; the app only adds the
+  // "have it / want to read / open" line into `wb-work-actions`.
+  let meta = (w.authors, if w.year == none { "" } else { str(w.year) }, w.venue).filter(x => x != "").join(" · ")
   html.elem(
     "span",
     attrs: (
@@ -73,7 +76,12 @@
       data-doi: w.doi,
       data-url: w.url,
     ),
-    body,
+    {
+      html.elem("span", attrs: (class: "wb-work-title"), w.title)
+      if meta != "" { html.elem("span", attrs: (class: "wb-work-meta"), meta) }
+      if body != [] { html.elem("span", attrs: (class: "wb-work-body"), body) }
+      html.elem("span", attrs: (class: "wb-work-actions"))
+    },
   )
 }
 

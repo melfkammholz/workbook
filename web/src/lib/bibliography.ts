@@ -1,4 +1,4 @@
-import { useQuery, type QueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { entryAt, type Destination, type ImportChoice, linesOf, parseBibliography, textItems, type BibEntry, type BibEntryInput, type LibraryWork, type PageLines, type Work } from '@wb/shared';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useEffect } from 'react';
@@ -226,4 +226,23 @@ export function importWorks(qc: QueryClient, works: ImportChoice[]): Promise<{ a
       throw e;
     },
   );
+}
+
+/**
+ * The works a page cites (`#cite-work`) enter the library when the page is opened (the server finds the keys in the
+ * workbook's own references and reuses works it has). Answers the work of each key.
+ */
+export function useCitedWorks(course: string | undefined, page: { id: string; title: string; href: string } | undefined, keys: string[]) {
+  const qc = useQueryClient();
+  const list = [...new Set(keys)].sort();
+  return useQuery({
+    queryKey: ['cited-works', course, page?.id, list.join('\n')],
+    enabled: !!course && !!page && list.length > 0,
+    staleTime: Infinity,
+    queryFn: async () => {
+      const ids = await api.post<Record<string, string>>('/api/works/cited', { page: page!.id, title: page!.title, href: page!.href, keys: list });
+      void qc.invalidateQueries({ queryKey: worksKey });
+      return ids;
+    },
+  });
 }

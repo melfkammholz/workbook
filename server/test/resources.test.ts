@@ -174,3 +174,28 @@ describe('highlights in PDFs', () => {
     await app.inject({ method: 'DELETE', url: `/api/resources/${res.id}` });
   });
 });
+
+describe('works cited by a page', () => {
+  const cite = (keys: string[], page = 'p1') => app.inject({ method: 'POST', url: '/api/works/cited', payload: { page, title: 'A page', href: `/item/${page}`, keys } });
+  type Lib = { id: string; title: string; doi: string; citedOn: { page: string; href: string }[] }[];
+
+  it('adds the works the workbook names, reuses them on a second visit, and ignores unknown keys', async () => {
+    const first = (await cite(['hutton2016', 'nope'])).json() as Record<string, string>;
+    expect(Object.keys(first)).toEqual(['hutton2016']);
+    const again = (await cite(['hutton2016'])).json() as Record<string, string>;
+    expect(again.hutton2016).toBe(first.hutton2016);
+    const lib = (await app.inject({ method: 'GET', url: '/api/works' })).json() as Lib;
+    expect(lib.filter((w) => w.id === first.hutton2016)).toHaveLength(1);
+    expect(lib.find((w) => w.id === first.hutton2016)!.citedOn).toEqual([{ course: expect.any(String), page: 'p1', title: 'A page', href: '/item/p1' }]);
+  });
+
+  it('merges into a work the library has (same title and year, or DOI) instead of adding another', async () => {
+    const before = (await app.inject({ method: 'GET', url: '/api/works' })).json() as Lib;
+    const w = before.find((x) => x.title.startsWith('Programming in Haskell'))!;
+    const other = (await cite(['hutton2016'], 'p2')).json() as Record<string, string>;
+    expect(other.hutton2016).toBe(w.id);
+    const after = (await app.inject({ method: 'GET', url: '/api/works' })).json() as Lib;
+    expect(after).toHaveLength(before.length);
+    expect(after.find((x) => x.id === w.id)!.citedOn.map((c) => c.page).sort()).toEqual(['p1', 'p2']);
+  });
+});

@@ -28,7 +28,7 @@ export interface RenderedNote {
 }
 
 /** Bump when the processing of Typst's output changes, so cached renders are made again. */
-const RENDER_VERSION = '5';
+const RENDER_VERSION = '6';
 
 /** Typst's warning when HTML export drops something, e.g. what a package lays out. */
 const LOST_IN_HTML = /was ignored during HTML export/;

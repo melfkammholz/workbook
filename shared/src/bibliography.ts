@@ -523,6 +523,8 @@ export interface BibEntryInput {
 /** A work of the library page: who cites it, and what it looks like. */
 export interface LibraryWork extends Work {
   citedBy: { resource: string; title: string; count: number }[];
+  /** Pages of the student's workbooks that cite it (`#cite-work`); workbooks that were removed are left out. */
+  citedOn: { course: string; page: string; title: string; href: string }[];
   similar: SimilarWork[];
   /** Ids of the student's tags on this work. */
   tags: string[];

@@ -233,6 +233,18 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
     if (!b) return;
     return r().importWorks(b.works);
   });
+  // The works the open page cites (`#cite-work`) enter the library; the keys are looked up in the workbook's own references.
+  app.post('/api/works/cited', async (req, reply) => {
+    const b = parse(z.object({ page: z.string().max(300), title: z.string().max(300), href: z.string().max(300).startsWith('/'), keys: z.array(z.string().max(200)).max(200) }), req.body, reply);
+    if (!b) return;
+    const content = d.content.current;
+    const known = new Map(content.works.map((w) => [w.key, w]));
+    const works = [...new Set(b.keys)].flatMap((k) => {
+      const w = known.get(k);
+      return w ? [{ title: w.title, authors: w.authors, year: w.year, venue: w.venue, doi: w.doi, url: w.url, raw: '', key: k }] : [];
+    });
+    return r().citeWorks(content.outline.id, { id: b.page, title: b.title, href: b.href }, works);
+  });
   app.post<{ Params: { wid: string } }>('/api/works/:wid/merge', async (req, reply) => {
     const b = parse(z.object({ into: z.string() }), req.body, reply);
     if (!b) return;

@@ -2,11 +2,15 @@ import { Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { AnnotationPlace } from '@wb/shared';
 import { createPortal } from 'react-dom';
 import { clearLayer, paintLayer, revealPending, useAnnotations } from '@/lib/annotations';
-import { useOutline, useSettings } from '@/lib/api';
+import { indexItems, useOutline, useSettings } from '@/lib/api';
+import { useCitedWorks, useWorks } from '@/lib/bibliography';
+import { CiteWorkActions } from './WorkBits';
 import { codeLanguages, highlightPending, highlightToHtml, useHighlighter } from '@/lib/highlight';
+import { useAppLocation } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { lazyComponent } from '@/lib/lazy';
 import { clsx } from './ui';
+import { plainTitle } from './Title';
 import { takeWidgets, type WidgetHost } from './widgets/host';
 
 /** Most texts have no widgets, so their components are loaded with the first one that does. */
@@ -90,6 +94,7 @@ export function Prose({ html, css, className, lang: langProp, annotate }: { html
     return () => cleanups.forEach((c) => c());
   }, [html, copyLabel, sourcesLabel, waiting]);
 
+  const cites = useCitations(ref, html, waiting, annotate);
   const on = !!useSettings().data?.showAnnotations && !!annotate;
   useHighlights(ref, on && !waiting ? annotate : undefined, html);
 
@@ -102,6 +107,7 @@ export function Prose({ html, css, className, lang: langProp, annotate }: { html
         className={clsx('prose-task', className)}
         dangerouslySetInnerHTML={{ __html: html }}
       />
+      {cites.map((c) => createPortal(<CiteWorkActions work={c.work} />, c.el, c.key))}
       {widgets.map((w) =>
         createPortal(
           <Suspense>
@@ -113,6 +119,34 @@ export function Prose({ html, css, className, lang: langProp, annotate }: { html
       )}
     </>
   );
+}
+
+/**
+ * The works a text cites (`#cite-work`): the entries are in the text already; here they enter the library (once the
+ * main text of a page is open) and get their line of actions (open the material, want to read).
+ */
+function useCitations(ref: React.RefObject<HTMLDivElement | null>, html: string, waiting: boolean, place: AnnotationPlace | undefined) {
+  const outline = useOutline().data;
+  const [spots, setSpots] = useState<{ key: string; el: HTMLElement }[]>([]);
+  useEffect(() => {
+    const root = ref.current;
+    if (!root || waiting) return;
+    const found = [...root.querySelectorAll<HTMLElement>('.wb-cite-work[data-work]')].flatMap((c) => {
+      const el = c.querySelector<HTMLElement>(':scope > .wb-work-actions');
+      return el ? [{ key: c.dataset.work!, el }] : [];
+    });
+    setSpots((s) => (s.length === 0 && found.length === 0 ? s : found));
+  }, [ref, html, waiting]);
+  const [path] = useAppLocation();
+  const target = place?.target;
+  const title = target ? (indexItems(outline).map.get(target)?.title ?? outline?.title ?? '') : '';
+  const page = useMemo(() => (target && spots.length ? { id: target, title: plainTitle(title), href: path } : undefined), [target, spots.length, title, path]);
+  const ids = useCitedWorks(outline?.id, page, spots.map((s) => s.key)).data;
+  const works = useWorks(!!ids).data;
+  return spots.flatMap((s, i) => {
+    const w = ids?.[s.key] ? works?.find((x) => x.id === ids[s.key]) : undefined;
+    return w ? [{ key: `${s.key}-${i}`, el: s.el, work: w }] : [];
+  });
 }
 
 /** Paints the student's highlights for this text, after the text itself is ready (declared after that effect). */

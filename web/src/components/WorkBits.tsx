@@ -1,11 +1,12 @@
 import { MIN_CONFIDENCE, type SimilarWork, type Work } from '@wb/shared';
-import { Link2, Unlink } from 'lucide-react';
+import { Bookmark, Link2, Unlink } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'wouter';
-import { keepWorksSeparate, linkWork, mergeWork } from '@/lib/bibliography';
+import { keepWorksSeparate, linkWork, mergeWork, setWantToRead } from '@/lib/bibliography';
 import { useT } from '@/lib/i18n';
 import { useResources } from '@/lib/resources';
 import { useQueryClient } from '@tanstack/react-query';
+import { clsx } from './ui';
 
 /** Whether the fields read from a reference's text can be shown; if not, the raw text is. */
 export const sure = (w: Pick<Work, 'confidence' | 'title'>) => !!w.title && w.confidence >= MIN_CONFIDENCE;
@@ -87,5 +88,46 @@ export function WorkHave({ work, except }: { work: Work; except?: string }) {
           </option>
         ))}
     </select>
+  );
+}
+
+/**
+ * A work as an entry: the title, then who and when. The same look in the library (`md`), a PDF's list (`sm`) and, as
+ * CSS (`.wb-cite-work` in styles.css, which must stay in step), in a text of a workbook.
+ */
+export function WorkEntry({ work, size = 'md', fallback }: { work: Pick<Work, 'confidence' | 'title' | 'authors' | 'year' | 'venue'>; size?: 'md' | 'sm'; fallback: string }) {
+  const ok = sure(work);
+  return (
+    <>
+      <span className={clsx('block break-words', size === 'md' && 'text-[15px]', ok && 'font-medium')}>{ok ? work.title : fallback}</span>
+      {ok ? <span className={clsx('block break-words text-ink-2', size === 'md' ? 'text-[13px]' : 'text-[12px]')}>{[work.authors, work.year, size === 'md' ? work.venue : ''].filter(Boolean).join(' · ')}</span> : null}
+    </>
+  );
+}
+
+/** The line under a cited work in a text: "Open" when the student has it as a material, otherwise the reading wish. */
+export function CiteWorkActions({ work }: { work: Work }) {
+  const t = useT();
+  const qc = useQueryClient();
+  const resources = useResources(null).data?.resources;
+  const linked = work.resource ? resources?.find((r) => r.id === work.resource) : undefined;
+  return (
+    <span className="mt-1 inline-flex items-center gap-2 text-[12px]">
+      {linked ? (
+        <Link href={`/resources/${encodeURIComponent(linked.id)}`} data-tip={t.workOpenTip(linked.title)} className="rounded-md border border-line px-2 py-0.5 font-medium text-accent hover:bg-sunk">
+          {t.workOpen}
+        </Link>
+      ) : null}
+      <button
+        type="button"
+        aria-pressed={work.wantToRead}
+        aria-label={work.wantToRead ? t.pdfRefWantOn : t.pdfRefWant}
+        data-tip={work.wantToRead ? t.pdfRefWantOn : t.pdfRefWant}
+        onClick={() => setWantToRead(qc, '', work, !work.wantToRead)}
+        className={clsx('inline-flex size-6 items-center justify-center rounded-md hover:bg-sunk', work.wantToRead ? 'text-accent' : 'text-ink-2')}
+      >
+        <Bookmark size={13} fill={work.wantToRead ? 'currentColor' : 'none'} />
+      </button>
+    </span>
   );
 }
