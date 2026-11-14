@@ -1,19 +1,20 @@
 import type { Resource, ResourceSeries, ResourceType } from '@wb/shared';
-import { Download, FileText, Pencil, Plus, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Download, FileText, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { Link } from 'wouter';
-import { useBibImport } from '@/components/BibImport';
 import { WorksLibrary } from '@/components/WorksLibrary';
-import { WorkEditDialog } from '@/components/WorkEditDialog';
-import { NewVersionButton } from '@/components/NewVersionButton';
+import { MenuItem, MenuRule, MoreMenu } from '@/components/Menu';
+import { useNewVersion } from '@/components/NewVersionButton';
+import { RowTags } from '@/components/RowTags';
 import { DeleteDialog, EditDialog, UploadDialog } from '@/components/ResourceDialogs';
-import { Button, Empty, IconButton, Spinner } from '@/components/ui';
-import { useTags } from '@/lib/tags';
+import { Button, Empty, Spinner } from '@/components/ui';
+import { setTagsOn, useTags } from '@/lib/tags';
 import { useOutline } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { isPdf, preloadPdf } from '@/lib/pdf';
-import { fileUrl, formatSize, useResources } from '@/lib/resources';
+import { fileUrl, formatSize, refreshResources, useResources } from '@/lib/resources';
 import { useSettings } from '@/lib/api';
 
 const TYPES: ResourceType[] = ['notes', 'slides', 'paper', 'other'];
@@ -37,6 +38,59 @@ export function LibraryPage() {
   return <ResourcesView course={null} heading={t.library} intro={t.libraryIntro} otherLink={null} activeCourse={useOutline().data?.id ?? null} />;
 }
 
+/** One file: its icon, title and one line of details (with its tags, which a press on them edits); the rest is behind "⋯". */
+function FileRow({ r, label, details, onEdit, onDelete }: { r: Resource; label?: string; details: string[]; onEdit: () => void; onDelete: () => void }) {
+  const t = useT();
+  const qc = useQueryClient();
+  const version = useNewVersion(r);
+  const setLabels = (ids: string[]) => void setTagsOn('resource', r.id, ids).then(() => refreshResources(qc));
+  return (
+    <li className="group/row flex items-start gap-2.5 py-2.5">
+      <FileText size={18} className="mt-0.5 shrink-0 text-ink-3" />
+      <div className="min-w-0 flex-1">
+        {isPdf(r.file.filename) ? (
+          <Link href={`/resources/${encodeURIComponent(r.id)}`} className="block truncate text-[15px] font-medium hover:underline">
+            {label ? <span className="mr-2 text-ink-3">{label}</span> : null}
+            {r.title}
+          </Link>
+        ) : (
+          <a href={fileUrl(r)} target="_blank" rel="noreferrer" className="block truncate text-[15px] font-medium hover:underline">
+            {label ? <span className="mr-2 text-ink-3">{label}</span> : null}
+            {r.title}
+          </a>
+        )}
+        <div className="flex flex-wrap items-center gap-x-1.5 text-[13px] text-ink-2">
+          {details.map((d, i) => (
+            <Fragment key={i}>
+              {i > 0 ? <span aria-hidden>·</span> : null}
+              <span className="break-words">{d}</span>
+            </Fragment>
+          ))}
+          <span className={details.length ? 'ml-1' : ''}>
+            <RowTags value={r.labels} onChange={setLabels} />
+          </span>
+        </div>
+        {version.node}
+      </div>
+      <MoreMenu label={t.moreActions} width="w-56">
+        <MenuItem icon={<Download size={15} />} href={fileUrl(r)} download={r.file.filename}>
+          {t.resourceDownload}
+        </MenuItem>
+        <MenuItem icon={<Upload size={15} />} onSelect={version.choose}>
+          {t.resourceNewVersion}
+        </MenuItem>
+        <MenuItem icon={<Pencil size={15} />} onSelect={onEdit}>
+          {t.resourceEdit}
+        </MenuItem>
+        <MenuRule />
+        <MenuItem icon={<Trash2 size={15} />} danger onSelect={onDelete}>
+          {t.resourceDelete}
+        </MenuItem>
+      </MoreMenu>
+    </li>
+  );
+}
+
 function ResourcesView({ course, activeCourse = course, heading, intro, otherLink }: { course: string | null; activeCourse?: string | null; heading: string; intro: string; otherLink: { href: string; label: string } | null }) {
   const t = useT();
   const list = useResources(course);
@@ -49,8 +103,6 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
   const data = list.data;
   const labelDefs = useTags().data ?? [];
   const [tab, setTab] = useState<'files' | 'references'>('files');
-  const bib = useBibImport();
-  const [newWork, setNewWork] = useState(false);
   const refs = !course && tab === 'references';
   const [labelFilter, setLabelFilter] = useState<string[]>([]);
   const usedLabels = labelDefs.filter((l) => data?.resources.some((r) => r.labels.includes(l.id)));
@@ -85,37 +137,7 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
     return days <= 30 || r.unplaced > 0 ? t.resourceVersionNote(days, r.unplaced) : '';
   };
   const row = (r: Resource, label?: string) => (
-    <li key={r.id} className="group flex items-center gap-3 py-2.5">
-      <FileText size={18} className="shrink-0 text-ink-3" />
-      <div className="min-w-0 flex-1">
-        {isPdf(r.file.filename) ? (
-          <Link href={`/resources/${encodeURIComponent(r.id)}`} className="block truncate text-[15px] font-medium hover:underline">
-            {label ? <span className="mr-2 text-ink-3">{label}</span> : null}
-            {r.title}
-          </Link>
-        ) : (
-          <a href={fileUrl(r)} target="_blank" rel="noreferrer" className="block truncate text-[15px] font-medium hover:underline">
-            {label ? <span className="mr-2 text-ink-3">{label}</span> : null}
-            {r.title}
-          </a>
-        )}
-        <div className="truncate text-[13px] text-ink-2">
-          {[r.author, dateText(r.date), formatSize(r.file.size), r.lastPage ? t.resourceOpenedAt(r.lastPage) : '', versionNote(r), !course && r.courses.length ? `${t.resourceInCourses} ${r.courses.map(titleOfCourse).join(', ')}` : '', r.labels.map((l) => labelDefs.find((d) => d.id === l)?.name).filter(Boolean).map((n) => `#${n}`).join(' ')].filter(Boolean).join(' · ')}
-        </div>
-      </div>
-      <div className="flex shrink-0 gap-0.5">
-        <a href={fileUrl(r)} download={r.file.filename} aria-label={t.resourceDownload} title={t.resourceDownload} className="inline-flex size-8 items-center justify-center rounded-md text-ink-2 hover:bg-sunk hover:text-ink">
-          <Download size={16} />
-        </a>
-        <NewVersionButton resource={r} icon />
-        <IconButton label={t.resourceEdit} onClick={() => setEditing(r)}>
-          <Pencil size={16} />
-        </IconButton>
-        <IconButton label={t.resourceDelete} onClick={() => setDeleting(r)}>
-          <Trash2 size={16} />
-        </IconButton>
-      </div>
-    </li>
+    <FileRow key={r.id} r={r} label={label} onEdit={() => setEditing(r)} onDelete={() => setDeleting(r)} details={[r.author, dateText(r.date), formatSize(r.file.size), r.lastPage ? t.resourceOpenedAt(r.lastPage) : '', versionNote(r), !course && r.courses.length ? `${t.resourceInCourses} ${r.courses.map(titleOfCourse).join(', ')}` : ''].filter(Boolean)} />
   );
 
   /** A series is one entry with its parts in order, each with its date. */
@@ -196,19 +218,6 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
             ))}
           </div>
         ) : null}
-        {refs ? (
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <Button size="sm" variant="primary" onClick={() => setNewWork(true)}>
-              {t.workNew}
-            </Button>
-            <Button size="sm" onClick={bib.pickFile}>
-              {t.bibImportFile}
-            </Button>
-            <span className="text-[12px] text-ink-3">{t.bibImportHint}</span>
-          </div>
-        ) : null}
-        {bib.node}
-        {newWork ? <WorkEditDialog onClose={() => setNewWork(false)} /> : null}
         {refs ? <WorksLibrary /> : null}
         {!refs && usedLabels.length ? (
           <div className="mt-4 flex flex-wrap items-center gap-1.5" role="group" aria-label={t.resourceLabelFilter}>

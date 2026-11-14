@@ -12,13 +12,34 @@ export function TagDot({ color, className }: { color: string; className?: string
   return <span aria-hidden {...swatchProps(color as never)} className={clsx('wb-ann-swatch inline-block size-2 shrink-0 rounded-full', className)} />;
 }
 
-interface Option {
+export interface TagOption {
   key: string;
   name: string;
   color: string;
   /** Set for a course topic that is not yet one of the student's tags; picking it makes the tag. */
   course: boolean;
   create: boolean;
+}
+
+/**
+ * What a tag field offers for the text typed: the student's tags (the ones already on the thing too when `withChosen`,
+ * so they can be taken off), course topics that are not tags yet, and "new tag" for a name nobody has.
+ */
+export function useTagOptions(value: string[], text: string, withChosen: boolean): TagOption[] {
+  const tags = useTags().data ?? [];
+  const courseNames = useCourseTagNames();
+  const needle = text.trim().toLowerCase();
+  return useMemo<TagOption[]>(() => {
+    const out: TagOption[] = [];
+    const names = new Set<string>();
+    for (const tag of tags) {
+      names.add(tag.name.toLowerCase());
+      if ((withChosen || !value.includes(tag.id)) && (!needle || tag.name.toLowerCase().includes(needle))) out.push({ key: tag.id, name: tag.name, color: tag.color, course: false, create: false });
+    }
+    for (const n of courseNames) if (!names.has(n.toLowerCase()) && (!needle || n.toLowerCase().includes(needle))) out.push({ key: `course:${n}`, name: n, color: '', course: true, create: false });
+    if (needle && !names.has(needle) && !courseNames.some((n) => n.toLowerCase() === needle)) out.push({ key: `new:${needle}`, name: text.trim(), color: '', course: false, create: true });
+    return out.slice(0, 40);
+  }, [tags, value, courseNames, needle, text, withChosen]);
 }
 
 /**
@@ -29,29 +50,16 @@ interface Option {
 export function TagPicker({ value, onChange, size = 'md', autoFocus = false, placeholder }: { value: string[]; onChange: (v: string[]) => void; size?: 'sm' | 'md'; autoFocus?: boolean; placeholder?: string }) {
   const t = useT();
   const qc = useQueryClient();
-  const tags = useTags().data ?? [];
   const map = useTagMap();
-  const courseNames = useCourseTagNames();
   const [text, setText] = useState('');
   const [open, setOpen] = useState(false);
   const [at, setAt] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const listId = useId();
-  const needle = text.trim().toLowerCase();
 
-  const options = useMemo<Option[]>(() => {
-    const out: Option[] = [];
-    const names = new Set<string>();
-    for (const tag of tags) {
-      names.add(tag.name.toLowerCase());
-      if (!value.includes(tag.id) && (!needle || tag.name.toLowerCase().includes(needle))) out.push({ key: tag.id, name: tag.name, color: tag.color, course: false, create: false });
-    }
-    for (const n of courseNames) if (!names.has(n.toLowerCase()) && (!needle || n.toLowerCase().includes(needle))) out.push({ key: `course:${n}`, name: n, color: '', course: true, create: false });
-    if (needle && !names.has(needle) && !courseNames.some((n) => n.toLowerCase() === needle)) out.push({ key: `new:${needle}`, name: text.trim(), color: '', course: false, create: true });
-    return out.slice(0, 40);
-  }, [tags, value, courseNames, needle, text]);
+  const options = useTagOptions(value, text, false);
 
-  const pick = async (o: Option | undefined) => {
+  const pick = async (o: TagOption | undefined) => {
     if (!o) return;
     setText('');
     setAt(0);

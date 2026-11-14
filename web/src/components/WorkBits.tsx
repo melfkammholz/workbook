@@ -1,6 +1,7 @@
 import { MIN_CONFIDENCE, WORK_STATES, type SimilarWork, type Work, type WorkState } from '@wb/shared';
+import * as Popover from '@radix-ui/react-popover';
 import { Bookmark, Check, EyeOff, Lightbulb, Link2, Pencil, Unlink } from 'lucide-react';
-import { useState } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { Link } from 'wouter';
 import { keepWorksSeparate, linkWork, mergeWork, setWorkState } from '@/lib/bibliography';
 import { useT } from '@/lib/i18n';
@@ -65,16 +66,24 @@ export function WorkHave({ work, except }: { work: Work; except?: string }) {
       </button>
     );
   }
+  return <WorkLinkPicker work={work} except={except} onDone={() => setPicking(false)} />;
+}
+
+/** The choice of which material of the student's a work is; picking one links it, leaving the field or Escape closes it. */
+export function WorkLinkPicker({ work, except, onDone }: { work: Work; except?: string; onDone: () => void }) {
+  const t = useT();
+  const qc = useQueryClient();
+  const resources = useResources(null).data?.resources;
   return (
     <select
       autoFocus
       aria-label={t.workPick}
       defaultValue=""
-      onBlur={() => setPicking(false)}
-      onKeyDown={(e) => e.key === 'Escape' && setPicking(false)}
+      onBlur={() => onDone()}
+      onKeyDown={(e) => e.key === 'Escape' && onDone()}
       onChange={(e) => {
         if (e.target.value) void linkWork(qc, work.id, e.target.value);
-        setPicking(false);
+        onDone();
       }}
       className="wb-field mt-0.5 w-full max-w-full py-0.5 text-[12px]"
     >
@@ -96,12 +105,25 @@ export function WorkHave({ work, except }: { work: Work; except?: string }) {
  * A work as an entry: the title, then who and when. The same look in the library (`md`), a PDF's list (`sm`) and, as
  * CSS (`.wb-cite-work` in styles.css, which must stay in step), in a text of a workbook.
  */
-export function WorkEntry({ work, size = 'md', fallback }: { work: Pick<Work, 'confidence' | 'title' | 'authors' | 'year' | 'venue'>; size?: 'md' | 'sm'; fallback: string }) {
+export function WorkEntry({ work, size = 'md', fallback, extra = [], tail }: { work: Pick<Work, 'confidence' | 'title' | 'authors' | 'year' | 'venue'>; size?: 'md' | 'sm'; fallback: string; extra?: ReactNode[]; tail?: ReactNode }) {
   const ok = sure(work);
+  const line = ok ? [work.authors, work.year, size === 'md' ? work.venue : ''].filter(Boolean).join(' · ') : '';
+  // What the caller adds (where it is cited, its file) joins the same line, after a dot; `tail` (the tags) follows without one.
+  const parts = [line, ...extra].filter(Boolean);
   return (
     <>
       <span className={clsx('block break-words', size === 'md' && 'text-[15px]', ok && 'font-medium')}>{ok ? work.title : fallback}</span>
-      {ok ? <span className={clsx('block break-words text-ink-2', size === 'md' ? 'text-[13px]' : 'text-[12px]')}>{[work.authors, work.year, size === 'md' ? work.venue : ''].filter(Boolean).join(' · ')}</span> : null}
+      {parts.length || tail ? (
+        <span className={clsx('flex flex-wrap items-center gap-x-1.5 break-words text-ink-2', size === 'md' ? 'text-[13px]' : 'text-[12px]')}>
+          {parts.map((p, i) => (
+            <Fragment key={i}>
+              {i > 0 ? <span aria-hidden>·</span> : null}
+              {p}
+            </Fragment>
+          ))}
+          {tail ? <span className={parts.length ? 'ml-1' : ''}>{tail}</span> : null}
+        </span>
+      ) : null}
     </>
   );
 }
@@ -134,6 +156,75 @@ export function WorkStateButtons({ work, labels = false, size = 'md' }: { work: 
         );
       })}
     </span>
+  );
+}
+
+const STATE_LOOK: Record<WorkState | 'none', string> = {
+  later: 'bg-accent-soft text-accent',
+  read: 'bg-done-soft text-done',
+  know: 'bg-review-soft text-review',
+  skip: 'text-ink-3',
+  none: 'border border-dashed border-line-strong text-ink-3',
+};
+const STATE_KEY: Record<WorkState, string> = { later: 'L', read: 'R', know: 'K', skip: 'S' };
+
+/**
+ * The state of a work as the glyph in the row's first column (a dashed circle while unsorted). Pressing it opens the
+ * four states with their keys; the one that is on, chosen again, puts the work back to unsorted.
+ */
+export function WorkStateMenu({ work }: { work: Pick<Work, 'id' | 'state'> }) {
+  const t = useT();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const names: Record<WorkState, string> = { later: t.workStateLater, read: t.workStateRead, know: t.workStateKnow, skip: t.workStateSkip };
+  const Glyph = work.state ? STATE_ICON[work.state] : null;
+  const set = (st: WorkState) => {
+    setWorkState(qc, work.id, work.state === st ? null : st);
+    setOpen(false);
+  };
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          aria-label={work.state ? names[work.state] : t.workStateNone}
+          data-tip={work.state ? t.workStateTip[work.state] : t.workStateNone}
+          className={clsx('grid size-7 shrink-0 place-items-center rounded-lg hover:brightness-95', STATE_LOOK[work.state ?? 'none'], open && 'ring-2 ring-accent ring-offset-1 ring-offset-sheet')}
+        >
+          {Glyph ? <Glyph size={15} /> : <span aria-hidden className="size-1.5 rounded-full bg-line-strong" />}
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          align="start"
+          sideOffset={4}
+          role="menu"
+          aria-label={t.workStateLater}
+          className="wb-menu w-56 p-1"
+          onKeyDown={(e) => {
+            const st = ({ l: 'later', r: 'read', k: 'know', s: 'skip' } as Record<string, WorkState>)[e.key.toLowerCase()];
+            if (!st || e.ctrlKey || e.metaKey || e.altKey) return;
+            e.preventDefault();
+            set(st);
+          }}
+        >
+          {WORK_STATES.map((st) => {
+            const Icon = STATE_ICON[st];
+            const on = work.state === st;
+            return (
+              <button key={st} type="button" role="menuitemradio" aria-checked={on} onClick={() => set(st)} className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13.5px] outline-none hover:bg-sunk focus-visible:bg-sunk">
+                <span className={clsx('grid size-6 place-items-center rounded-md', on ? STATE_LOOK[st] : 'text-ink-2')}>
+                  <Icon size={14} />
+                </span>
+                <span className={clsx('flex-1', on && 'font-medium')}>{names[st]}</span>
+                <kbd className="rounded border border-line bg-sunk px-1.5 text-[11.5px] text-ink-2">{STATE_KEY[st]}</kbd>
+              </button>
+            );
+          })}
+          {work.state ? <p className="px-2.5 pb-1 pt-1.5 text-[12px] text-ink-3">{t.workStateAgain}</p> : null}
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 
