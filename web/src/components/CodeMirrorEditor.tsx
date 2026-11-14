@@ -2,13 +2,14 @@ import { setDiagnostics, type Diagnostic as CmDiagnostic } from '@codemirror/lin
 import { EditorState, Prec, StateEffect, StateField, type Extension } from '@codemirror/state';
 import { Decoration, EditorView, hoverTooltip, keymap, type DecorationSet } from '@codemirror/view';
 import type { Diagnostic, TypeInfo } from '@wb/shared';
-import { FileSearch } from 'lucide-react';
+import { BookOpen, FileSearch } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSettings } from '@/lib/api';
 import { baseExtensions, type EditorVariant } from '@/lib/editor';
 import { isKnown, languageFor, loadLanguage } from '@/lib/highlighter';
 import { typstCompletions } from '@/lib/typst';
 import { openPdfRefPicker } from '@/lib/pdfRefPicker';
+import { openWorkPicker } from '@/lib/workPicker';
 import { useT } from '@/lib/i18n';
 
 export interface EditorProps {
@@ -176,6 +177,15 @@ export function CodeMirrorEditor({ value, onChange, language, diagnostics, readO
                           view.focus();
                         }),
                     },
+                    // A work of the library, cited by its id.
+                    {
+                      key: 'Alt-w',
+                      run: (view: EditorView) =>
+                        openWorkPicker((text) => {
+                          view.dispatch(view.state.replaceSelection(text));
+                          view.focus();
+                        }),
+                    },
                   ]
                 : []),
             ]),
@@ -269,22 +279,40 @@ export function CodeMirrorEditor({ value, onChange, language, diagnostics, readO
   return (
     <div className="group/ed relative h-full min-h-0">
       {editor}
-      <button
-        type="button"
-        data-tip={`${t.pdfRefInsert} (Alt+r)`}
-        aria-label={t.pdfRefInsert}
-        onClick={() =>
-          openPdfRefPicker((text) => {
-            const v = view.current;
-            if (!v) return;
-            v.dispatch(v.state.replaceSelection(text));
-            v.focus();
-          })
-        }
-        className="absolute right-2 top-1.5 z-10 grid size-7 place-items-center rounded-md border border-line bg-sheet/90 text-ink-3 opacity-0 transition-opacity hover:text-ink focus-visible:opacity-100 group-focus-within/ed:opacity-100 group-hover/ed:opacity-100"
-      >
-        <FileSearch size={15} />
-      </button>
+      <div className="absolute right-2 top-1.5 z-10 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-focus-within/ed:opacity-100 group-hover/ed:opacity-100">
+        <button
+          type="button"
+          data-tip={`{t.pdfRefInsert} (Alt+r)`}
+          aria-label={t.pdfRefInsert}
+          onClick={() =>
+            openPdfRefPicker((text) => {
+              const v = view.current;
+              if (!v) return;
+              v.dispatch(v.state.replaceSelection(text));
+              v.focus();
+            })
+          }
+          className="grid size-7 place-items-center rounded-md border border-line bg-sheet/90 text-ink-3 hover:text-ink"
+        >
+          <FileSearch size={15} />
+        </button>
+        <button
+          type="button"
+          data-tip={`{t.workPickInsert} (Alt+w)`}
+          aria-label={t.workPickInsert}
+          onClick={() =>
+            openWorkPicker((text) => {
+              const v = view.current;
+              if (!v) return;
+              v.dispatch(v.state.replaceSelection(text));
+              v.focus();
+            })
+          }
+          className="grid size-7 place-items-center rounded-md border border-line bg-sheet/90 text-ink-3 hover:text-ink"
+        >
+          <BookOpen size={15} />
+        </button>
+      </div>
     </div>
   );
 }

@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { WorkEdit, WorkState, WorkFields, ImportCandidate, ImportChoice, ImportPreview, BibEntry, BibEntryInput, LibraryWork, SimilarWork, Work, Anchor, Placed, Reanchored, StaleItems, UnplacedItems, AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
 import { WORK_STATES, MIN_CONFIDENCE, MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_ENTRY_TEXT, normalizeTitle, workFields, fieldsConfidence, workKeys } from '@wb/shared';
 import type { Store } from '../db/store.js';
-import { crossrefLookup, LOOKUP_PAUSE_MS, type FetchFn } from './crossref.js';
+import { crossrefByDoi, crossrefLookup, LOOKUP_PAUSE_MS, type FetchFn } from './crossref.js';
 import { parseBibText, type ImportedWork } from './bibimport.js';
 import { extractPdfText } from './text.js';
 
@@ -835,6 +835,37 @@ export class Resources {
     if (!this.sql.get('SELECT id FROM works WHERE id = ?', work)) throw new ResourceError('unknown-item');
     this.sql.run('UPDATE works SET state = ?, updated_at = ? WHERE id = ?', state, this.now(), work);
     return toWork(this.sql.get('SELECT * FROM works WHERE id = ?', work)!);
+  }
+
+  /** A work the student adds by hand: edited from the start, so no re-read or lookup changes its fields. */
+  createWork(f: WorkEdit): Work {
+    const id = crypto.randomUUID();
+    const t = this.now();
+    const c = (v: string, n: number) => v.trim().slice(0, n);
+    const raw = [f.authors, f.year, f.title, f.venue].filter(Boolean).join('. ').slice(0, MAX_ENTRY_TEXT);
+    this.sql.run(
+      'INSERT INTO works (id, title, authors, year, venue, doi, url, volume, pages, arxiv, raw, confidence, imported, edited, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,1,1,1,?,?)',
+      id, c(f.title, 300), c(f.authors, 400), f.year, c(f.venue, 300), c(f.doi, 200), c(f.url, 500), c(f.volume, 50), c(f.pages, 50), c(f.arxiv, 50), raw, t, t,
+    );
+    return toWork(this.sql.get('SELECT * FROM works WHERE id = ?', id)!);
+  }
+
+  /** The fields of a DOI or arXiv id from Crossref. Needs the online lookup setting; null: not found or offline. */
+  async lookupDoi(input: string): Promise<WorkFields | null> {
+    if (!this.store.getSettings().lookupReferences) throw new ResourceError('no-file');
+    try {
+      return await crossrefByDoi(input, this.fetchFn);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Works of the library by id, for texts that cite them (`#cite-work`); the ones that are gone are left out. */
+  worksByIds(ids: string[]): Work[] {
+    return ids.slice(0, 200).flatMap((id) => {
+      const r = this.sql.get('SELECT * FROM works WHERE id = ?', id);
+      return r ? [toWork(r)] : [];
+    });
   }
 
   /** The student's edit of a work's fields; the work is locked from then on (re-reads and lookups leave it alone). */

@@ -962,3 +962,4 @@ export * from './questions';
 export * from './bibliography';
 export * from './citations';
 export * from './tags';
+export * from './bibtex';

@@ -34,6 +34,21 @@ describe.skipIf(!have)('TypstRenderer', () => {
     expect(bad.diagnostics.some((d) => d.severity === 'error' && d.message.includes('nope'))).toBe(true);
   });
 
+  it('cite-work takes the id of a library work for the student\'s own texts, when the renderer knows it', async () => {
+    const id = '3f2a9c10-aaaa-bbbb-cccc-000000000001';
+    r.libraryWorks = (ids) => ids.filter((x) => x === id).map((key) => ({ key, file: '', title: 'Theorems for free!', authors: 'Philip Wadler', year: 1989, venue: '', doi: '', url: '' }));
+    try {
+      const ok = await r.renderNote(`#cite-work("${id}")[] /* Wadler 1989 */`);
+      expect(ok.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+      expect(ok.html).toContain(`data-work="${id}"`);
+      expect(ok.html).toContain('Theorems for free!');
+      const gone = await r.renderNote('#cite-work("3f2a9c10-gone")[]');
+      expect(gone.diagnostics.some((d) => d.severity === 'error')).toBe(true);
+    } finally {
+      r.libraryWorks = () => [];
+    }
+  });
+
   it('renders a question to semantic HTML', async () => {
     const out = await r.renderItem(content.get('mutual-recursion')!);
     expect(out.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);

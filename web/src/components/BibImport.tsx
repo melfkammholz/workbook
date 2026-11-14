@@ -51,7 +51,7 @@ export function useBibImport(): { node: ReactNode; pickFile: () => void } {
 
 type Pick = 'add' | 'skip' | string;
 
-function BibImportDialog({ text, onClose }: { text: string; onClose: () => void }) {
+export function BibImportDialog({ text, onClose }: { text: string; onClose: () => void }) {
   const t = useT();
   const qc = useQueryClient();
   const [preview, setPreview] = useState<ImportPreview | null>(null);
@@ -136,5 +136,26 @@ function Choice({ item, value, onChange }: { item: ImportCandidate; value: Pick;
       ))}
       <option value="skip">{t.bibImportSkip}</option>
     </select>
+  );
+}
+
+/** "Paste BibTeX" in the new-work dialog: a text field, then the same preview as pasting on the page (duplicates offered as merge). */
+export function BibPasteDialog({ onClose }: { onClose: () => void }) {
+  const t = useT();
+  const [text, setText] = useState('');
+  const [go, setGo] = useState(false);
+  if (go) return <BibImportDialog text={text} onClose={onClose} />;
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} title={t.bibPasteTitle} description={t.bibPasteHint} width="max-w-xl">
+      <textarea autoFocus rows={10} value={text} onChange={(e) => setText(e.target.value)} placeholder="@article{key, …}" spellCheck={false} className="wb-field block w-full resize-y p-2 font-mono text-[13px]" />
+      <div className="mt-3 flex justify-end gap-2">
+        <Button variant="ghost" onClick={onClose}>
+          {t.cancel}
+        </Button>
+        <Button variant="primary" disabled={!looksLikeBibliography(text)} onClick={() => setGo(true)}>
+          {t.bibPasteGo}
+        </Button>
+      </div>
+    </Dialog>
   );
 }

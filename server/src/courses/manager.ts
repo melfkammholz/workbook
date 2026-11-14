@@ -246,6 +246,11 @@ export class CourseManager {
     });
   }
 
+  /** The library's works a student's text cites by id, as the renderer wants them (the id is the key). */
+  private libraryWorks(ids: string[]) {
+    return this.resources.worksByIds(ids).map((w) => ({ key: w.id, file: '', title: w.title, authors: w.authors, year: w.year, venue: w.venue, doi: w.doi, url: w.url }));
+  }
+
   /** Decks are compiled in a root of their own, with no course content to reach. */
   private decksRenderer(): TypstRenderer {
     if (!this.deckRenderer) {
@@ -254,6 +259,7 @@ export class CourseManager {
       fs.mkdirSync(contentDir, { recursive: true });
       this.deckRenderer = new TypstRenderer({ bin: this.o.config.typstBin, contentDir, dataDir, assetsDir: this.o.typstAssets, language: 'en' });
       this.deckRenderer.pdfRefs = (res, target) => this.pdfRef(res, target);
+      this.deckRenderer.libraryWorks = (ids) => this.libraryWorks(ids);
     }
     return this.deckRenderer;
   }
@@ -653,6 +659,7 @@ export class CourseManager {
     const dataDir = mounted ? this.o.config.dataDir : this.home(id);
     const renderer = new TypstRenderer({ bin: this.o.config.typstBin, contentDir, dataDir, assetsDir: this.o.typstAssets, language: 'en' });
     renderer.pdfRefs = (res, target) => this.pdfRef(res, target);
+    renderer.libraryWorks = (ids) => this.libraryWorks(ids);
     const content = new ContentService(contentDir, (c) => {
       renderer.titles = (itemId) => c.get(itemId)?.meta.title;
       renderer.language = c.outline.language;

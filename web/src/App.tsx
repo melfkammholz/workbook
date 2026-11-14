@@ -51,6 +51,7 @@ import { AnnotationLayer } from '@/components/AnnotationLayer';
 import { QuestionPopup } from '@/components/QuestionPopup';
 import { PdfRefPeek } from '@/components/PdfRefPeek';
 import { PdfRefPicker } from '@/components/PdfRefPicker';
+import { WorkPicker } from '@/components/WorkPicker';
 import { useRewards } from '@/lib/rewards';
 import { THREAD_KINDS, type ThreadKind } from '@wb/shared';
 
@@ -487,6 +488,7 @@ function CourseShell() {
       <SearchDialog open={searching} onClose={() => setSearching(false)} />
       <AnnotationLayer />
       <PdfRefPicker />
+      <WorkPicker />
       {achievementsOn ? <Celebration /> : null}
       <CourseDialog open={switching} onClose={() => setSwitching(false)} />
       <SetupDialog />

@@ -63,3 +63,29 @@ export async function crossrefLookup(text: string, fetchFn: FetchFn): Promise<Wo
     clearTimeout(timer);
   }
 }
+
+/** The DOI (or arXiv id or link) a student typed as the DOI Crossref knows it: arXiv papers have DOIs of their own. */
+export function doiOf(input: string): string {
+  const t = input.trim();
+  const arxiv = /(?:arxiv\.org\/(?:abs|pdf)\/|^arxiv:\s*)?((?:\d{4}\.\d{4,5}|[a-z-]+(?:\.[A-Z]{2})?\/\d{7})(?:v\d+)?)(?:\.pdf)?$/i.exec(t);
+  if (arxiv && !/^10\./.test(normalizeDoi(t))) return `10.48550/arXiv.${arxiv[1]!.replace(/v\d+$/, '')}`;
+  return normalizeDoi(t);
+}
+
+/** The work with this DOI (or arXiv id) from Crossref, null when it does not know it; throws when unreachable. */
+export async function crossrefByDoi(input: string, fetchFn: FetchFn): Promise<WorkFields | null> {
+  const doi = doiOf(input);
+  if (!/^10\.\d{4,9}\/\S+$/.test(doi)) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), LOOKUP_TIMEOUT_MS);
+  try {
+    const res = await fetchFn(`${CROSSREF_URL}/${encodeURIComponent(doi).replace(/%2F/g, '/')}`, { signal: ctl.signal, headers: { 'user-agent': 'workbook-local', accept: 'application/json' } });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { message?: CrossrefItem };
+    if (!body.message?.title?.[0]) return null;
+    const f = fieldsOf(body.message);
+    return { ...f, doi: f.doi || doi, url: /^10\.48550\//.test(doi) ? `https://arxiv.org/abs/${doi.replace('10.48550/arXiv.', '')}` : '' };
+  } finally {
+    clearTimeout(timer);
+  }
+}

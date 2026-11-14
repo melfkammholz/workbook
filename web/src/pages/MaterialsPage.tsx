@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } 
 import { Link } from 'wouter';
 import { useBibImport } from '@/components/BibImport';
 import { WorksLibrary } from '@/components/WorksLibrary';
+import { WorkEditDialog } from '@/components/WorkEditDialog';
 import { NewVersionButton } from '@/components/NewVersionButton';
 import { DeleteDialog, EditDialog, UploadDialog } from '@/components/ResourceDialogs';
 import { Button, Empty, IconButton, Spinner } from '@/components/ui';
@@ -49,6 +50,7 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
   const labelDefs = useTags().data ?? [];
   const [tab, setTab] = useState<'files' | 'references'>('files');
   const bib = useBibImport();
+  const [newWork, setNewWork] = useState(false);
   const refs = !course && tab === 'references';
   const [labelFilter, setLabelFilter] = useState<string[]>([]);
   const usedLabels = labelDefs.filter((l) => data?.resources.some((r) => r.labels.includes(l.id)));
@@ -196,6 +198,9 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
         ) : null}
         {refs ? (
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <Button size="sm" variant="primary" onClick={() => setNewWork(true)}>
+              {t.workNew}
+            </Button>
             <Button size="sm" onClick={bib.pickFile}>
               {t.bibImportFile}
             </Button>
@@ -203,6 +208,7 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
           </div>
         ) : null}
         {bib.node}
+        {newWork ? <WorkEditDialog onClose={() => setNewWork(false)} /> : null}
         {refs ? <WorksLibrary /> : null}
         {!refs && usedLabels.length ? (
           <div className="mt-4 flex flex-wrap items-center gap-1.5" role="group" aria-label={t.resourceLabelFilter}>

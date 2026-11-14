@@ -5,7 +5,7 @@ import path from 'node:path';
 import { scanCards, type RenderedItem, type TypstDiagnostic } from '@wb/shared';
 import { dedent } from '../flashcards/source.js';
 import type { ServerItem } from './loader.js';
-import { loadReferences, worksTypst } from './references.js';
+import { citedKeys, loadReferences, worksTypst, type CourseWork } from './references.js';
 import { bodyOf, splitDocument } from './html.js';
 
 export interface TypstOptions {
@@ -104,6 +104,8 @@ export class TypstRenderer {
   /** Id → title, kept current by the owner when content reloads. */
   titles: (id: string) => string | undefined = () => undefined;
   /** What `#pdf-ref(resource, target)` points at now (the material's title, the highlight's page); undefined once it is gone. */
+  /** Works of the student's library by id, for `#cite-work("<id>")` in their own texts. */
+  libraryWorks: (ids: string[]) => CourseWork[] = () => [];
   pdfRefs: (resource: string, target: string | null) => { title: string; page: number | null } | undefined = () => undefined;
   /** Content language; follows `workbook.yml` and is updated when content reloads. */
   language: string;
@@ -156,10 +158,18 @@ export class TypstRenderer {
     return this.refsCache.refs;
   }
 
-  private header(chapterRel?: string, codeLanguage?: string | null): string[] {
+  /** The workbook's works, and the library's works that `source` cites by id (a key of the workbook wins). */
+  private worksFor(source: string): CourseWork[] {
+    const own = this.references().works;
+    const ids = citedKeys(source).filter((k) => !own.some((w) => w.key === k));
+    if (!ids.length) return own;
+    return [...own, ...this.libraryWorks([...new Set(ids)])];
+  }
+
+  private header(chapterRel?: string, codeLanguage?: string | null, source = ''): string[] {
     const lines = ['#import "/_workbook/prelude.typ": *'];
     if (fs.existsSync(path.join(this.o.contentDir, 'prelude.typ'))) lines.push('#import "/content/prelude.typ": *');
-    lines.push(worksTypst(this.references().works), '#let cite-work(key, body) = _cite-work(_works, key, body)');
+    lines.push(worksTypst(this.worksFor(source)), '#let cite-work(key, body) = _cite-work(_works, key, body)');
     lines.push('#show: workbook', `#set text(lang: "${this.language}")`);
     // Code that names no language is in the language of what it is part of. A language written on the code wins.
     if (codeLanguage) lines.push(`#set raw(lang: "${codeLanguage}")`);
@@ -223,12 +233,12 @@ export class TypstRenderer {
   /** Renders a student's note. Never cached: it is previewed while typing. */
   /** `width`: where it is shown, in pt, so a picture fallback is laid out at that width instead of being scaled. */
   async renderNote(source: string, width?: number): Promise<RenderedNote> {
-    const header = this.header().join('\n') + '\n';
+    const header = this.header(undefined, undefined, source).join('\n') + '\n';
     let run = await this.compile(header + source, header.split('\n').length - 1);
     let asPicture = false;
     // Lost in HTML export: laid out as a page instead, the way typst-preview shows it.
     if (lostSomething(run.diagnostics)) {
-      const pictured = [...this.header(), '#show: _as-picture'].join('\n') + '\n';
+      const pictured = [...this.header(undefined, undefined, source), '#show: _as-picture'].join('\n') + '\n';
       const again = await this.compile(pictured + source, pictured.split('\n').length - 1, width ? { 'wb-width': String(Math.round(width)) } : {});
       if (again.html !== null) {
         run = again;
@@ -242,7 +252,7 @@ export class TypstRenderer {
 
   /** Renders a flashcard deck. Cached like exercises: a review session renders the same deck again and again. */
   async renderDeck(source: string): Promise<RenderedNote> {
-    const header = [...this.header(), '#import "/_workbook/flashcards.typ": flashcard, cloze, quiz'].join('\n') + '\n';
+    const header = [...this.header(undefined, undefined, source), '#import "/_workbook/flashcards.typ": flashcard, cloze, quiz'].join('\n') + '\n';
     const key = await this.cacheKey(`deck\n${header}${source}`);
     const cached = this.readCache<RenderedNote>(key);
     if (cached && typeof cached.html === 'string') return { ...cached, html: this.fillXrefs(cached.html) };
@@ -250,7 +260,7 @@ export class TypstRenderer {
     let asPicture = false;
     // Lost in HTML export: card sides are laid out as pages. A cloze stays text, or its gaps could not be hidden.
     if (lostSomething(run.diagnostics)) {
-      const pictured = [...this.header(), '#import "/_workbook/flashcards.typ": _flashcard-framed as flashcard, cloze, quiz'].join('\n') + '\n';
+      const pictured = [...this.header(undefined, undefined, source), '#import "/_workbook/flashcards.typ": _flashcard-framed as flashcard, cloze, quiz'].join('\n') + '\n';
       const again = await this.compile(pictured + source, pictured.split('\n').length - 1);
       if (again.html !== null) {
         run = again;

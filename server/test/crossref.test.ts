@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Store } from '../src/db/store.js';
 import { Resources } from '../src/resources/service.js';
-import { matchesEntry, type FetchFn } from '../src/resources/crossref.js';
+import { crossrefByDoi, doiOf, matchesEntry, type FetchFn } from '../src/resources/crossref.js';
 
 const RAW = 'Wadler, P. Theorems for free! FPCA 1989, 347 359';
 const item = { DOI: '10.1145/99370.99404', title: ['Theorems for free!'], author: [{ given: 'Philip', family: 'Wadler' }], issued: { 'date-parts': [[1989]] }, 'container-title': ['FPCA'] };
@@ -82,5 +82,27 @@ describe('reference lookup', () => {
     down = false;
     await res.startLookups();
     expect(store.sql.get("SELECT source FROM works WHERE id = 'w1'")!.source).toBe('crossref');
+  });
+
+  it('turns arXiv ids and links into their DOI', () => {
+    expect(doiOf('arXiv:2001.01234v2')).toBe('10.48550/arXiv.2001.01234');
+    expect(doiOf('https://arxiv.org/abs/2001.01234')).toBe('10.48550/arXiv.2001.01234');
+    expect(doiOf('https://doi.org/10.1145/99370.99404')).toBe('10.1145/99370.99404');
+  });
+
+  it('looks a DOI up directly, only with the setting on', async () => {
+    const urls: string[] = [];
+    const fetchFn: FetchFn = async (url) => {
+      urls.push(url);
+      return { ok: true, json: async () => ({ message: item }) };
+    };
+    expect(await crossrefByDoi('doi:10.1145/99370.99404', fetchFn)).toMatchObject({ title: 'Theorems for free!', year: 1989, doi: '10.1145/99370.99404' });
+    expect(urls[0]).toBe('https://api.crossref.org/works/10.1145/99370.99404');
+    expect(await crossrefByDoi('not a doi', fetchFn)).toBeNull();
+    const off = setup([], false);
+    await expect(off.res.lookupDoi('10.1145/99370.99404')).rejects.toBeTruthy();
+    const on = setup([], true);
+    expect(on.res.createWork({ title: 'By hand', authors: 'Me', year: 2024, venue: '', doi: '', url: '', volume: '', pages: '', arxiv: '' })).toMatchObject({ edited: true, state: null });
+    expect(on.res.worksByIds(['nope'])).toEqual([]);
   });
 });

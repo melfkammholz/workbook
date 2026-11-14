@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { entryAt, type Destination, type ImportChoice, linesOf, parseBibliography, textItems, type BibEntry, type BibEntryInput, type LibraryWork, type PageLines, type Work, type WorkEdit, type WorkState } from '@wb/shared';
+import { entryAt, type Destination, type ImportChoice, linesOf, parseBibliography, textItems, type BibEntry, type BibEntryInput, type LibraryWork, type PageLines, type Work, type WorkEdit, type WorkFields, type WorkState } from '@wb/shared';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useEffect } from 'react';
 import { api, useSettings } from './api';
@@ -191,6 +191,23 @@ export function editWork(qc: QueryClient, work: string, fields: WorkEdit): Promi
     },
   );
 }
+
+/** A work the student adds by hand. */
+export function createWork(qc: QueryClient, fields: WorkEdit): Promise<Work> {
+  return api.post<Work>('/api/works', fields).then(
+    (w) => {
+      refreshWorks(qc);
+      return w;
+    },
+    (e: unknown) => {
+      reportSaveFailed();
+      throw e;
+    },
+  );
+}
+
+/** The fields Crossref has for a DOI or arXiv id; null if it knows none or cannot be reached. */
+export const lookupWork = (id: string): Promise<WorkFields | null> => api.post<{ fields: WorkFields | null }>('/api/works/lookup', { id }).then((r) => r.fields, () => null);
 
 /** The student's tags on a work of the library, shown at once. */
 export function setWorkTags(qc: QueryClient, work: string, tags: string[]): void {

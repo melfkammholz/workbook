@@ -1,4 +1,4 @@
-import type { LibraryWork, WorkState } from '@wb/shared';
+import { toBibtex, type LibraryWork, type WorkState } from '@wb/shared';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -6,7 +6,7 @@ import { Link } from 'wouter';
 import { isTyping } from '@/lib/keys';
 import { setWorkState, setWorkTags, useWorks } from '@/lib/bibliography';
 import { useT } from '@/lib/i18n';
-import { Empty, Spinner, clsx } from './ui';
+import { Button, Empty, Spinner, clsx } from './ui';
 import { useTagMap } from '@/lib/tags';
 import { TagDot, TagPicker } from './TagPicker';
 import { SimilarWorks, WorkEditButton, WorkEntry, WorkHave, WorkStateButtons } from './WorkBits';
@@ -25,6 +25,8 @@ export function WorksLibrary() {
   const works = useWorks().data;
   const [filter, setFilter] = useState<Filter>('library');
   const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [copied, setCopied] = useState(false);
   const tagMap = useTagMap();
   if (!works) {
     return (
@@ -44,6 +46,15 @@ export function WorksLibrary() {
   };
   const shown = byTag.filter(pick);
   const unsorted = filter === 'library' ? byTag.filter(isUnsorted) : [];
+  const toggle = (id: string) => setSelected((s) => (s.has(id) ? new Set([...s].filter((x) => x !== id)) : new Set(s).add(id)));
+  // Only works that still exist count (a removed or merged one may have been selected).
+  const chosen = works.filter((w) => selected.has(w.id));
+  const copy = () => {
+    void navigator.clipboard.writeText(toBibtex(chosen)).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }, () => undefined);
+  };
   const filters: [Filter, string][] = [['library', t.workFilterLibrary], ['later', t.workFilterLater], ['read', t.workFilterRead], ['know', t.workFilterKnow], ['skip', t.workFilterSkip], ['have', t.workFilterHave], ['missing', t.workFilterMissing], ['all', t.workFilterAll]];
   return (
     <>
@@ -67,12 +78,30 @@ export function WorksLibrary() {
           })}
         </div>
       ) : null}
+      {shown.length ? (
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]" role="group" aria-label={t.workSelectionLabel}>
+          {chosen.length ? (
+            <>
+              <span className="tabular-nums text-ink-2">{t.workSelected(chosen.length)}</span>
+              <Button size="sm" variant="primary" onClick={copy}>
+                {copied ? t.workCopied : t.workCopyBibtex}
+              </Button>
+              <button type="button" onClick={() => setSelected(new Set())} className="text-ink-2 hover:underline">
+                {t.workSelectNone}
+              </button>
+            </>
+          ) : null}
+          <button type="button" onClick={() => setSelected(new Set([...selected, ...shown.map((w) => w.id)]))} className="text-ink-2 hover:underline">
+            {t.workSelectShown}
+          </button>
+        </div>
+      ) : null}
       {shown.length === 0 && unsorted.length === 0 ? (
         <p className="mt-8 text-ink-2">{t.workNoneFilter}</p>
       ) : (
         <ul className="mt-4 divide-y divide-line">
           {shown.map((w) => (
-            <WorkRow key={w.id} work={w} />
+            <WorkRow key={w.id} work={w} selected={selected.has(w.id)} onToggle={() => toggle(w.id)} />
           ))}
         </ul>
       )}
@@ -139,12 +168,13 @@ function UnsortedTray({ works }: { works: LibraryWork[] }) {
   );
 }
 
-function WorkRow({ work: w }: { work: LibraryWork }) {
+function WorkRow({ work: w, selected, onToggle }: { work: LibraryWork; selected: boolean; onToggle: () => void }) {
   const t = useT();
   const qc = useQueryClient();
   return (
     <li className="py-2.5">
       <div className="flex items-start gap-2">
+        <input type="checkbox" checked={selected} onChange={onToggle} aria-label={t.workSelectOne(w.title || w.raw)} className="mt-1.5 shrink-0 wb-check" />
         <div className="min-w-0 flex-1">
           <WorkEntry work={w} fallback={w.raw} />
           <p className="mt-0.5 flex flex-wrap items-center gap-1 text-[12px] text-ink-3">

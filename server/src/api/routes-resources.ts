@@ -233,6 +233,21 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
     if (!b) return;
     return r().importWorks(b.works);
   });
+  const workBody = z.object({ title: z.string().max(300), authors: z.string().max(400), year: z.number().int().min(0).max(3000).nullable(), venue: z.string().max(300), doi: z.string().max(200), url: z.string().max(500), volume: z.string().max(50), pages: z.string().max(50), arxiv: z.string().max(50) });
+  // A work added by hand.
+  app.post('/api/works', async (req, reply) => {
+    const b = parse(workBody, req.body, reply);
+    if (!b) return;
+    if (!b.title.trim()) return reply.code(400).send({ error: 'title: required' });
+    return r().createWork(b);
+  });
+  // Fields for a DOI or arXiv id from Crossref (only with the online lookup on).
+  app.post('/api/works/lookup', async (req, reply) => {
+    const b = parse(z.object({ id: z.string().min(1).max(300) }), req.body, reply);
+    if (!b) return;
+    if (!d.store.getSettings().lookupReferences) return reply.code(403).send({ error: 'lookup-off' });
+    return { fields: await r().lookupDoi(b.id) };
+  });
   // The works the open page cites (`#cite-work`) enter the library; the keys are looked up in the workbook's own references.
   app.post('/api/works/cited', async (req, reply) => {
     const b = parse(z.object({ page: z.string().max(300), title: z.string().max(300), href: z.string().max(300).startsWith('/'), keys: z.array(z.string().max(200)).max(200) }), req.body, reply);
