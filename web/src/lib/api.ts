@@ -464,7 +464,12 @@ export const usePendingProposals = () => {
   const data = useChanges(!!(settings?.showAi && settings.assistantBridge)).data;
   return useMemo(() => {
     const out = new Map<string, Change[]>();
-    for (const c of data ?? []) if (c.status === 'pending' && c.ref.kind === 'question' && c.field !== 'create') (out.get(c.ref.id) ?? out.set(c.ref.id, []).get(c.ref.id)!).push(c);
+    for (const c of data ?? []) {
+      if (c.status !== 'pending') continue;
+      // Changes to a question, and cards or notes proposed from it.
+      const id = c.field === 'create' ? (c.after as { question?: string } | null)?.question : c.ref.kind === 'question' ? c.ref.id : undefined;
+      if (id) (out.get(id) ?? out.set(id, []).get(id)!).push(c);
+    }
     return out;
   }, [data]);
 };

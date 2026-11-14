@@ -9,12 +9,12 @@ import { useT } from '@/lib/i18n';
 import { addPdfHighlight, arrived as pdfArrived } from '@/lib/pdfAnnotations';
 import { pageSaved, pdfPagesKey, savePdfPage } from '@/lib/pdfPages';
 import { MakeCardDialog } from './MakeCardDialog';
-import { IconButton } from './ui';
+import { Button, IconButton } from './ui';
 
 const pageAnchor = (a: Anchor) => (a.kind === 'page' ? a : null);
 
 /** The menu among a row's actions: make a card, a page note or a highlight from the question; each saves the link. */
-export function QuestionMake({ item, q, size = 'sm' }: { item: string | null; q: Question; size?: 'sm' | 'md' }) {
+export function QuestionMake({ item, q, size = 'sm', buttons = false }: { item: string | null; q: Question; size?: 'sm' | 'md'; /** The detail panel's own buttons, with words, instead of the menu. */ buttons?: boolean }) {
   const t = useT();
   const qc = useQueryClient();
   const [menu, setMenu] = useState(false);
@@ -54,6 +54,35 @@ export function QuestionMake({ item, q, size = 'sm' }: { item: string | null; q:
     void f().catch(() => undefined);
   };
   const dim = size === 'sm' ? 12 : 13;
+  const dialog = card ? (
+    <MakeCardDialog
+      open
+      onClose={() => setCard(false)}
+      exerciseId={a.kind === 'exercise' ? a.id : null}
+      highlightId={q.highlightId}
+      initial={{ kind: 'basic', front: q.text || quote, back: q.answer ?? '', anchor: a.kind === 'none' ? null : a }}
+      onMade={({ cardId }) => void linkQuestion(item, q.id, 'card', cardId)}
+    />
+  ) : null;
+  if (buttons)
+    return (
+      <>
+        <Button size="sm" onClick={() => setCard(true)}>
+          <Layers size={14} aria-hidden /> {t.questionMakeCardShort}
+        </Button>
+        {canNote ? (
+          <Button size="sm" onClick={run(addNote)}>
+            <StickyNote size={14} aria-hidden /> {t.questionMakeNoteShort}
+          </Button>
+        ) : null}
+        {canMark && !linked('highlight') ? (
+          <Button size="sm" onClick={run(mark)}>
+            <Highlighter size={14} aria-hidden /> {t.questionMakeHighlight}
+          </Button>
+        ) : null}
+        {dialog}
+      </>
+    );
   return (
     <>
       <Popover.Root open={menu} onOpenChange={setMenu}>
@@ -80,16 +109,7 @@ export function QuestionMake({ item, q, size = 'sm' }: { item: string | null; q:
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>
-      {card ? (
-        <MakeCardDialog
-          open
-          onClose={() => setCard(false)}
-          exerciseId={a.kind === 'exercise' ? a.id : null}
-          highlightId={q.highlightId}
-          initial={{ kind: 'basic', front: q.text || quote, back: q.answer ?? '', anchor: a.kind === 'none' ? null : a }}
-          onMade={({ cardId }) => void linkQuestion(item, q.id, 'card', cardId)}
-        />
-      ) : null}
+      {dialog}
     </>
   );
 }

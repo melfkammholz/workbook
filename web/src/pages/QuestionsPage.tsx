@@ -1,13 +1,14 @@
 import { ChevronDown, Search } from 'lucide-react';
+import { QuestionDetail } from '@/components/QuestionDetail';
+import { AskDialog, BulkBar, itemOf } from '@/components/QuestionsBulk';
 import { clsx } from 'clsx';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Title } from '@/components/Title';
 import { Link } from 'wouter';
 import { QUESTION_KINDS, RESOURCE_TYPES, type Question, type QuestionKind, type ResourceType } from '@wb/shared';
-import { QuestionRow } from '@/components/Questions';
 import { Empty, Spinner } from '@/components/ui';
 import { useTags } from '@/lib/tags';
-import { useCourses, useOutline, useQuestions, useSettings } from '@/lib/api';
+import { updateQuestion, useCourses, useOutline, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { useResources } from '@/lib/resources';
@@ -74,6 +75,11 @@ export function QuestionsPage() {
   const bridgeOn = !!(settings?.showAi && settings.assistantBridge);
   const [f, setF] = useState<Filters>(readUrl);
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [asking, setAsking] = useState<Question[] | null>(null);
+  const lastPicked = useRef<string | null>(null);
+  const proposals = usePendingProposals();
   const set = (patch: Partial<Filters>) => setF((x) => ({ ...x, ...patch }));
   useEffect(() => {
     writeUrl(f);
@@ -161,6 +167,49 @@ export function QuestionsPage() {
     return [...gs.values()].sort((a, b) => rank(a.key) - rank(b.key) || (a.key === active ? -1 : b.key === active ? 1 : 0) || a.title.localeCompare(b.title));
   }, [filtered, courses?.activeId]);
 
+  /** Ids in the order the list shows them, for shift-click ranges. */
+  const ordered = useMemo(() => groups.flatMap((g) => [...g.parts.values()].sort((a, b) => a.order - b.order || a.title.localeCompare(b.title)).flatMap((p) => p.items.map((q) => q.id))), [groups]);
+  const entryOf = useMemo(() => new Map(entries.map((e) => [e.q.id, e])), [entries]);
+  const openEntry = openId ? entryOf.get(openId) : undefined;
+
+  const pick = (id: string, range: boolean) => {
+    setPicked((cur) => {
+      const next = new Set(cur);
+      const from = lastPicked.current ? ordered.indexOf(lastPicked.current) : -1;
+      const to = ordered.indexOf(id);
+      if (range && from >= 0 && to >= 0) for (const x of ordered.slice(Math.min(from, to), Math.max(from, to) + 1)) next.add(x);
+      else if (!next.delete(id)) next.add(id);
+      return next;
+    });
+    lastPicked.current = id;
+  };
+  const pickMany = (ids: string[]) =>
+    setPicked((cur) => {
+      const next = new Set(cur);
+      const all = ids.every((i) => next.has(i));
+      for (const i of ids) all ? next.delete(i) : next.add(i);
+      return next;
+    });
+  const openQuestion = (q: Question) => {
+    setOpenId(q.id);
+    if (!q.read) void updateQuestion(itemOf(q), q.id, { read: true });
+  };
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('[role="dialog"]')) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      if (picked.size) setPicked(new Set());
+      else if (openId) setOpenId(null);
+    };
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  }, [picked.size, openId]);
+  // Questions that left the list (archived, filtered away) leave the selection.
+  useEffect(() => {
+    setPicked((cur) => (cur.size && [...cur].some((i) => !ordered.includes(i)) ? new Set([...cur].filter((i) => ordered.includes(i))) : cur));
+  }, [ordered]);
+
   if (!all) {
     return (
       <div className="grid h-full place-items-center">
@@ -172,14 +221,47 @@ export function QuestionsPage() {
   const names = groups.map((g) => g.key);
   const allClosed = names.length > 0 && names.every((n) => closed.has(n));
   const searching = !!f.text.trim();
-  const rowOf = (q: Question, where?: string) => <QuestionRow dense where={where} key={q.id} item={q.anchor.kind === 'page' || q.anchor.kind === 'none' || q.anchor.kind === 'material' ? null : placeOf(q.anchor)} q={q} extra={null} />;
+  const anyPicked = picked.size > 0;
+  const rowOf = (q: Question) => {
+    const days = Math.floor((Date.now() - q.createdAt) / DAY);
+    const waiting = proposals.get(q.id)?.length ?? 0;
+    const raw = q.anchor.kind === 'text' ? q.anchor.quote : q.anchor.kind === 'page' ? q.anchor.quote?.trim() || q.anchor.snippet : '';
+    const quote = raw?.trim().replace(/\s+/g, ' ') || null;
+    const on = picked.has(q.id);
+    const names = q.labels.flatMap((l) => labelDefs?.find((d) => d.id === l)?.name ?? []);
+    return (
+      <li key={q.id} onClick={(e) => (e.shiftKey ? pick(q.id, true) : openQuestion(q))} className={clsx('group grid cursor-pointer grid-cols-[1.25rem_1fr_auto] items-baseline gap-x-2.5 rounded-md px-2 py-1', on || openId === q.id ? 'bg-accent-soft' : 'hover:bg-sunk')}>
+        <span className="relative grid size-4 place-items-center self-center">
+          <input type="checkbox" checked={on} aria-label={t.questionsSelectOne} onClick={(e) => { e.stopPropagation(); pick(q.id, e.shiftKey); }} onChange={() => undefined} className={clsx('wb-check absolute inset-0', anyPicked ? 'opacity-100' : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100')} />
+          {q.read ? null : <span role="img" aria-label={t.questionUnreadDot} title={t.questionUnreadDot} className={clsx('size-[9px] rounded-full bg-accent', anyPicked ? 'hidden' : 'group-hover:hidden')} />}
+        </span>
+        <p className={clsx('min-w-0 truncate text-[14px] leading-[1.4]', q.archived && 'text-ink-3', !q.read && 'font-semibold')} title={q.text || undefined}>
+          {q.text || (quote ? <span className="italic text-ink-3">{quote}</span> : <span className="text-ink-3">{t.inboxNoText}</span>)}
+        </p>
+        <div className="flex items-center gap-1.5 whitespace-nowrap text-[12px] text-ink-3">
+          {q.who ? <span title={t.inboxFromAssistant}>{t.assistantMark}</span> : null}
+          {q.kind ? <span className="rounded-[3px] bg-review-soft px-1.5 text-review">{t.questionKinds[q.kind]}</span> : null}
+          {names.map((l) => (
+            <span key={l} className="rounded-[3px] bg-sunk px-1.5 text-ink-2">
+              {l}
+            </span>
+          ))}
+          {waiting ? <span className="rounded-full bg-accent-soft px-2 text-[11.5px] text-accent">{t.questionsProposals(waiting)}</span> : null}
+          <span className="min-w-[5.2rem] text-right tabular-nums" title={new Date(q.createdAt).toLocaleString()}>
+            {t.questionAge(days)}
+          </span>
+        </div>
+      </li>
+    );
+  };
   const filterSelect = (key: 'where' | 'kind' | 'age', label: string, children: React.ReactNode) => (
     <select value={f[key]} onChange={(e) => set({ [key]: e.target.value })} aria-label={label} className={selectClass(!!f[key])}>
       {children}
     </select>
   );
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="flex h-full">
+    <div className="min-w-0 flex-1 overflow-y-auto">
       <div className="settle wb-page mx-auto max-w-4xl px-6 pb-12 pt-8 sm:px-8">
         <BackLink fallback="/" label={t.back} className="mb-3">
           {t.back}
@@ -259,6 +341,11 @@ export function QuestionsPage() {
                 {t.questionsClearFilters}
               </button>
             ) : null}
+            {filtered.length ? (
+              <button type="button" onClick={() => pickMany(ordered)} className="px-0.5 py-1 text-[13px] text-ink-3 hover:text-ink">
+                {t.questionsSelectAll}
+              </button>
+            ) : null}
             {groups.length > 1 ? (
               <button type="button" onClick={() => setClosed(allClosed ? new Set() : new Set(names))} className="px-0.5 py-1 text-[13px] text-ink-3 hover:text-ink">
                 {allClosed ? t.questionsExpandAll : t.questionsCollapseAll}
@@ -287,12 +374,15 @@ export function QuestionsPage() {
             const shut = closed.has(g.key) && !searching;
             return (
               <section key={g.key} className="mt-3">
-                <button type="button" aria-expanded={!shut} onClick={() => setClosed((c) => { const n = new Set(c); if (!n.delete(g.key)) n.add(g.key); return n; })} className="flex w-full items-baseline gap-1.5 border-b border-line-strong py-1 text-left text-[14px] font-semibold">
-                  <ChevronDown size={16} aria-hidden className={clsx('shrink-0 self-center text-ink-3 transition-transform', shut && '-rotate-90')} />
-                  <Title text={g.title} />
-                  {g.mtype ? <span className="rounded-[3px] bg-sunk px-1.5 text-[12px] font-normal text-ink-2">{t.resourceTypes[g.mtype]}</span> : null}
-                  <span className="text-[12px] font-normal text-ink-3">{[...g.parts.values()].reduce((n, p) => n + p.items.length, 0)}</span>
-                </button>
+                <div className="flex items-baseline gap-1.5 border-b border-line-strong">
+                  <GroupCheck ids={[...g.parts.values()].flatMap((p) => p.items.map((q) => q.id))} picked={picked} onToggle={pickMany} label={t.questionsSelectGroup} />
+                  <button type="button" aria-expanded={!shut} onClick={() => setClosed((c) => { const n = new Set(c); if (!n.delete(g.key)) n.add(g.key); return n; })} className="flex min-w-0 flex-1 items-baseline gap-1.5 py-1 text-left text-[14px] font-semibold">
+                    <ChevronDown size={16} aria-hidden className={clsx('shrink-0 self-center text-ink-3 transition-transform', shut && '-rotate-90')} />
+                    <Title text={g.title} />
+                    {g.mtype ? <span className="rounded-[3px] bg-sunk px-1.5 text-[12px] font-normal text-ink-2">{t.resourceTypes[g.mtype]}</span> : null}
+                    <span className="text-[12px] font-normal text-ink-3">{[...g.parts.values()].reduce((n, p) => n + p.items.length, 0)}</span>
+                  </button>
+                </div>
                 {shut ? null : (
                   <div>
                     {[...g.parts.entries()]
@@ -319,7 +409,25 @@ export function QuestionsPage() {
             );
           })
         )}
+        {anyPicked ? <BulkBar picked={ordered.filter((i) => picked.has(i)).flatMap((i) => entryOf.get(i)?.q ?? [])} archive={f.tab === 'archive'} ai={!!settings?.showAi} onAsk={() => setAsking(ordered.filter((i) => picked.has(i)).flatMap((i) => entryOf.get(i)?.q ?? []))} onClear={() => setPicked(new Set())} /> : null}
       </div>
     </div>
+    {openEntry ? (
+      <div className="w-[26rem] shrink-0 overflow-y-auto border-l border-line bg-sheet">
+        <QuestionDetail key={openEntry.q.id} q={openEntry.q} item={itemOf(openEntry.q)} where={[openEntry.gTitle, openEntry.pTitle].filter(Boolean).join(' · ')} href={openEntry.pHref} onClose={() => setOpenId(null)} onAsk={() => setAsking([openEntry.q])} />
+      </div>
+    ) : null}
+    {asking ? <AskDialog questions={asking} onClose={() => setAsking(null)} /> : null}
+    </div>
   );
+}
+
+/** The checkbox in a group's header: all of its questions, or none. */
+function GroupCheck({ ids, picked, onToggle, label }: { ids: string[]; picked: ReadonlySet<string>; onToggle: (ids: string[]) => void; label: string }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const n = ids.filter((i) => picked.has(i)).length;
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = n > 0 && n < ids.length;
+  });
+  return <input ref={ref} type="checkbox" checked={ids.length > 0 && n === ids.length} aria-label={label} title={label} onChange={() => onToggle(ids)} className="wb-check shrink-0 self-center" />;
 }

@@ -288,11 +288,13 @@ export function ChangeValue({ c }: { c: Change }) {
   );
 }
 
-/** A small dot in the accent color on a question the assistant has proposed something for; it opens the proposals in place. */
-export function ProposalMarker({ changes }: { changes: Change[] }) {
+/**
+ * Proposals for one question, each with what would change, why, and edit/reject/accept. `wide` stacks the buttons under the
+ * text (the detail panel); otherwise they sit beside it (the popover). Accepting or rejecting reports through `onDecided`.
+ */
+export function ProposalList({ changes, wide = false, onDecided }: { changes: Change[]; wide?: boolean; onDecided?: () => void }) {
   const t = useT();
   const { fieldName } = useChangeText();
-  const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<{ id: string; value: Value } | null>(null);
   const [cardFor, setCardFor] = useState<Change | null>(null);
   const [note, setNote] = useState('');
@@ -303,12 +305,60 @@ export function ProposalMarker({ changes }: { changes: Change[] }) {
       await f();
       setEdit(null);
       setNote('');
+      onDecided?.();
     } catch {
       setError(true);
     }
   };
   return (
     <>
+      <ul className="divide-y divide-line">
+        {changes.map((c) => {
+          const editing = edit?.id === c.id;
+          return (
+            <li key={c.id} className="py-2 first:pt-0 last:pb-0">
+              <div className="text-[13.5px]">
+                {c.field === 'create' ? null : <span className="font-medium text-ink-2">{fieldName(c)}: </span>}
+                {editing ? <ChangeEditor c={c} value={edit.value} onChange={(value) => setEdit({ id: c.id, value })} /> : <ChangeValue c={c} />}
+                {c.reason ? <p className="mt-0.5 text-[12.5px] text-ink-3">{c.reason}</p> : null}
+              </div>
+              <div className={clsx('mt-1.5 flex items-center gap-1', wide && 'justify-end')}>
+                <Button size="sm" variant="ghost" onClick={() => (isCardProposal(c) ? setCardFor(c) : setEdit(editing ? null : { id: c.id, value: c.after }))} aria-pressed={editing} title={t.inboxEdit}>
+                  <Pencil size={13} />
+                  <span className="sr-only">{t.inboxEdit}</span>
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => void run(() => decideChange(c.id, 'reject', note ? { feedback: note } : {}))}>
+                  <X size={14} aria-hidden /> {t.inboxReject}
+                </Button>
+                <Button size="sm" variant="primary" onClick={() => void run(() => decideChange(c.id, 'accept', editing ? { after: edit.value } : {}))}>
+                  <Check size={14} aria-hidden /> {t.inboxAccept}
+                </Button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t.inboxNote} aria-label={t.inboxNote} className="mt-2 block w-full bg-transparent text-[12.5px] text-ink-2 placeholder:text-ink-3 focus:outline-none" />
+      {changes.length > 1 && !wide ? (
+        <Button size="sm" variant="ghost" className="mt-1" onClick={() => void run(() => acceptChanges(changes.map((c) => c.id)))}>
+          {t.inboxAcceptGroup}
+        </Button>
+      ) : null}
+      {error ? (
+        <p role="alert" className="mt-1 text-[13px] text-danger">
+          {t.inboxFailed}
+        </p>
+      ) : null}
+      {cardFor ? <CardProposalDialog c={cardFor} onClose={() => setCardFor(null)} onAccept={(after) => decideChange(cardFor.id, 'accept', { after, ...(note ? { feedback: note } : {}) })} /> : null}
+    </>
+  );
+}
+
+/** A small dot in the accent color on a question the assistant has proposed something for; it opens the proposals in place. */
+export function ProposalMarker({ changes }: { changes: Change[] }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
         <button type="button" title={t.proposalMarker} aria-label={t.proposalMarker} className="mt-1 inline-flex size-5 shrink-0 items-center justify-center rounded-full hover:bg-sunk">
@@ -317,47 +367,9 @@ export function ProposalMarker({ changes }: { changes: Change[] }) {
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content align="end" sideOffset={6} aria-label={t.proposalMarker} className="wb-menu w-[24rem] max-w-[calc(100vw-1.5rem)] p-3">
-          <ul className="divide-y divide-line">
-            {changes.map((c) => {
-              const editing = edit?.id === c.id;
-              return (
-                <li key={c.id} className="py-2 first:pt-0 last:pb-0">
-                  <div className="text-[13.5px]">
-                    <span className="font-medium text-ink-2">{fieldName(c)}: </span>
-                    {editing ? <ChangeEditor c={c} value={edit.value} onChange={(value) => setEdit({ id: c.id, value })} /> : <ChangeValue c={c} />}
-                    {c.reason ? <p className="mt-0.5 text-[12.5px] text-ink-3">{c.reason}</p> : null}
-                  </div>
-                  <div className={clsx('mt-1.5 flex items-center justify-end gap-1')}>
-                    <Button size="sm" variant="ghost" onClick={() => (isCardProposal(c) ? setCardFor(c) : setEdit(editing ? null : { id: c.id, value: c.after }))} aria-pressed={editing} title={t.inboxEdit}>
-                      <Pencil size={13} />
-                      <span className="sr-only">{t.inboxEdit}</span>
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => void run(() => decideChange(c.id, 'reject', note ? { feedback: note } : {}))}>
-                      <X size={14} aria-hidden /> {t.inboxReject}
-                    </Button>
-                    <Button size="sm" variant="primary" onClick={() => void run(() => decideChange(c.id, 'accept', editing ? { after: edit.value } : {}))}>
-                      <Check size={14} aria-hidden /> {t.inboxAccept}
-                    </Button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t.inboxNote} aria-label={t.inboxNote} className="mt-2 block w-full bg-transparent text-[12.5px] text-ink-2 placeholder:text-ink-3 focus:outline-none" />
-          {changes.length > 1 ? (
-            <Button size="sm" variant="ghost" className="mt-1" onClick={() => void run(() => acceptChanges(changes.map((c) => c.id)))}>
-              {t.inboxAcceptGroup}
-            </Button>
-          ) : null}
-          {error ? (
-            <p role="alert" className="mt-1 text-[13px] text-danger">
-              {t.inboxFailed}
-            </p>
-          ) : null}
+          <ProposalList changes={changes} />
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
-    {cardFor ? <CardProposalDialog c={cardFor} onClose={() => setCardFor(null)} onAccept={(after) => decideChange(cardFor.id, 'accept', { after })} /> : null}
-    </>
   );
 }
