@@ -940,6 +940,13 @@ export const MIGRATIONS: Migration[] = [
     created_at INTEGER NOT NULL
   );
   `,
+  /*
+   * The question type (`questions.kind`) is gone: only the assistant could set it, and it was a tag by another name.
+   * Its proposals go with it, applied ones included, so the log has no field the app can no longer show.
+   */ `
+  DELETE FROM changes WHERE ref_kind = 'question' AND field = 'kind';
+  ALTER TABLE questions DROP COLUMN kind;
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

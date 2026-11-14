@@ -13,6 +13,8 @@ import { spawn } from 'node:child_process';
 const APP = process.env.WORKBOOK_URL || ${JSON.stringify(origin)};
 const KEY = process.env.WORKBOOK_HELPER_KEY || '';
 const CLAUDE = process.env.WORKBOOK_CLAUDE || 'claude';
+const MODEL = process.env.WORKBOOK_MODEL || ''; // optional: e.g. sonnet, opus; empty = your claude default
+const log = (msg) => console.log(new Date().toISOString() + '  ' + msg);
 const TIMEOUT_MS = 10 * 60 * 1000;
 if (!KEY) {
   console.error('Set WORKBOOK_HELPER_KEY (create it in the app: settings, assistant).');
@@ -32,15 +34,14 @@ let current = null;
 
 async function run(req) {
   if (!/^[0-9a-f-]{36}$/.test(req.id) || !/^workbook-[a-z-]+$/.test(req.skill)) throw new Error('refusing a request that looks wrong');
-  const purpose = req.skill + ' #' + req.id;
-  const instruction =
-    'Use the skill ' + req.skill + ' for workbook request ' + req.id + '. First call the workbook tool get_request with request "' + req.id + '" and purpose "' + purpose + '". ' +
-    'Use exactly this purpose "' + purpose + '" for every other read of questions. Only propose, change nothing.';
-  console.log(new Date().toLocaleTimeString() + '  ' + req.skill + ' (' + req.id.slice(0, 8) + ')');
-  const child = spawn(CLAUDE, ['-p', instruction, '--allowedTools', 'mcp__workbook__*', 'Skill'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const instruction = 'Use the skill ' + req.skill + '. First call get_request with request "' + req.id + '". Only propose. No summary at the end: the student sees your proposals in the app; reply "done".';
+  const args = ['-p', instruction, '--allowedTools', 'mcp__workbook__*', 'Skill', ...(MODEL ? ['--model', MODEL] : [])];
+  log('start ' + req.skill + ' ' + req.id + (MODEL ? ' model=' + MODEL : ''));
+  const child = spawn(CLAUDE, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   current = child;
   const lines = [];
   const take = (b) => {
+    log('  | ' + String(b).trimEnd().replace(/\\n/g, '\\n  | '));
     for (const l of String(b).split('\\n')) if (l.trim()) lines.push(l);
     if (lines.length > 40) lines.splice(0, lines.length - 40);
   };
@@ -59,6 +60,7 @@ async function run(req) {
   });
   clearTimeout(timer);
   current = null;
+  log('end ' + req.id + ' exit=' + code);
   await call('/api/helper/report/' + req.id, { method: 'POST', body: JSON.stringify({ exitCode: code, logTail: lines.join('\\n') }) });
   console.log('  ' + (code === 0 ? 'done' : 'failed (' + code + ')'));
 }

@@ -82,7 +82,21 @@ export function bodyOf(html: string): { html: string; css: string } {
   const body = doc.querySelector('body') ?? doc;
   sanitize(body);
   themePictures(body);
+  flattenPrimes(body);
   return { html: body.innerHTML.trim(), css };
+}
+
+/**
+ * Typst sends `f'` as `<msup><mi>f</mi><mo>′</mo></msup>`. Browsers then shrink the prime to script size and raise
+ * it a second time, because U+2032 is already a raised glyph. Plain `<mrow>f′</mrow>` is how it is meant to look.
+ */
+function flattenPrimes(root: HTMLElement): void {
+  for (const sup of root.querySelectorAll('msup')) {
+    const kids = sup.childNodes.filter((n) => n instanceof HTMLElement) as HTMLElement[];
+    const last = kids[1];
+    if (!last || kids.length !== 2 || last.tagName.toLowerCase() !== 'mo' || !/^[′″‴⁗]+$/.test(last.text.trim())) continue;
+    sup.tagName = 'mrow';
+  }
 }
 
 export function escapeHtml(s: string): string {

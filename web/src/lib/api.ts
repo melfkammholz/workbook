@@ -429,7 +429,7 @@ export const askQuestion = (where: QuestionPlace, text: string) => {
       : where.material
         ? { kind: 'material', resource: where.material }
         : { kind: 'none' };
-  const q: Question = { id, text, anchor, course: '', highlightId: null, unplaced: false, read: true, archived: false, answer: null, answerBy: null, links: [], kind: null, who: null, mergedInto: null, labels: [], fetched: null, createdAt: t, updatedAt: t, archivedAt: null };
+  const q: Question = { id, text, anchor, course: '', highlightId: null, unplaced: false, read: true, archived: false, answer: null, answerBy: null, links: [], who: null, mergedInto: null, labels: [], fetched: null, createdAt: t, updatedAt: t, archivedAt: null };
   const item = where.item ?? null;
   if (item) patchWork(item, (w) => ({ ...w, questions: [...w.questions, q] }));
   patchQuestions((qs) => [...qs, q]);

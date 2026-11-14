@@ -2,7 +2,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { Check, Pencil, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { QUESTION_KINDS, type CardPayload, type Change, type MergePayload, type WorkPayload, type ChangeValue as Val, type HighlightPayload, type QuestionKind, type QuestionPayload } from '@wb/shared';
+import { type CardPayload, type Change, type MergePayload, type WorkPayload, type ChangeValue as Val, type HighlightPayload, type QuestionPayload } from '@wb/shared';
 import { acceptChanges, decideChange, useQuestions } from '@/lib/api';
 import { cardText, previewDeck, useFlashcards } from '@/lib/flashcards';
 import { useT } from '@/lib/i18n';
@@ -19,9 +19,8 @@ export type Value = Val;
 /** How a proposal's field and values read to the student. */
 export function useChangeText() {
   const t = useT();
-  const kindName = (k: Value) => (typeof k === 'string' && (QUESTION_KINDS as readonly string[]).includes(k) ? t.questionKinds[k as QuestionKind] : t.inboxNone);
-  const show = (c: Change, v: Value) => (c.field === 'work' ? workSummary(v) : c.field === 'merge' ? mergeSummary(v, t.inboxMergeCount) : c.field === 'create' ? createSummary(v) : c.field === 'kind' ? kindName(v) : c.field === 'labels' ? (Array.isArray(v) && v.length ? v.join(', ') : t.inboxNone) : typeof v === 'string' ? v : t.inboxNone);
-  const fieldName = (c: Change) => (c.field === 'work' ? t.inboxFieldWork : c.field === 'merge' ? t.inboxFieldMerge : c.field === 'create' ? t.inboxCreate[c.ref.kind as 'card' | 'highlight' | 'question'] : c.field === 'kind' ? t.inboxFieldKind : c.field === 'labels' ? t.inboxFieldLabels : c.field === 'text' ? t.inboxFieldText : t.inboxFieldAnswer);
+  const show = (c: Change, v: Value) => (c.field === 'work' ? workSummary(v) : c.field === 'merge' ? mergeSummary(v, t.inboxMergeCount) : c.field === 'create' ? createSummary(v) : c.field === 'labels' ? (Array.isArray(v) && v.length ? v.join(', ') : t.inboxNone) : typeof v === 'string' ? v : t.inboxNone);
+  const fieldName = (c: Change) => (c.field === 'work' ? t.inboxFieldWork : c.field === 'merge' ? t.inboxFieldMerge : c.field === 'create' ? t.inboxCreate[c.ref.kind as 'card' | 'highlight' | 'question'] : c.field === 'labels' ? t.inboxFieldLabels : c.field === 'text' ? t.inboxFieldText : t.inboxFieldAnswer);
   return { show, fieldName };
 }
 
@@ -240,24 +239,13 @@ export function ChangeEditor({ c, value, onChange }: { c: Change; value: Value; 
     const p = value as MergePayload;
     return <textarea rows={3} value={p.text ?? ''} onChange={(e) => onChange({ ...p, text: e.target.value })} placeholder={t.inboxMergeKeepText} aria-label={t.inboxMergeKeepText} className="wb-field w-full px-2 py-1 text-sm" />;
   }
-  if (c.field === 'kind')
-    return (
-      <select value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value || null)} aria-label={fieldName(c)} className="wb-field px-2 py-1 text-sm">
-        <option value="">{t.inboxNone}</option>
-        {QUESTION_KINDS.map((k) => (
-          <option key={k} value={k}>
-            {t.questionKinds[k]}
-          </option>
-        ))}
-      </select>
-    );
   if (c.field === 'labels')
     return <input value={Array.isArray(value) ? value.join(', ') : ''} onChange={(e) => onChange(e.target.value.split(',').map((x) => x.trim()).filter(Boolean))} placeholder={t.inboxLabelsHint} aria-label={fieldName(c)} className="wb-field w-full px-2 py-1 text-sm" />;
   if (c.field === 'answer') return <AnswerEditor value={typeof value === 'string' ? value : ''} onChange={onChange} height="h-48" />;
   return <textarea rows={4} value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)} aria-label={fieldName(c)} className="wb-field w-full px-2 py-1 text-sm" />;
 }
 
-/** What a proposal would change: old and new for wording, type and labels; the answer alone. */
+/** What a proposal would change: old and new for wording and labels; the answer alone. */
 export function ChangeValue({ c }: { c: Change }) {
   const t = useT();
   const { show } = useChangeText();

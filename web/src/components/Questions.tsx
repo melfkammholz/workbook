@@ -202,7 +202,6 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
                 </IconButton>
               </span>
               {q.who ? <span title={t.inboxFromAssistant}>{t.assistantMark}</span> : null}
-              {q.kind ? <span className="rounded-[3px] bg-review-soft px-1.5 text-review">{t.questionKinds[q.kind]}</span> : null}
               {labels.map((l) => (
                 <span key={l} className="rounded-[3px] bg-sunk px-1.5 text-ink-2">
                   {l}
@@ -266,10 +265,9 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
             <p className={clsx('whitespace-pre-wrap break-words text-[14px] leading-snug', done && 'text-ink-3 line-through', !q.read && 'font-semibold')}>{unreadDot}{q.text}</p>
             {extra}
             {q.mergedInto ? <p className="mt-0.5 break-words text-[12.5px] text-ink-3">{t.mergedInto}: {into?.text || t.inboxNoText}</p> : null}
-            {q.kind || q.labels.length || q.who ? (
+            {q.labels.length || q.who ? (
               <p className="mt-0.5 flex flex-wrap gap-x-2 text-[12.5px] text-ink-3">
                 {q.who ? <span title={t.inboxFromAssistant}>{t.assistantMark}</span> : null}
-                {q.kind ? <span>{t.questionKinds[q.kind]}</span> : null}
                 {q.labels.flatMap((l) => (labelNames.has(l) ? [<span key={l}>#{labelNames.get(l)}</span>] : []))}
               </p>
             ) : null}

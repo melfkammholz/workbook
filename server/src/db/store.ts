@@ -38,8 +38,6 @@ import {
   MIN_CONFIDENCE,
   fieldsConfidence,
   type ChangeStatus,
-  type QuestionKind,
-  QUESTION_KINDS,
   MAX_PENDING_CHANGES,
   type Tag,
   type TagKind,
@@ -622,14 +620,10 @@ export class Store {
    * An assistant proposes changes to one question; they wait in the inbox. A pending proposal for the same field is
    * replaced. Returns what was filed, or why not.
    */
-  proposeInner(who: string, questionId: string, p: { kind?: QuestionKind | null; labels?: string[]; answer?: string; text?: string; reason?: string }): { ids: string[] } | { error: string } {
+  proposeInner(who: string, questionId: string, p: { labels?: string[]; answer?: string; text?: string; reason?: string }): { ids: string[] } | { error: string } {
     const q = this.getQuestion(questionId);
     if (!q) return { error: 'unknown question' };
     const wanted: [ChangeField, string | string[] | null, string | string[] | null][] = [];
-    if (p.kind !== undefined) {
-      if (p.kind !== null && !QUESTION_KINDS.includes(p.kind)) return { error: `type must be one of ${QUESTION_KINDS.join(', ')}` };
-      if (p.kind !== q.kind) wanted.push(['kind', q.kind, p.kind]);
-    }
     if (p.labels !== undefined) {
       const names = [...new Set(p.labels.map((x) => x.trim().slice(0, 60)).filter(Boolean))].slice(0, 8);
       const cur = this.labelNames(q.labels);
@@ -1054,14 +1048,11 @@ export class Store {
     return null;
   }
 
-  /** Kind and labels leave `updated_at` alone, so a proposal for the answer is not made stale by another one of the group. */
+  /** Labels leave `updated_at` alone, so a proposal for the answer is not made stale by another one of the group. */
   private applyField(questionId: string, field: ChangeField, value: string | string[] | null, undo = false): string | null {
     const q = this.getQuestion(questionId);
     if (!q) return 'the question is gone';
-    if (field === 'kind') {
-      if (value !== null && !(QUESTION_KINDS as readonly string[]).includes(value as string)) return 'unknown type';
-      this.run('UPDATE questions SET kind = ? WHERE id = ?', (value as string | null) ?? null, questionId);
-    } else if (field === 'labels') {
+    if (field === 'labels') {
       this.setQuestionLabels(questionId, Array.isArray(value) ? value : []);
     } else if (field === 'text') {
       if (typeof value !== 'string' || !value.trim()) return 'the question needs text';
@@ -1613,7 +1604,6 @@ function rowToQuestion(r: Row, labels: string[] = [], links: QuestionLink[] = []
     answer: (r.answer as string | null) ?? null,
     answerBy: r.answer ? ((r.answer_by as AnswerBy | null) ?? 'assistant') : null,
     links,
-    kind: (r.kind as QuestionKind | null) ?? null,
     who: (r.who as string | null) ?? null,
     mergedInto: (r.merged_into as string | null) ?? null,
     labels,

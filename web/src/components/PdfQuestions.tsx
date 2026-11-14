@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import { SNIPPET_LENGTH, normalizeQuote, type PageRect, type Question, type Resource, type TextQuote } from '@wb/shared';
 import { askQuestion, useQuestions } from '@/lib/api';
 import { setAsked } from '@/lib/pdfAsked';
@@ -83,17 +83,36 @@ function paintKept(r: Range | null): void {
   else CSS.highlights.delete('wb-q-sel');
 }
 
-/** Whether new questions are tied to the page in view. Kept for the session only: a reload starts with the whole material again. */
-let tiedToPage = false;
+/** Whether new questions are tied to the page in view, and the page of the kept selection. Kept for the session only: a reload starts with the whole material again. */
+const tie = { tied: false, selPage: null as number | null };
+const tieListeners = new Set<() => void>();
+const setTie = (patch: Partial<typeof tie>) => {
+  Object.assign(tie, patch);
+  tieListeners.forEach((l) => l());
+};
+const useTie = () =>
+  useSyncExternalStore(
+    (l) => (tieListeners.add(l), () => void tieListeners.delete(l)),
+    () => tie.tied,
+  );
+const useTieSel = () =>
+  useSyncExternalStore(
+    (l) => (tieListeners.add(l), () => void tieListeners.delete(l)),
+    () => tie.selPage,
+  );
 
 /**
  * Pinned under the pages, a card with one line: Enter saves a question about the material and the cursor stays.
- * The toggle under the line ties new questions to the page in view, or to the selection when there is one.
+ * The toggle that ties new questions to the page in view (or the selection) is in the questions section of the notes column (`PdfQuestionTie`).
  */
 export function PdfQuestionBar({ resource, current, pageInfo, scroller }: { resource: Resource; current: number; pageInfo: PageInfo; scroller: RefObject<HTMLElement | null> }) {
   const t = useT();
   const [sel, clearSel] = useSelectedPassage(scroller);
-  const [tied, setTied] = useState(tiedToPage);
+  const tied = useTie();
+  useEffect(() => {
+    setTie({ selPage: sel ? sel.page + 1 : null });
+    return () => setTie({ selPage: null });
+  }, [sel]);
   const questions = usePdfQuestions(resource);
   useEffect(() => {
     const byPage = new Map<number, TextQuote[]>();
@@ -105,10 +124,6 @@ export function PdfQuestionBar({ resource, current, pageInfo, scroller }: { reso
     setAsked(byPage);
     return () => setAsked(new Map());
   }, [questions]);
-  const toggle = () => {
-    tiedToPage = !tied;
-    setTied(!tied);
-  };
   const save = (text: string) => {
     const use = tied ? sel : null;
     const n = use ? use.page + 1 : current;
@@ -129,20 +144,29 @@ export function PdfQuestionBar({ resource, current, pageInfo, scroller }: { reso
           placeholder={t.pdfQuestionPlaceholder}
           onSave={save}
         />
-        <button
-          type="button"
-          role="switch"
-          aria-checked={tied}
-          onClick={toggle}
-          className={`mt-1 flex w-full items-center gap-2 px-1 text-left text-[12.5px] ${tied ? 'text-accent' : 'text-ink-3 hover:text-ink'}`}
-        >
-          <span aria-hidden className={`relative h-3.5 w-6 shrink-0 rounded-full ${tied ? 'bg-accent' : 'bg-line-strong'}`}>
-            <span className={`absolute top-0.5 size-2.5 rounded-full bg-sheet transition-[left] ${tied ? 'left-3' : 'left-0.5'}`} />
-          </span>
-          <span className="min-w-0 truncate">{!tied ? t.pdfQuestionTie : sel ? t.pdfQuestionTiedSelection(sel.page + 1) : t.pdfQuestionTiedPage(current)}</span>
-        </button>
       </QuestionCard>
     </div>
+  );
+}
+
+/** The switch that ties new questions to the page in view, or to the selection when there is one. */
+export function PdfQuestionTie({ current }: { current: number }) {
+  const t = useT();
+  const tied = useTie();
+  const selPage = useTieSel();
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={tied}
+      onClick={() => setTie({ tied: !tied })}
+      className={`mb-2 flex w-full items-center gap-2 px-1 text-left text-[12.5px] ${tied ? 'text-accent' : 'text-ink-3 hover:text-ink'}`}
+    >
+      <span aria-hidden className={`relative h-3.5 w-6 shrink-0 rounded-full ${tied ? 'bg-accent' : 'bg-line-strong'}`}>
+        <span className={`absolute top-0.5 size-2.5 rounded-full bg-sheet transition-[left] ${tied ? 'left-3' : 'left-0.5'}`} />
+      </span>
+      <span className="min-w-0">{!tied ? t.pdfQuestionTie : selPage ? t.pdfQuestionTiedSelection(selPage) : t.pdfQuestionTiedPage(current)}</span>
+    </button>
   );
 }
 
@@ -165,6 +189,7 @@ export function PdfQuestionList({ resource, questions, current, labelOf, onGo }:
   const ref = useRef<HTMLElement>(null);
   return (
     <FoldSection id="pdf-questions" title={t.pdfQuestionsTitle} defaultOpen sectionRef={ref} className="mt-5">
+      <PdfQuestionTie current={current} />
       {groups.length === 0 ? <p className="text-[13px] text-ink-3">{t.pdfQuestionsNone}</p> : null}
       {groups.map((g) => (
         <div key={g.page} className="mb-2" data-resource={resource.id}>

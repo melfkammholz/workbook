@@ -4,7 +4,7 @@
  */
 
 /** Bumped when a tool or a skill changes in a way an installed skill must follow; also the MCP server version. */
-export const SKILLS_VERSION = '3';
+export const SKILLS_VERSION = '4';
 
 export interface Skill {
   name: string;
@@ -18,7 +18,9 @@ const COMMON = `Rules for every workbook skill:
 - Every read of a question (\`list_questions\`, \`get_context\`) needs \`purpose\`: use this skill's name. The student sees it next to the question.
 - \`list_questions\` shows at most 20 questions and \`remaining\` counts the rest. Do the 20, then say that more are left; do not loop through all of them unless asked.
 - Each question has \`rejected\`: what the student turned down for it, in their words. Never propose the same thing again.
-- If you were given a request number (a helper started you for something the student asked for in the app), call \`get_request\` first with that number and the purpose you were given, and use exactly that purpose for every read of questions. Read the questions it names with \`list_questions\` (\`ids\`, at most 20 per call; do them in batches). The \`studentNote\` in it is the student's wish to you: follow it as far as it fits these rules.
+- If you were given a request number (a helper started you for something the student asked for in the app), call \`get_request\` first with that number; the purpose for reads of questions stays this skill's name. Read the questions it names with \`list_questions\` (\`ids\`, at most 20 per call; do them in batches). The \`studentNote\` in it is the student's wish to you: follow it as far as it fits these rules.
+- Answers and card sides are Typst, not Markdown: \`*bold*\`, \`_italic_\`, \`- \` lists, code in backticks (a block of code in three backticks), math in \`$...$\`. No \`#\` headings, no \`**bold**\`, no links in Markdown form. The app renders them.
+- Several questions are handled in ONE run: read them together (\`list_questions\` with \`ids\`), read each page or item only once even when several questions point at it, and then make all proposals. Do not start over per question.
 - Write in the language of the question (usually German). Never reveal exercise solutions unless the question asks for one; hint instead.`;
 
 export const SKILLS: Skill[] = [
@@ -33,9 +35,9 @@ ${COMMON}
 
 1. Call \`list_labels\` (reuse their label names).
 2. Call \`list_questions\` with \`purpose: "workbook-answer-recent"\`, \`status: "active"\` and \`unfetched_only: true\` (leave it out if the student asks for all). Add \`since\` if they name a time, \`resource\` or \`item\` if they name a place.
-3. For each question: read \`get_context\` (purpose again), and \`search\` or \`read_page\` if the text around it is not enough.
-4. Call \`propose\` once per question: a short \`answer\` grounded in the text, saying where in it; a \`type\` and \`labels\` if it has none; a one-line \`reason\`. If the text does not answer it, say so in the reason instead of guessing.
-5. Where the answer is a definition or fact worth remembering, also call \`propose_card\` with the same \`question\` id. At most one card per question, none where a card would not help.
+3. For each question: read \`get_context\` only where the question and its \`where\` do not already say what it is about (purpose again), and \`search\` or \`read_page\` if the text around it is not enough.
+4. Call \`propose\` once per question: a short \`answer\` grounded in the text, saying where in it; \`labels\` if it has none; a one-line \`reason\`. If the text does not answer it, say so in the reason instead of guessing.
+5. Also call \`propose_card\` with the same \`question\` id for every question whose answer is a definition, a distinction, a rule or a fact: that is the usual case, so expect a card for most conceptual questions. Skip it only for questions about their own code, yes/no questions, or where you could not ground an answer. At most one card per question. Call \`list_decks\` once and reuse a deck title.
 6. Finish with a short list of what you proposed, and how many questions remain.`,
   },
   {

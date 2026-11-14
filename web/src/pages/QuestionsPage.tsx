@@ -10,7 +10,7 @@ import { clsx } from 'clsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Title } from '@/components/Title';
 import { Link } from 'wouter';
-import { QUESTION_KINDS, RESOURCE_TYPES, type Change, type Question, type QuestionKind, type ResourceType } from '@wb/shared';
+import { RESOURCE_TYPES, type Change, type Question, type ResourceType } from '@wb/shared';
 import { Empty, Spinner } from '@/components/ui';
 import { useTags } from '@/lib/tags';
 import { acceptChanges, isStandalone, updateQuestion, useChanges, useCourses, useOutline, useAssistant, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
@@ -36,7 +36,6 @@ interface Entry {
 interface Filters {
   text: string;
   where: string;
-  kind: string;
   age: string;
   labels: string[];
   answered: boolean;
@@ -44,19 +43,18 @@ interface Filters {
   tab: '' | 'unread' | 'archive';
 }
 
-const NO_FILTERS: Filters = { text: '', where: '', kind: '', age: '', labels: [], answered: false, unseen: false, tab: '' };
+const NO_FILTERS: Filters = { text: '', where: '', age: '', labels: [], answered: false, unseen: false, tab: '' };
 const DAY = 86_400_000;
 
 const readUrl = (): Filters => {
   const p = new URLSearchParams(location.search);
-  return { text: p.get('q') ?? '', where: p.get('in') ?? '', kind: p.get('type') ?? '', age: p.get('age') ?? '', labels: (p.get('labels') ?? '').split(',').filter(Boolean), answered: p.get('answer') === '1', unseen: p.get('unseen') === '1', tab: p.get('tab') === 'unread' ? 'unread' : p.get('tab') === 'archive' ? 'archive' : '' };
+  return { text: p.get('q') ?? '', where: p.get('in') ?? '', age: p.get('age') ?? '', labels: (p.get('labels') ?? '').split(',').filter(Boolean), answered: p.get('answer') === '1', unseen: p.get('unseen') === '1', tab: p.get('tab') === 'unread' ? 'unread' : p.get('tab') === 'archive' ? 'archive' : '' };
 };
 
 const writeUrl = (f: Filters) => {
   const p = new URLSearchParams();
   if (f.text) p.set('q', f.text);
   if (f.where) p.set('in', f.where);
-  if (f.kind) p.set('type', f.kind);
   if (f.age) p.set('age', f.age);
   if (f.labels.length) p.set('labels', f.labels.join(','));
   if (f.answered) p.set('answer', '1');
@@ -158,7 +156,6 @@ export function QuestionsPage() {
         const [k, v = ''] = [f.where.slice(0, f.where.indexOf(':')), f.where.slice(f.where.indexOf(':') + 1)];
         if (f.where === 'materials' ? !gKey.startsWith('m:') : f.where === 'workbooks' ? !gKey.startsWith('c:') : k === 'mt' ? mtype !== v : k === 'g' ? gKey !== v : false) return false;
       }
-      if (f.kind && q.kind !== f.kind) return false;
       if (f.answered && !q.answer) return false;
       if (f.unseen && q.fetched) return false;
       if (f.age) {
@@ -177,7 +174,7 @@ export function QuestionsPage() {
     const needle = f.text.trim().toLowerCase();
     const now = Date.now();
     // Filters about questions (place, type, labels, answers) leave proposals out; only age and text apply to both.
-    if (!bridgeOn || f.where || f.kind || f.labels.length || f.answered || f.unseen) return [];
+    if (!bridgeOn || f.where || f.labels.length || f.answered || f.unseen) return [];
     return (changes ?? []).filter((c) => {
       if (!isStandalone(c)) return false;
       if (f.tab === 'archive' ? c.status !== 'applied' && c.status !== 'rejected' : c.status !== 'pending') return false;
@@ -197,10 +194,12 @@ export function QuestionsPage() {
       const g = gs.get(e.gKey) ?? gs.set(e.gKey, { key: e.gKey, title: e.gTitle, mtype: e.mtype, parts: new Map() }).get(e.gKey)!;
       (g.parts.get(e.pKey) ?? g.parts.set(e.pKey, { title: e.pTitle, href: e.pHref, order: e.pOrder, items: [] }).get(e.pKey)!).items.push(e.q);
     }
+    // Questions with an open proposal go first in their list (stable, so the rest keeps its order).
+    for (const g of gs.values()) for (const p of g.parts.values()) p.items.sort((a, b) => Number(!!proposals.get(b.id)?.length) - Number(!!proposals.get(a.id)?.length));
     const rank = (k: string) => (k === '' ? 2 : k.startsWith('m:') ? 0 : 1);
     const active = courses?.activeId ? `c:${courses.activeId}` : null;
     return [...gs.values()].sort((a, b) => rank(a.key) - rank(b.key) || (a.key === active ? -1 : b.key === active ? 1 : 0) || a.title.localeCompare(b.title));
-  }, [filtered, courses?.activeId]);
+  }, [filtered, courses?.activeId, proposals]);
 
   /** Ids in the order the list shows them, for shift-click ranges. */
   const ordered = useMemo(() => groups.flatMap((g) => [...g.parts.values()].sort((a, b) => a.order - b.order || a.title.localeCompare(b.title)).flatMap((p) => p.items.map((q) => q.id))), [groups]);
@@ -253,8 +252,8 @@ export function QuestionsPage() {
       </div>
     );
   }
-  const active = !!(f.text || f.where || f.kind || f.age || f.labels.length || f.answered || f.unseen);
-  const count = [f.where, f.kind, f.age].filter(Boolean).length + f.labels.length + (f.answered ? 1 : 0) + (f.unseen ? 1 : 0);
+  const active = !!(f.text || f.where || f.age || f.labels.length || f.answered || f.unseen);
+  const count = [f.where, f.age].filter(Boolean).length + f.labels.length + (f.answered ? 1 : 0) + (f.unseen ? 1 : 0);
   const names = groups.map((g) => g.key);
   const nothing = filtered.length === 0 && standalone.length === 0;
   const allClosed = names.length > 0 && names.every((n) => closed.has(n));
@@ -278,7 +277,6 @@ export function QuestionsPage() {
         </p>
         <div className="flex items-center gap-1.5 whitespace-nowrap text-[12px] text-ink-3">
           {q.who ? <span title={t.inboxFromAssistant}>{t.assistantMark}</span> : null}
-          {q.kind ? <span className="rounded-[3px] bg-review-soft px-1.5 text-review">{t.questionKinds[q.kind]}</span> : null}
           {names.map((l) => (
             <span key={l} className="rounded-[3px] bg-sunk px-1.5 text-ink-2">
               {l}
@@ -326,7 +324,7 @@ export function QuestionsPage() {
       </ul>
     </section>
   );
-  const filterSelect = (key: 'where' | 'kind' | 'age', label: string, children: React.ReactNode) => (
+  const filterSelect = (key: 'where' | 'age', label: string, children: React.ReactNode) => (
     <select value={f[key]} onChange={(e) => set({ [key]: e.target.value })} aria-label={label} className={selectClass(!!f[key])}>
       {children}
     </select>
@@ -396,36 +394,19 @@ export function QuestionsPage() {
                       </>,
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div>
-                      <div className="mb-1 text-[12.5px] text-ink-3">{t.questionsKindFilter}</div>
-                      {filterSelect(
-                        'kind',
-                        t.questionsKindFilter,
-                        <>
-                          <option value="">{t.questionsAnyKind}</option>
-                          {QUESTION_KINDS.map((k: QuestionKind) => (
-                            <option key={k} value={k}>
-                              {t.questionKinds[k]}
-                            </option>
-                          ))}
-                        </>,
-                      )}
-                    </div>
-                    <div>
-                      <div className="mb-1 text-[12.5px] text-ink-3">{t.questionsAge}</div>
-                      {filterSelect(
-                        'age',
-                        t.questionsAge,
-                        <>
-                          <option value="">{t.questionsAnyAge}</option>
-                          <option value="1">{t.questionsAgeDay}</option>
-                          <option value="7">{t.questionsAgeWeek}</option>
-                          <option value="30">{t.questionsAgeMonth}</option>
-                          <option value="old">{t.questionsAgeOlder}</option>
-                        </>,
-                      )}
-                    </div>
+                  <div>
+                    <div className="mb-1 text-[12.5px] text-ink-3">{t.questionsAge}</div>
+                    {filterSelect(
+                      'age',
+                      t.questionsAge,
+                      <>
+                        <option value="">{t.questionsAnyAge}</option>
+                        <option value="1">{t.questionsAgeDay}</option>
+                        <option value="7">{t.questionsAgeWeek}</option>
+                        <option value="30">{t.questionsAgeMonth}</option>
+                        <option value="old">{t.questionsAgeOlder}</option>
+                      </>,
+                    )}
                   </div>
                   <div className="grid gap-1.5">
                     <label className="flex items-center gap-2">

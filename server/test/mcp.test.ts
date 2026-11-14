@@ -101,11 +101,11 @@ describe('assistant bridge', () => {
     expect(JSON.parse((await tool('list_questions', { resource: 'no-such-material' })).text).questions).toEqual([]);
     // A rejection shows up on its own question only.
     const target = page.questions[0].id as string;
-    await tool('propose', { question: target, type: 'why', reason: 'test' });
+    await tool('propose', { question: target, labels: ['Warum'], reason: 'test' });
     const change = (await app.inject({ method: 'GET', url: '/api/changes' })).json().find((c: { ref: { id: string }; status: string }) => c.ref.id === target && c.status === 'pending');
     await app.inject({ method: 'POST', url: `/api/changes/${change.id}/reject`, payload: { feedback: 'zu vage' } });
     const after = JSON.parse((await tool('list_questions', { item })).text).questions;
-    expect(after.find((x: { id: string }) => x.id === target).rejected[0]).toMatchObject({ field: 'kind', studentSaid: 'zu vage' });
+    expect(after.find((x: { id: string }) => x.id === target).rejected[0]).toMatchObject({ field: 'labels', studentSaid: 'zu vage' });
     expect(after.filter((x: { rejected?: unknown }) => x.rejected)).toHaveLength(1);
     // Taking the rejection back opens the proposal again (and it is no longer a rejection).
     const undone = await app.inject({ method: 'POST', url: `/api/changes/${change.id}/undo` });
@@ -190,20 +190,17 @@ describe('assistant bridge', () => {
 
   it('proposes, and nothing changes until the student accepts', async () => {
     const q = JSON.parse((await tool('list_questions')).text).questions[0];
-    expect((await tool('propose', { question: q.id, type: 'nonsense' })).error).toBe(true);
-    expect((await tool('propose', { question: 'nope', type: 'why' })).error).toBe(true);
-    const filed = await tool('propose', { question: q.id, type: 'concept', labels: ['Faltung'], answer: 'foldr faltet von rechts.', reason: 'Begriff' });
-    expect(JSON.parse(filed.text).filed).toBe(3);
-    expect(JSON.parse((await tool('list_questions')).text).questions[0]).toMatchObject({ type: null, labels: [], answer: null });
+    expect((await tool('propose', { question: 'nope', labels: ['Faltung'] })).error).toBe(true);
+    expect((await tool('propose', { question: q.id })).error).toBe(true);
+    const filed = await tool('propose', { question: q.id, labels: ['Faltung'], answer: 'erster Versuch', reason: 'Begriff' });
+    expect(JSON.parse(filed.text).filed).toBe(2);
+    expect(JSON.parse((await tool('list_questions')).text).questions[0]).toMatchObject({ labels: [], answer: null });
     // a new proposal for the same field replaces the waiting one
-    await tool('propose', { question: q.id, type: 'why' });
+    await tool('propose', { question: q.id, answer: 'foldr faltet von rechts.' });
     const changes = (await app.inject({ method: 'GET', url: '/api/changes' })).json() as { id: string; field: string; status: string; after: unknown }[];
     const pending = changes.filter((c) => c.status === 'pending');
-    expect(pending).toHaveLength(3);
-    const kind = pending.find((c) => c.field === 'kind')!;
-    expect(kind.after).toBe('why');
+    expect(pending).toHaveLength(2);
     const decide = (id: string, what: string, payload = {}) => app.inject({ method: 'POST', url: `/api/changes/${id}/${what}`, payload });
-    expect((await decide(kind.id, 'accept', { after: 'how', feedback: 'eher wie' })).json()).toMatchObject({ status: 'applied', after: 'how', feedback: 'eher wie' });
     const labels = pending.find((c) => c.field === 'labels')!;
     await decide(labels.id, 'accept');
     const answer = pending.find((c) => c.field === 'answer')!;
@@ -211,39 +208,38 @@ describe('assistant bridge', () => {
     expect((await decide(answer.id, 'accept')).statusCode).toBe(409);
     const now = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.id);
     // accepting an answer does not close the question
-    expect(now).toMatchObject({ kind: 'how', archived: false, answer: 'foldr faltet von rechts.', answerBy: 'assistant' });
+    expect(now).toMatchObject({ archived: false, answer: 'foldr faltet von rechts.', answerBy: 'assistant' });
     expect(now.labels).toHaveLength(1);
     expect(JSON.parse((await tool('list_labels')).text)).toContain('Faltung');
     // undo puts back what was there
     await decide(answer.id, 'undo');
-    await decide(kind.id, 'undo');
     const undone = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.id);
-    expect(undone).toMatchObject({ kind: null, archived: false, answer: null });
+    expect(undone).toMatchObject({ archived: false, answer: null });
     // rejected proposals stay visible to the assistant, with what the student said
-    await tool('propose', { question: q.id, type: 'example' });
+    await tool('propose', { question: q.id, labels: ['Beispiel'] });
     const next = (await app.inject({ method: 'GET', url: '/api/changes' })).json().find((c: { status: string }) => c.status === 'pending');
     await decide(next.id, 'reject', { feedback: 'kein Beispiel' });
     const mine = JSON.parse((await tool('list_proposals', { status: 'rejected' })).text);
-    expect(mine[0]).toMatchObject({ field: 'kind', after: 'example', studentSaid: 'kein Beispiel' });
+    expect(mine[0]).toMatchObject({ field: 'labels', after: ['Faltung', 'Beispiel'], studentSaid: 'kein Beispiel' });
   });
 
   it('rewrites a question and accepts and undoes several proposals as one batch', async () => {
     const q = JSON.parse((await tool('list_questions')).text).questions[0];
     const before = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.id);
-    const filed = await tool('propose', { question: q.id, type: 'check', text: 'Wie faltet foldr eine Liste?', answer: 'Von rechts.' });
-    expect(JSON.parse(filed.text).filed).toBe(3);
+    const filed = await tool('propose', { question: q.id, text: 'Wie faltet foldr eine Liste?', answer: 'Von rechts.' });
+    expect(JSON.parse(filed.text).filed).toBe(2);
     const pending = ((await app.inject({ method: 'GET', url: '/api/changes' })).json() as { id: string; field: string; status: string; before: unknown }[]).filter((c) => c.status === 'pending');
     expect(pending.find((c) => c.field === 'text')!.before).toBe(before.text);
     const ids = pending.map((c) => c.id);
     const accepted = (await app.inject({ method: 'POST', url: '/api/changes/accept', payload: { ids } })).json() as { batch: string; changes: { status: string }[] };
     expect(accepted.changes.every((c) => c.status === 'applied')).toBe(true);
     const now = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.id);
-    expect(now).toMatchObject({ text: 'Wie faltet foldr eine Liste?', kind: 'check', answer: 'Von rechts.', archived: false });
+    expect(now).toMatchObject({ text: 'Wie faltet foldr eine Liste?', answer: 'Von rechts.', archived: false });
     // accepting again fails and changes nothing
     expect((await app.inject({ method: 'POST', url: '/api/changes/accept', payload: { ids } })).statusCode).toBe(409);
     expect((await app.inject({ method: 'POST', url: `/api/changes/batch/${accepted.batch}/undo` })).statusCode).toBe(200);
     const undone = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.id);
-    expect(undone).toMatchObject({ text: before.text, kind: before.kind, answer: before.answer, archived: before.archived });
+    expect(undone).toMatchObject({ text: before.text, answer: before.answer, archived: before.archived });
     expect((await app.inject({ method: 'POST', url: `/api/changes/batch/${accepted.batch}/undo` })).statusCode).toBe(409);
   });
 
@@ -257,10 +253,10 @@ describe('assistant bridge', () => {
     const item = courses.active!.content.current.all()[0]!.meta.id;
     for (let i = 0; i < 100; i++) {
       const made = (await app.inject({ method: 'POST', url: '/api/questions', payload: { item, text: `Frage ${i}` } })).json();
-      await tool('propose', { question: made.id, type: 'how' });
+      await tool('propose', { question: made.id, labels: ['Wie'] });
     }
     const made = (await app.inject({ method: 'POST', url: '/api/questions', payload: { item, text: 'Eine zu viel' } })).json();
-    const full = await tool('propose', { question: made.id, type: 'how' });
+    const full = await tool('propose', { question: made.id, labels: ['Wie'] });
     expect(full.error).toBe(true);
     expect(full.text).toContain('inbox full');
   });

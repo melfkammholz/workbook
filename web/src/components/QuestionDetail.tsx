@@ -120,7 +120,6 @@ export function QuestionDetail({ q, item, where, href, onClose, onAsk }: { q: Qu
         )}
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[12px] text-ink-3">
           {q.who ? <span title={t.inboxFromAssistant}>{t.assistantMark}</span> : null}
-          {q.kind ? <span className="rounded-[3px] bg-review-soft px-1.5 text-review">{t.questionKinds[q.kind]}</span> : null}
           {labelNames.map((l) => (
             <span key={l} className="rounded-[3px] bg-sunk px-1.5 text-ink-2">
               {l}

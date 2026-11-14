@@ -23,8 +23,6 @@ export interface Question {
   answerBy: AnswerBy | null;
   /** What was made from the question; links to things that are gone are left out. */
   links: QuestionLink[];
-  /** What kind of question it is; the student's or the assistant's (accepted proposal) choice. Untyped until then. */
-  kind: QuestionKind | null;
   /** Who asked it when it was not the student, e.g. 'assistant' (an accepted proposal). */
   who: string | null;
   /** Set when it was a duplicate: the question that took its place. It stays in the list, closed, with this link. */
@@ -59,10 +57,6 @@ export const MAX_QUESTION = 2000;
 /** Characters of a page kept with a question about it. */
 export const SNIPPET_LENGTH = 200;
 
-/** The small fixed set of question types. */
-export const QUESTION_KINDS = ['concept', 'why', 'how', 'check', 'example', 'where'] as const;
-export type QuestionKind = (typeof QUESTION_KINDS)[number];
-
 /** At most this many proposals wait in the inbox; beyond that the assistant is told it is full. */
 export const MAX_PENDING_CHANGES = 100;
 
@@ -71,7 +65,7 @@ export const MAX_PENDING_CHANGES = 100;
  * its text. `create` makes something new (see `CreatePayload`); then `after` is the payload and `before` stays empty
  * until accepted, when it holds `{ id }` of what was made, so that undo can remove it.
  */
-export type ChangeField = 'kind' | 'labels' | 'answer' | 'text' | 'create' | 'merge' | 'work';
+export type ChangeField = 'labels' | 'answer' | 'text' | 'create' | 'merge' | 'work';
 export type ChangeStatus = 'pending' | 'applied' | 'rejected' | 'expired' | 'undone';
 /** What a proposal can make: a flashcard (in an existing or a new deck), a note on a PDF page, a question. */
 export type ChangeRefKind = 'question' | 'card' | 'highlight' | 'work';

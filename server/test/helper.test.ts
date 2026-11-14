@@ -65,9 +65,9 @@ describe('host helper', () => {
     expect(await api('GET', '/api/assistant').then((r) => r.json().requests.map((x: { status: string }) => x.status))).toEqual(['running', 'queued']);
 
     // The assistant reads the request through the MCP and reads the question under its number.
-    const got = JSON.parse((await mcp('get_request', { request: a.id, purpose: `workbook-answer-recent #${a.id}` })).content[0].text);
+    const got = JSON.parse((await mcp('get_request', { request: a.id })).content[0].text);
     expect(got).toMatchObject({ kind: 'answer', questions: [q.id], studentNote: 'short' });
-    expect((await mcp('get_request', { request: b.id, purpose: 'x' })).isError).toBe(true); // not running
+    expect((await mcp('get_request', { request: b.id })).isError).toBe(true); // not running
     const read = JSON.parse((await mcp('list_questions', { purpose: `workbook-answer-recent #${a.id}`, ids: [q.id] })).content[0].text);
     expect(read.questions).toHaveLength(1);
 

@@ -30,6 +30,8 @@ export function AnswerToggle({ q, open, onToggle, size = 'sm' }: { q: Question; 
 export function RenderedAnswer({ source }: { source: string }) {
   const r = useQuery({ queryKey: ['answer-preview', source], queryFn: () => previewNote(source), staleTime: Infinity, gcTime: 600_000 });
   if (!r.data) return <p className="text-[13px] text-ink-3">…</p>;
+  // Typst could not compile it (an assistant writes plain text): show the text itself rather than nothing.
+  if (!r.data.html.trim()) return <p className="whitespace-pre-wrap break-words text-[14px]">{source}</p>;
   return <Prose html={r.data.html} css={r.data.css} className="prose-note text-[14px]" />;
 }
 
