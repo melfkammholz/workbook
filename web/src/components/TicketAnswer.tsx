@@ -19,7 +19,7 @@ export function AnswerToggle({ q, open, onToggle, size = 'sm' }: { q: Ticket; op
   const has = !!q.answer;
   return (
     <span className={clsx('flex transition-opacity', !has && !open && 'opacity-0 focus-within:opacity-100 group-hover:opacity-100')}>
-      <IconButton label={open ? t.questionAnswerHide : has ? t.questionAnswerShow : t.questionAnswerWrite} className={size === 'sm' ? 'size-5' : 'size-6'} onClick={onToggle}>
+      <IconButton label={open ? t.ticketAnswerHide : has ? t.ticketAnswerShow : t.ticketAnswerWrite} className={size === 'sm' ? 'size-5' : 'size-6'} onClick={onToggle}>
         <MessageSquareText size={size === 'sm' ? 12 : 13} className={clsx(has && 'text-accent')} aria-pressed={open} />
       </IconButton>
     </span>
@@ -40,7 +40,7 @@ export function AnswerEditor({ value, onChange, status = '', height = 'h-60' }: 
   const t = useT();
   return (
     <div className={clsx(height, 'overflow-hidden rounded-md border border-line')}>
-      <TypstEditor compact="switch" variant="notes" value={value} onChange={onChange} label={t.questionAnswer} placeholder={t.questionAnswerPlaceholder} status={status} />
+      <TypstEditor compact="switch" variant="notes" value={value} onChange={onChange} label={t.ticketAnswer} placeholder={t.ticketAnswerPlaceholder} status={status} />
     </div>
   );
 }
@@ -79,7 +79,7 @@ export function AnswerPanel({ item, q }: { item: string | null; q: Ticket }) {
         <span>{q.answerBy === 'assistant' ? t.assistantMark : t.answerByYou}</span>
         <span className="flex-1" />
         <button type="button" onClick={() => setEditing(true)} className="hover:text-ink">
-          {t.editQuestion}
+          {t.editTicket}
         </button>
       </div>
       <RenderedAnswer source={q.answer ?? ''} />

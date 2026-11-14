@@ -14,7 +14,7 @@ import { Button, IconButton } from './ui';
 const pageAnchor = (a: Anchor) => (a.kind === 'page' ? a : null);
 
 /** The menu among a row's actions: make a card, a page note or a highlight from the question; each saves the link. */
-export function QuestionMake({ item, q, size = 'sm', buttons = false }: { item: string | null; q: Ticket; size?: 'sm' | 'md'; /** The detail panel's own buttons, with words, instead of the menu. */ buttons?: boolean }) {
+export function TicketMake({ item, q, size = 'sm', buttons = false }: { item: string | null; q: Ticket; size?: 'sm' | 'md'; /** The detail panel's own buttons, with words, instead of the menu. */ buttons?: boolean }) {
   const t = useT();
   const qc = useQueryClient();
   const [menu, setMenu] = useState(false);
@@ -68,16 +68,16 @@ export function QuestionMake({ item, q, size = 'sm', buttons = false }: { item: 
     return (
       <>
         <Button size="sm" onClick={() => setCard(true)}>
-          <Layers size={14} aria-hidden /> {t.questionMakeCardShort}
+          <Layers size={14} aria-hidden /> {t.ticketMakeCardShort}
         </Button>
         {canNote ? (
           <Button size="sm" onClick={run(addNote)}>
-            <StickyNote size={14} aria-hidden /> {t.questionMakeNoteShort}
+            <StickyNote size={14} aria-hidden /> {t.ticketMakeNoteShort}
           </Button>
         ) : null}
         {canMark && !linked('highlight') ? (
           <Button size="sm" onClick={run(mark)}>
-            <Highlighter size={14} aria-hidden /> {t.questionMakeHighlight}
+            <Highlighter size={14} aria-hidden /> {t.ticketMakeHighlight}
           </Button>
         ) : null}
         {dialog}
@@ -87,23 +87,23 @@ export function QuestionMake({ item, q, size = 'sm', buttons = false }: { item: 
     <>
       <Popover.Root open={menu} onOpenChange={setMenu}>
         <Popover.Trigger asChild>
-          <IconButton label={t.questionMake} className={size === 'sm' ? 'size-5' : 'size-6'}>
+          <IconButton label={t.ticketMake} className={size === 'sm' ? 'size-5' : 'size-6'}>
             <Sparkles size={dim} />
           </IconButton>
         </Popover.Trigger>
         <Popover.Portal>
-          <Popover.Content align="end" sideOffset={4} aria-label={t.questionMake} className="wb-menu w-56 p-1">
+          <Popover.Content align="end" sideOffset={4} aria-label={t.ticketMake} className="wb-menu w-56 p-1">
             <button type="button" className={cls} onClick={() => { setMenu(false); setCard(true); }}>
-              <Layers size={14} /> {t.questionMakeCard}
+              <Layers size={14} /> {t.ticketMakeCard}
             </button>
             {canNote ? (
               <button type="button" className={cls} onClick={run(addNote)}>
-                <StickyNote size={14} /> {t.questionMakeNote}
+                <StickyNote size={14} /> {t.ticketMakeNote}
               </button>
             ) : null}
             {canMark && !linked('highlight') ? (
               <button type="button" className={cls} onClick={run(mark)}>
-                <Highlighter size={14} /> {t.questionMakeHighlight}
+                <Highlighter size={14} /> {t.ticketMakeHighlight}
               </button>
             ) : null}
           </Popover.Content>

@@ -100,30 +100,30 @@ export function BulkBar({ picked, archive, ai, onAsk, onClear }: { picked: Ticke
   };
   const btn = 'inline-flex h-[30px] items-center gap-1.5 rounded-lg border border-white/30 px-2.5 text-[13.5px] hover:bg-white/10 dark:border-line-strong dark:hover:bg-sheet';
   return (
-    <div role="toolbar" aria-label={t.questionsSelected(picked.length)} className="sticky bottom-3 z-10 mt-3 flex flex-wrap items-center gap-2.5 rounded-[10px] bg-ink px-3.5 py-2 text-[13.5px] text-paper shadow-[var(--shadow)] dark:border dark:border-line-strong dark:bg-sunk dark:text-ink">
-      <b className="font-semibold">{t.questionsSelected(picked.length)}</b>
+    <div role="toolbar" aria-label={t.ticketsSelected(picked.length)} className="sticky bottom-3 z-10 mt-3 flex flex-wrap items-center gap-2.5 rounded-[10px] bg-ink px-3.5 py-2 text-[13.5px] text-paper shadow-[var(--shadow)] dark:border dark:border-line-strong dark:bg-sunk dark:text-ink">
+      <b className="font-semibold">{t.ticketsSelected(picked.length)}</b>
       {ai ? (
         <button type="button" onClick={onAsk} className="inline-flex h-[30px] items-center rounded-lg bg-accent px-2.5 font-medium text-accent-ink hover:brightness-110">
-          {t.questionsAsk}
+          {t.ticketsAsk}
         </button>
       ) : null}
       {archive ? null : (
         <button type="button" className={btn} onClick={() => { for (const q of picked) if (!q.read) void updateTicket(itemOf(q), q.id, { read: true }); }}>
-          {t.questionsMarkRead}
+          {t.ticketsMarkRead}
         </button>
       )}
       <button type="button" className={btn} onClick={() => { for (const q of picked) void updateTicket(itemOf(q), q.id, { archived: !archive }); onClear(); }}>
-        {archive ? t.questionsRestore : t.questionsArchiveAction}
+        {archive ? t.ticketsRestore : t.ticketsArchiveAction}
       </button>
       {labels.length ? (
         <Popover.Root open={open} onOpenChange={setOpen}>
           <Popover.Trigger asChild>
             <button type="button" className={btn}>
-              {t.questionsLabelAction} ▾
+              {t.ticketsLabelAction} ▾
             </button>
           </Popover.Trigger>
           <Popover.Portal>
-            <Popover.Content side="top" align="start" sideOffset={6} aria-label={t.questionsLabelAction} className="wb-menu max-h-64 w-56 overflow-y-auto p-1">
+            <Popover.Content side="top" align="start" sideOffset={6} aria-label={t.ticketsLabelAction} className="wb-menu max-h-64 w-56 overflow-y-auto p-1">
               {labels.map((l) => {
                 const on = picked.every((q) => q.labels.includes(l.id));
                 return (
@@ -139,7 +139,7 @@ export function BulkBar({ picked, archive, ai, onAsk, onClear }: { picked: Ticke
       ) : null}
       <span className="flex-1" />
       <button type="button" className={btn} onClick={onClear}>
-        {t.questionsClearSelection}
+        {t.ticketsClearSelection}
       </button>
     </div>
   );

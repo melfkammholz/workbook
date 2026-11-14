@@ -1,19 +1,19 @@
 import { X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import { SNIPPET_LENGTH, normalizeQuote, type PageRect, type Ticket, type Resource, type TextQuote } from '@wb/shared';
-import { askQuestion, useQuestions } from '@/lib/api';
+import { askQuestion, useTickets } from '@/lib/api';
 import { setAsked } from '@/lib/pdfAsked';
 import { useT } from '@/lib/i18n';
 import { FoldSection } from './FoldSection';
 import { readSelection } from './PdfHighlights';
-import { CaptureField, QuestionCard, QuestionRow } from './Questions';
+import { CaptureField, QuestionCard, TicketRow } from './Tickets';
 
 /** What the viewer knows about a page when a question is written on it. */
 export type PageInfo = (n: number) => Promise<{ fingerprint: string; text: string }>;
 
 /** The questions asked on this file's pages, in reading order. Those the file could not place wait in the fix list. */
-export function usePdfQuestions(resource: Resource): Ticket[] {
-  const all = useQuestions().data;
+export function usePdfTickets(resource: Resource): Ticket[] {
+  const all = useTickets().data;
   return useMemo(
     () =>
       (all ?? [])
@@ -113,7 +113,7 @@ export function PdfQuestionBar({ resource, current, pageInfo, scroller }: { reso
     setTie({ selPage: sel ? sel.page + 1 : null });
     return () => setTie({ selPage: null });
   }, [sel]);
-  const questions = usePdfQuestions(resource);
+  const questions = usePdfTickets(resource);
   useEffect(() => {
     const byPage = new Map<number, TextQuote[]>();
     for (const q of questions) {
@@ -171,7 +171,7 @@ export function PdfQuestionTie({ current }: { current: number }) {
 }
 
 /** The paper's questions in the notes card, grouped by page in reading order; a click on the text goes to the page. */
-export function PdfQuestionList({ resource, questions, current, labelOf, onGo }: { resource: Resource; questions: Ticket[]; current: number; labelOf: (n: number) => string; onGo: (n: number) => void }) {
+export function PdfTicketList({ resource, questions, current, labelOf, onGo }: { resource: Resource; questions: Ticket[]; current: number; labelOf: (n: number) => string; onGo: (n: number) => void }) {
   const t = useT();
   const [showDone, setShowDone] = useState(false);
   const shown = questions.filter((q) => showDone || !q.archived);
@@ -188,9 +188,9 @@ export function PdfQuestionList({ resource, questions, current, labelOf, onGo }:
   const hasDone = questions.some((q) => q.archived);
   const ref = useRef<HTMLElement>(null);
   return (
-    <FoldSection id="pdf-questions" title={t.pdfQuestionsTitle} defaultOpen sectionRef={ref} className="mt-5">
+    <FoldSection id="pdf-questions" title={t.pdfTicketsTitle} defaultOpen sectionRef={ref} className="mt-5">
       <PdfQuestionTie current={current} />
-      {groups.length === 0 ? <p className="text-[13px] text-ink-3">{t.pdfQuestionsNone}</p> : null}
+      {groups.length === 0 ? <p className="text-[13px] text-ink-3">{t.pdfTicketsNone}</p> : null}
       {groups.map((g) => (
         <div key={g.page} className="mb-2" data-resource={resource.id}>
           {g.page === 0 ? (
@@ -209,7 +209,7 @@ export function PdfQuestionList({ resource, questions, current, labelOf, onGo }:
       ))}
       {hasDone ? (
         <button type="button" onClick={() => setShowDone(!showDone)} aria-pressed={showDone} className="mt-1 text-[12.5px] text-ink-3 hover:text-ink">
-          {showDone ? t.hideDoneQuestions : t.showDoneQuestions}
+          {showDone ? t.hideDoneTickets : t.showDoneTickets}
         </button>
       ) : null}
     </FoldSection>
@@ -223,7 +223,7 @@ function CompactQuestion({ q }: { q: Ticket }) {
   if (open) {
     return (
       <div>
-        <QuestionRow item={null} q={q} extra={<Quote q={q} />} />
+        <TicketRow item={null} q={q} extra={<Quote q={q} />} />
         <button type="button" onClick={() => setOpen(false)} className="mb-1 ml-6 text-[12px] text-ink-3 hover:text-ink">
           {t.collapse}
         </button>

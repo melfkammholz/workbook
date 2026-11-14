@@ -4,11 +4,11 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { type Ticket } from '@wb/shared';
 import { useTags } from '@/lib/tags';
 import { TagPicker } from './TagPicker';
-import { askQuestion, deleteTicket, setQuestionTags, updateTicket, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
+import { askQuestion, deleteTicket, setQuestionTags, updateTicket, usePendingProposals, useTickets, useSettings } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { ProposalMarker } from './Proposals';
-import { QuestionMake } from './QuestionMake';
-import { AnswerPanel, AnswerToggle, OutcomeIcons } from './QuestionAnswer';
+import { TicketMake } from './TicketMake';
+import { AnswerPanel, AnswerToggle, OutcomeIcons } from './TicketAnswer';
 import { Button, IconButton, clsx } from './ui';
 
 /** Grows with its text, up to a few lines: one line to type into, more only when it is needed. */
@@ -116,7 +116,7 @@ export function QuestionInput({ item, autoFocus = false }: { item: string; autoF
  * `dense`: one line per question (text and the passage it was made on, then type, labels and age); the done mark is a
  * button among the hover actions, a done question is struck through with a small check at its end.
  */
-export function QuestionRow({ item, q, extra, dense = false, where }: { item: string | null; q: Ticket; extra?: React.ReactNode; dense?: boolean; where?: string }) {
+export function TicketRow({ item, q, extra, dense = false, where }: { item: string | null; q: Ticket; extra?: React.ReactNode; dense?: boolean; where?: string }) {
   const t = useT();
   const [draft, setDraft] = useState<string | null>(null);
   const [answerOpen, setAnswerOpen] = useState(false);
@@ -130,15 +130,15 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
     if (!answerOpen) readNow();
     setAnswerOpen(!answerOpen);
   };
-  const unreadDot = q.read ? null : <span role="img" aria-label={t.questionUnreadDot} title={t.questionUnreadDot} className="mr-1.5 inline-block size-1.5 shrink-0 rounded-full bg-accent align-middle" />;
+  const unreadDot = q.read ? null : <span role="img" aria-label={t.ticketUnreadDot} title={t.ticketUnreadDot} className="mr-1.5 inline-block size-1.5 shrink-0 rounded-full bg-accent align-middle" />;
   const markUnread = q.read ? (
-    <IconButton label={t.questionMarkUnread} className="size-5" onClick={() => void updateTicket(item, q.id, { read: false })}>
+    <IconButton label={t.ticketMarkUnread} className="size-5" onClick={() => void updateTicket(item, q.id, { read: false })}>
       <Mail size={12} />
     </IconButton>
   ) : null;
   const waiting = usePendingProposals().get(q.id);
-  const seen = q.fetched ? <span role="img" aria-label={t.questionSeenBy(q.fetched.purpose, t.questionAge(Math.floor((Date.now() - q.fetched.at) / 86_400_000)))} title={t.questionSeenBy(q.fetched.purpose, t.questionAge(Math.floor((Date.now() - q.fetched.at) / 86_400_000)))} className="flex"><Eye size={12} /></span> : null;
-  const into = useQuestions().data?.find((x) => x.id === q.mergedInto);
+  const seen = q.fetched ? <span role="img" aria-label={t.ticketSeenBy(q.fetched.purpose, t.ticketAge(Math.floor((Date.now() - q.fetched.at) / 86_400_000)))} title={t.ticketSeenBy(q.fetched.purpose, t.ticketAge(Math.floor((Date.now() - q.fetched.at) / 86_400_000)))} className="flex"><Eye size={12} /></span> : null;
+  const into = useTickets().data?.find((x) => x.id === q.mergedInto);
   const labelNames = new Map((useTags().data ?? []).map((l) => [l.id, l.name]));
   const store = () => {
     const text = (draft ?? '').trim();
@@ -152,7 +152,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
         rows={1}
         autoFocus
         value={draft ?? ''}
-        aria-label={t.editQuestion}
+        aria-label={t.editTicket}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => submitKey(e, store, () => setDraft(null))}
         className="block w-full resize-none wb-field px-2 py-1 text-sm"
@@ -192,12 +192,12 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
               {waiting ? <span onClickCapture={readNow} className="contents"><ProposalMarker changes={waiting} /></span> : null}
               <AnswerToggle q={q} open={answerOpen} onToggle={toggleAnswer} />
               <span className="flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                <QuestionMake item={item} q={q} />
+                <TicketMake item={item} q={q} />
                 {markUnread}
-                <IconButton label={t.editQuestion} className="size-5" onClick={() => setDraft(q.text)}>
+                <IconButton label={t.editTicket} className="size-5" onClick={() => setDraft(q.text)}>
                   <Pencil size={12} />
                 </IconButton>
-                <IconButton label={t.deleteQuestion} className="size-5" onClick={() => void deleteTicket(item, q.id)}>
+                <IconButton label={t.deleteTicket} className="size-5" onClick={() => void deleteTicket(item, q.id)}>
                   <Trash2 size={12} />
                 </IconButton>
               </span>
@@ -208,12 +208,12 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
                 </span>
               ))}
               {q.links.length ? <OutcomeIcons links={q.links} /> : null}
-              <span className="min-w-[5.2rem] text-right tabular-nums" title={new Date(q.createdAt).toLocaleString()}>{t.questionAge(days)}</span>
+              <span className="min-w-[5.2rem] text-right tabular-nums" title={new Date(q.createdAt).toLocaleString()}>{t.ticketAge(days)}</span>
               <input
                 type="checkbox"
                 checked={done}
-                aria-label={done ? t.questionReopen : t.questionDone}
-                title={done ? t.questionReopen : t.questionDone}
+                aria-label={done ? t.ticketReopen : t.ticketDone}
+                title={done ? t.ticketReopen : t.ticketDone}
                 onChange={() => void updateTicket(item, q.id, { archived: !done })}
                 className="wb-check shrink-0"
               />
@@ -230,8 +230,8 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
       <input
         type="checkbox"
         checked={done}
-        aria-label={done ? t.questionReopen : t.questionDone}
-        title={done ? t.questionReopen : t.questionDone}
+        aria-label={done ? t.ticketReopen : t.ticketDone}
+        title={done ? t.ticketReopen : t.ticketDone}
         onChange={() => void updateTicket(item, q.id, { archived: !done })}
         className="wb-check mt-1 shrink-0"
       />
@@ -242,7 +242,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
             rows={1}
             autoFocus
             value={draft}
-            aria-label={t.editQuestion}
+            aria-label={t.editTicket}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => submitKey(e, store, () => setDraft(null))}
             className="block w-full resize-none wb-field px-2 py-1 text-sm"
@@ -276,11 +276,11 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
           {q.links.length ? <OutcomeIcons links={q.links} /> : null}
           <AnswerToggle q={q} open={answerOpen} onToggle={toggleAnswer} size="md" />
           <span className="flex shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-            <QuestionMake item={item} q={q} size="md" />
-            <IconButton label={t.editQuestion} className="size-6" onClick={() => setDraft(q.text)}>
+            <TicketMake item={item} q={q} size="md" />
+            <IconButton label={t.editTicket} className="size-6" onClick={() => setDraft(q.text)}>
               <Pencil size={13} />
             </IconButton>
-            <IconButton label={t.deleteQuestion} className="size-6" onClick={() => void deleteTicket(item, q.id)}>
+            <IconButton label={t.deleteTicket} className="size-6" onClick={() => void deleteTicket(item, q.id)}>
               <Trash2 size={13} />
             </IconButton>
           </span>
@@ -293,7 +293,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
 }
 
 /** The questions on one item: open ones, and done ones behind a switch. No counts: a list is not a score. */
-export function QuestionList({ item, questions }: { item: string | null; questions: Ticket[] }) {
+export function TicketList({ item, questions }: { item: string | null; questions: Ticket[] }) {
   const t = useT();
   const [showDone, setShowDone] = useState(false);
   const open = questions.filter((q) => !q.archived);
@@ -304,15 +304,15 @@ export function QuestionList({ item, questions }: { item: string | null; questio
       {shown.length ? (
         <ul className="divide-y divide-line">
           {shown.map((q) => (
-            <QuestionRow key={q.id} item={item} q={q} />
+            <TicketRow key={q.id} item={item} q={q} />
           ))}
         </ul>
       ) : (
-        <p className="py-1 text-[13px] text-ink-3">{t.noQuestions}</p>
+        <p className="py-1 text-[13px] text-ink-3">{t.noTickets}</p>
       )}
       {done.length ? (
         <button type="button" onClick={() => setShowDone(!showDone)} aria-pressed={showDone} className="mt-1 text-[12.5px] text-ink-3 hover:text-ink">
-          {showDone ? t.hideDoneQuestions : t.showDoneQuestions}
+          {showDone ? t.hideDoneTickets : t.showDoneTickets}
         </button>
       ) : null}
     </div>
@@ -328,17 +328,17 @@ export function ExerciseQuestions({ item, questions }: { item: string; questions
       <Popover.Trigger asChild>
         <button
           type="button"
-          title={t.questionsTitle}
+          title={t.ticketsTitle}
           className={clsx('inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[13px] hover:bg-sunk hover:text-ink', open ? 'bg-sunk text-ink' : 'text-ink-3')}
         >
-          <HelpCircle size={14} /> <span className="hidden sm:inline">{t.questionsTitle}</span>
+          <HelpCircle size={14} /> <span className="hidden sm:inline">{t.ticketsTitle}</span>
         </button>
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content align="start" sideOffset={6} aria-label={t.questionsTitle} className="wb-menu w-[22rem] max-w-[calc(100vw-1.5rem)] p-3">
+        <Popover.Content align="start" sideOffset={6} aria-label={t.ticketsTitle} className="wb-menu w-[22rem] max-w-[calc(100vw-1.5rem)] p-3">
           <QuestionInput item={item} autoFocus />
           <div className="mt-2 max-h-72 overflow-y-auto">
-            <QuestionList item={item} questions={questions} />
+            <TicketList item={item} questions={questions} />
           </div>
         </Popover.Content>
       </Popover.Portal>

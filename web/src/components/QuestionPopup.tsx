@@ -3,7 +3,7 @@ import { useLocation } from 'wouter';
 import { askQuestion, useOutline } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { usePageKeys } from '@/lib/keys';
-import { CaptureField, QuestionCard } from './Questions';
+import { CaptureField, QuestionCard } from './Tickets';
 
 /** What is open, as a place for a question; a PDF has its own line, so it has no place here. */
 function useOpenPlace(location: string): { item: string | null; title: string | null } {
@@ -58,7 +58,7 @@ export function QuestionPopup() {
       <QuestionCard className="pointer-events-auto w-full max-w-xl">
         <CaptureField
           autoFocus
-          placeholder={place.title ? t.questionAbout(place.title) : t.questionAboutNothing}
+          placeholder={place.title ? t.ticketAbout(place.title) : t.ticketAboutNothing}
           onCancel={close}
           onBlurEmpty={close}
           onSave={(text) => void askQuestion(place.item ? { item: place.item } : {}, text)}

@@ -38,7 +38,7 @@ import {
   MaterialsPage,
   NotesPage,
   PdfPage,
-  QuestionsPage,
+  TicketsPage,
   ReviewPage,
   SettingsPage,
   StrugglingPage,
@@ -295,7 +295,7 @@ function CourseShell() {
     'g a': annotationsOn ? () => navigate('/highlights') : undefined,
     'g l': materialsOn ? () => navigate('/materials') : undefined,
     'g m': achievementsOn ? () => navigate('/achievements') : undefined,
-    'g q': () => navigate('/questions'),
+    'g t': () => navigate('/tickets'),
   });
 
   useEffect(() => {
@@ -403,11 +403,11 @@ function CourseShell() {
             <NotebookText size={18} />
           </Link>
           <Link
-            href="/questions"
-            className={clsx('relative inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk hover:text-ink', location === '/questions' ? 'bg-sunk text-ink' : 'text-ink-2')}
-            aria-label={t.questionsTitle}
-            aria-current={location === '/questions' ? 'page' : undefined}
-            title={t.questionsTitle}
+            href="/tickets"
+            className={clsx('relative inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk hover:text-ink', location === '/tickets' ? 'bg-sunk text-ink' : 'text-ink-2')}
+            aria-label={t.ticketsTitle}
+            aria-current={location === '/tickets' ? 'page' : undefined}
+            title={t.ticketsTitle}
           >
             <MessageCircleQuestion size={18} />
             {inboxDot ? <span aria-hidden className="absolute right-1 top-1 size-2 rounded-full bg-accent" /> : null}
@@ -502,8 +502,9 @@ const CoursePages = memo(function CoursePages() {
         <Route path="/welcome" component={LandingPage} />
         <Route path="/achievements" component={AchievementsPage} />
         <Route path="/notes" component={NotesPage} />
-        <Route path="/questions" component={QuestionsPage} />
-        <Route path="/inbox">{() => <Redirect to="/questions" replace />}</Route>
+        <Route path="/tickets" component={TicketsPage} />
+        <Route path="/inbox">{() => <Redirect to="/tickets" replace />}</Route>
+        <Route path="/questions">{() => <Redirect to="/tickets" replace />}</Route>
         <Route path="/highlights">{() => <HighlightsPage />}</Route>
         <Route path="/materials" component={MaterialsPage} />
         <Route path="/highlights/:filter">{(p) => <HighlightsPage key={p.filter} filter={p.filter} />}</Route>

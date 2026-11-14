@@ -6,8 +6,8 @@ import { acceptChanges, decideChange, deleteTicket, setQuestionTags, undoBatch, 
 import { useT } from '@/lib/i18n';
 import { useTags } from '@/lib/tags';
 import { ProposalList, useChangeText } from './Proposals';
-import { AnswerPanel, OutcomeIcons } from './QuestionAnswer';
-import { QuestionMake } from './QuestionMake';
+import { AnswerPanel, OutcomeIcons } from './TicketAnswer';
+import { TicketMake } from './TicketMake';
 import { TagPicker } from './TagPicker';
 import { UNDO_DAYS } from './ProposalDetail';
 import { Title } from './Title';
@@ -23,7 +23,7 @@ interface Event {
 }
 
 /** The ticket for one question: the question, what you can do with it, what the assistant proposed, and what happened so far. */
-export function QuestionDetail({ q, item, where, href, onClose, onAsk }: { q: Ticket; item: string | null; where: string; href: string | null; onClose: () => void; onAsk: () => void }) {
+export function TicketDetail({ q, item, where, href, onClose, onAsk }: { q: Ticket; item: string | null; where: string; href: string | null; onClose: () => void; onAsk: () => void }) {
   const t = useT();
   const settings = useSettings().data;
   const ai = !!settings?.showAi;
@@ -71,7 +71,7 @@ export function QuestionDetail({ q, item, where, href, onClose, onAsk }: { q: Ti
         </span>
         {q.read ? (
           <button type="button" onClick={() => void updateTicket(item, q.id, { read: false })} className="inline-flex h-6 items-center gap-1 rounded-full border border-line-strong px-2.5 text-ink-2 hover:bg-sunk">
-            <Mail size={12} aria-hidden /> {t.questionMarkUnread}
+            <Mail size={12} aria-hidden /> {t.ticketMarkUnread}
           </button>
         ) : null}
         <button type="button" onClick={onClose} aria-label={t.detailClose} title={t.detailClose} className="rounded-md p-1 hover:bg-sunk hover:text-ink">
@@ -86,7 +86,7 @@ export function QuestionDetail({ q, item, where, href, onClose, onAsk }: { q: Ti
               autoFocus
               rows={3}
               value={editing}
-              aria-label={t.editQuestion}
+              aria-label={t.editTicket}
               onChange={(e) => setEditing(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') {
@@ -131,16 +131,16 @@ export function QuestionDetail({ q, item, where, href, onClose, onAsk }: { q: Ti
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <QuestionMake item={item} q={q} buttons />
+        <TicketMake item={item} q={q} buttons />
         <Button size="sm" onClick={() => setAnswering(!answering)} aria-pressed={answering}>
-          <Pencil size={14} aria-hidden /> {t.questionAnswerWrite}
+          <Pencil size={14} aria-hidden /> {t.ticketAnswerWrite}
         </Button>
         <Button size="sm" onClick={() => setEditing(q.text)}>
-          <Pencil size={14} aria-hidden /> {t.editQuestion}
+          <Pencil size={14} aria-hidden /> {t.editTicket}
         </Button>
         {ai ? (
           <Button size="sm" onClick={onAsk}>
-            <Sparkles size={14} aria-hidden /> {t.questionsAsk}
+            <Sparkles size={14} aria-hidden /> {t.ticketsAsk}
           </Button>
         ) : null}
       </div>
@@ -195,8 +195,8 @@ export function QuestionDetail({ q, item, where, href, onClose, onAsk }: { q: Ti
         <Button
           size="sm"
           variant="ghost"
-          aria-label={t.deleteQuestion}
-          title={t.deleteQuestion}
+          aria-label={t.deleteTicket}
+          title={t.deleteTicket}
           onClick={() => {
             onClose();
             void deleteTicket(item, q.id);
@@ -212,7 +212,7 @@ export function QuestionDetail({ q, item, where, href, onClose, onAsk }: { q: Ti
             void updateTicket(item, q.id, { archived: !q.archived });
           }}
         >
-          <Check size={14} aria-hidden /> {q.archived ? t.questionsRestore : t.questionsArchiveAction}
+          <Check size={14} aria-hidden /> {q.archived ? t.ticketsRestore : t.ticketsArchiveAction}
         </Button>
       </div>
     </aside>

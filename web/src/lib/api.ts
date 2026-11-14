@@ -385,14 +385,14 @@ export const recordTick = (id: string, seconds: number) => {
 export const postReflection = (id: string, confidence: number, how: HowSolved[], comment: string) =>
   api.post<Reflection>(`/api/work/${encodeURIComponent(id)}/reflection`, { confidence, how, comment });
 /** Every question of the student, in every workbook and on every material (one query; pages filter it). */
-export const questionsKey = ['questions'] as const;
-export const useQuestions = () => useQuery({ queryKey: questionsKey, queryFn: () => api.get<Ticket[]>('/api/tickets'), staleTime: 30_000 });
-const patchQuestions = (fn: (qs: Ticket[]) => Ticket[]) => queryClient.setQueryData<Ticket[]>(questionsKey, (qs) => qs && fn(qs));
+export const ticketsKey = ['tickets'] as const;
+export const useTickets = () => useQuery({ queryKey: ticketsKey, queryFn: () => api.get<Ticket[]>('/api/tickets'), staleTime: 30_000 });
+const patchTickets = (fn: (qs: Ticket[]) => Ticket[]) => queryClient.setQueryData<Ticket[]>(ticketsKey, (qs) => qs && fn(qs));
 
 /** What a change to a question touches: the item's cached work, the list of all, the review page, the dashboard. */
 export const questionsChanged = (item: string | null) => {
   if (item) void queryClient.invalidateQueries({ queryKey: keys.work(item) });
-  void queryClient.invalidateQueries({ queryKey: questionsKey });
+  void queryClient.invalidateQueries({ queryKey: ticketsKey });
   void queryClient.invalidateQueries({ queryKey: keys.mine });
   void queryClient.invalidateQueries({ queryKey: keys.state });
 };
@@ -432,7 +432,7 @@ export const askQuestion = (where: QuestionPlace, text: string) => {
   const q: Ticket = { id, text, anchor, course: '', highlightId: null, unplaced: false, read: true, archived: false, answer: null, answerBy: null, links: [], who: null, mergedInto: null, labels: [], fetched: null, createdAt: t, updatedAt: t, archivedAt: null };
   const item = where.item ?? null;
   if (item) patchWork(item, (w) => ({ ...w, questions: [...w.questions, q] }));
-  patchQuestions((qs) => [...qs, q]);
+  patchTickets((qs) => [...qs, q]);
   const page = where.page && (({ version: _v, ...rest }) => rest)(where.page);
   return saved(item, api.post('/api/tickets', { id, text, ...(item ? { item } : {}), ...(page ? { page } : {}), ...(where.material ? { material: where.material } : {}) }));
 };
@@ -441,7 +441,7 @@ export const updateTicket = (item: string | null, id: string, patch: { text?: st
   const t = Date.now();
   const apply = (qs: Ticket[]) => qs.map((q) => (q.id !== id ? q : { ...q, ...patch, ...(patch.answer !== undefined ? { answer: patch.answer?.trim() ? patch.answer : null, answerBy: patch.answer?.trim() ? ('you' as const) : null } : {}), ...(patch.archived === false ? { mergedInto: null } : {}), ...(patch.text !== undefined || patch.answer !== undefined ? { updatedAt: t } : {}), archivedAt: patch.archived === undefined ? q.archivedAt : patch.archived ? t : null }));
   if (item) patchWork(item, (w) => ({ ...w, questions: apply(w.questions) }));
-  patchQuestions(apply);
+  patchTickets(apply);
   return saved(item, api.patch(`/api/tickets/${encodeURIComponent(id)}`, patch));
 };
 /** Records that something was made from a question (the target must already be saved); the row shows its icon. */
@@ -450,12 +450,12 @@ export const linkQuestion = (item: string | null, id: string, kind: 'card' | 'no
 export const setQuestionTags = (item: string | null, id: string, labels: string[]) => {
   const apply = (qs: Ticket[]) => qs.map((q) => (q.id === id ? { ...q, labels } : q));
   if (item) patchWork(item, (w) => ({ ...w, questions: apply(w.questions) }));
-  patchQuestions(apply);
+  patchTickets(apply);
   return saved(item, api.put(`/api/tags/on/question/${encodeURIComponent(id)}`, { ids: labels }));
 };
 export const deleteTicket = (item: string | null, id: string) => {
   if (item) patchWork(item, (w) => ({ ...w, questions: w.questions.filter((q) => q.id !== id) }));
-  patchQuestions((qs) => qs.filter((q) => q.id !== id));
+  patchTickets((qs) => qs.filter((q) => q.id !== id));
   return saved(item, api.delete(`/api/tickets/${encodeURIComponent(id)}`));
 };
 /** The assistant inbox: proposals waiting, and what was decided lately. Only asked for while the bridge is on. */
@@ -512,7 +512,7 @@ export const useChangesStream = (enabled: boolean) => {
     const es = new EventSource('/api/changes/stream');
     es.onmessage = () => {
       void queryClient.invalidateQueries({ queryKey: changesKey });
-      void queryClient.invalidateQueries({ queryKey: questionsKey });
+      void queryClient.invalidateQueries({ queryKey: ticketsKey });
       void queryClient.invalidateQueries({ queryKey: assistantKey });
     };
     return () => es.close();
@@ -533,7 +533,7 @@ const madeSomething = () => {
 const changesSettled = () => {
   madeSomething();
   void queryClient.invalidateQueries({ queryKey: changesKey });
-  void queryClient.invalidateQueries({ queryKey: questionsKey });
+  void queryClient.invalidateQueries({ queryKey: ticketsKey });
   void queryClient.invalidateQueries({ queryKey: keys.settings });
   void queryClient.invalidateQueries({ queryKey: ['work'] });
 };

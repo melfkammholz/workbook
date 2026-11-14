@@ -54,8 +54,14 @@ try {
   await page.waitForSelector('text=Confidence: Confident');
 
   await page.goto(`${base}/#/review`);
+  await page.click('main >> text=Binäre Exponentiation');
   await page.waitForSelector('text=Why is this logarithmic?');
-  console.log('ok: set up, edited, evaluated, tested, marked done, rated and found it in review');
+  // The old addresses of the questions page lead to Tickets.
+  await page.goto(`${base}/#/questions`);
+  await page.waitForSelector('h1:has-text("Tickets")');
+  await page.goto(`${base}/#/inbox`);
+  await page.waitForSelector('h1:has-text("Tickets")');
+  console.log('ok: set up, edited, evaluated, tested, marked done, rated, found it in review and reached Tickets');
 } catch (e) {
   problems.push(String(e));
 } finally {

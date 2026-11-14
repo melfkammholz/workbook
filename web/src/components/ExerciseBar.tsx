@@ -10,7 +10,7 @@ import { altKey } from '@/lib/keys';
 import { Button, IconButton, clsx } from './ui';
 import { StatusControl } from './StatusControl';
 import { LessonOptions } from './QuickMenus';
-import { ExerciseQuestions } from './Questions';
+import { ExerciseQuestions } from './Tickets';
 import { plainTitle } from '@/components/Title';
 import { Title } from './Title';
 

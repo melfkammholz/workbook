@@ -9,7 +9,7 @@ import { Prose } from '@/components/Prose';
 import { RenderedText } from '@/components/RenderedText';
 import { Button, Chip, Empty, Spinner, StatusMark, clsx } from '@/components/ui';
 import { FLAGS, cellFor, formatDuration, questionsOn, urgency, type Cell, type Flag } from '@/lib/attention';
-import { QuestionInput, QuestionList } from '@/components/Questions';
+import { QuestionInput, TicketList } from '@/components/Tickets';
 import { isExercise, keys, useOutline, useReviewData, useSettings } from '@/lib/api';
 import { useCourseCards } from '@/lib/flashcards';
 import { BackLink } from '@/lib/history';
@@ -192,10 +192,10 @@ function EntryBody({ ex, cell, data }: { ex: Exercise; cell: Cell; data: ReviewD
   return (
     <>
       <section className="rounded-md border border-review/40 bg-review-soft p-3">
-        <h3 className="mb-2 text-xs font-semibold text-review">{t.questionsTitle}</h3>
+        <h3 className="mb-2 text-xs font-semibold text-review">{t.ticketsTitle}</h3>
         <QuestionInput item={ex.id} />
         <div className="mt-2">
-          <QuestionList item={ex.id} questions={questionsOn(data.questions, ex.id)} />
+          <TicketList item={ex.id} questions={questionsOn(data.questions, ex.id)} />
         </div>
       </section>
       {reflection?.comment && !questionsOn(data.questions, ex.id).some((q) => q.text === reflection.comment) ? (

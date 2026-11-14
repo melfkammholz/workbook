@@ -9,7 +9,7 @@ import { MakeCardDialog } from '@/components/MakeCardDialog';
 import { CopyRefButton, PdfHighlightLayer, type Editing } from '@/components/PdfHighlights';
 import { PagesWithNotes, PdfPageNotes } from '@/components/PdfPageNotes';
 import { PdfUnplaced } from '@/components/PdfUnplaced';
-import { PdfQuestionBar, PdfQuestionList, usePdfQuestions } from '@/components/PdfQuestions';
+import { PdfQuestionBar, PdfTicketList, usePdfTickets } from '@/components/PdfTickets';
 import { PdfToc, type TocActions } from '@/components/PdfToc';
 import { useBibImport } from '@/components/BibImport';
 import { PdfReferences } from '@/components/PdfReferences';
@@ -198,7 +198,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   const tocEdits = usePdfToc(resource.id).data;
   const [typed, setTyped] = useState<string | null>(null);
   const pages = usePdfPages(resource.id).data;
-  const questions = usePdfQuestions(resource);
+  const questions = usePdfTickets(resource);
   const bibliography = useBibliography(resource.id).data;
   useBibliographyReader(qc, resource.id, resource.file.sha256, doc, bibliography);
   const bibliographyCard = useMemo(() => (bibliography?.length ? { entries: bibliography } : undefined), [bibliography]);
@@ -698,7 +698,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
               {chapter ? <p className="font-medium"><Title text={chapter.title} /></p> : null}
               {doc ? <p className={chapter ? 'text-ink-2' : 'font-medium'}>{t.pdfPageInfo(current, count, labelOf(current))}</p> : null}
               {marks && doc ? <AllHighlights resource={resource.id} list={highlights ?? []} current={current} labelOf={labelOf} chapterAt={chapterAt} editing={editing?.id ?? null} onJump={(a) => jumpTo(a, true)} /> : null}
-              {doc ? <PdfQuestionList resource={resource} questions={questions} current={current} labelOf={labelOf} onGo={goto} /> : null}
+              {doc ? <PdfTicketList resource={resource} questions={questions} current={current} labelOf={labelOf} onGo={goto} /> : null}
               {doc ? <PdfUnplaced resource={resource} current={current} pageInfo={pageInfo} /> : null}
               {doc && bibliography?.length ? (
                 <PdfReferences

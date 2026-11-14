@@ -35,7 +35,7 @@ export const setTagsOn = (kind: TagKind, ref: string, ids: string[]) => api.put<
 const fresh = (qc: QueryClient) => {
   // Names and colors show in questions, materials, pages and highlights.
   void qc.invalidateQueries({ queryKey: tagsKey });
-  for (const k of ['questions', 'resources', 'library', 'pdf-pages', 'pdf-annotations', 'annotations']) void qc.invalidateQueries({ queryKey: [k] });
+  for (const k of ['tickets', 'resources', 'library', 'pdf-pages', 'pdf-annotations', 'annotations']) void qc.invalidateQueries({ queryKey: [k] });
 };
 
 export function useTagActions() {

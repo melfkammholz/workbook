@@ -1,11 +1,11 @@
 import { ChevronDown, Search, SlidersHorizontal } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
-import { QuestionDetail } from '@/components/QuestionDetail';
+import { TicketDetail } from '@/components/TicketDetail';
 import { ProposalDetail } from '@/components/ProposalDetail';
 import { useChangeText } from '@/components/Proposals';
 import { ConnectAssistant } from '@/components/ConnectAssistant';
 import { AssistantStrip } from '@/components/AssistantStrip';
-import { AskDialog, BulkBar, itemOf } from '@/components/QuestionsBulk';
+import { AskDialog, BulkBar, itemOf } from '@/components/TicketsBulk';
 import { clsx } from 'clsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Title } from '@/components/Title';
@@ -13,7 +13,7 @@ import { Link } from 'wouter';
 import { RESOURCE_TYPES, type Change, type Ticket, type ResourceType } from '@wb/shared';
 import { Empty, Spinner } from '@/components/ui';
 import { useTags } from '@/lib/tags';
-import { acceptChanges, isStandalone, updateTicket, useChanges, useCourses, useOutline, useAssistant, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
+import { acceptChanges, isStandalone, updateTicket, useChanges, useCourses, useOutline, useAssistant, usePendingProposals, useTickets, useSettings } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { useResources } from '@/lib/resources';
@@ -67,9 +67,9 @@ const writeUrl = (f: Filters) => {
 const selectClass = (on: boolean) => clsx('h-[30px] w-full rounded-lg border px-2 text-[13.5px]', on ? 'border-transparent bg-accent-soft font-medium text-accent' : 'border-line-strong bg-sheet text-ink-2');
 
 /** All the questions, open ones first: by material and page, then by workbook and item in reading order. Filters live in the address. */
-export function QuestionsPage() {
+export function TicketsPage() {
   const t = useT();
-  const all = useQuestions().data;
+  const all = useTickets().data;
   const outline = useOutline().data;
   const courses = useCourses().data;
   const resources = useResources(null).data?.resources;
@@ -117,11 +117,11 @@ export function QuestionsPage() {
       const a = q.anchor;
       // This page is about the open workbook and the student's materials; other workbooks' questions wait there.
       if (a.kind !== 'page' && a.kind !== 'material' && a.kind !== 'none' && a.course !== courses?.activeId) continue;
-      if (a.kind === 'none') out.push({ q, gKey: '', gTitle: t.questionsElsewhere, mtype: null, pKey: '', pTitle: '', pHref: null, pOrder: 0 });
+      if (a.kind === 'none') out.push({ q, gKey: '', gTitle: t.ticketsElsewhere, mtype: null, pKey: '', pTitle: '', pHref: null, pOrder: 0 });
       else if (a.kind === 'page' || a.kind === 'material') {
         const r = resources?.find((x) => x.id === a.resource);
         const n = a.kind === 'page' ? a.pageIndex : -1;
-        out.push({ q, gKey: `m:${a.resource}`, gTitle: r?.title ?? a.resource, mtype: r?.type ?? 'other', pKey: String(n), pTitle: n < 0 ? t.pdfQuestionWhole : t.questionPageLabel(n + 1), pHref: n < 0 ? `/resources/${encodeURIComponent(a.resource)}` : `/resources/${encodeURIComponent(a.resource)}/${encodeURIComponent(q.id)}`, pOrder: n });
+        out.push({ q, gKey: `m:${a.resource}`, gTitle: r?.title ?? a.resource, mtype: r?.type ?? 'other', pKey: String(n), pTitle: n < 0 ? t.pdfQuestionWhole : t.ticketPageLabel(n + 1), pHref: n < 0 ? `/resources/${encodeURIComponent(a.resource)}` : `/resources/${encodeURIComponent(a.resource)}/${encodeURIComponent(q.id)}`, pOrder: n });
       } else {
         const id = placeOf(a);
         const here = !!courses?.activeId && courses.activeId === a.course;
@@ -269,8 +269,8 @@ export function QuestionsPage() {
     return (
       <li key={q.id} onClick={(e) => (e.shiftKey ? pick(q.id, true) : openQuestion(q))} className={clsx('group grid cursor-pointer grid-cols-[1.25rem_1fr_auto] items-baseline gap-x-2.5 rounded-md px-2 py-1', on || openId === q.id ? 'bg-accent-soft' : 'hover:bg-sunk')}>
         <span className="relative grid size-4 place-items-center self-center">
-          <input type="checkbox" checked={on} aria-label={t.questionsSelectOne} onClick={(e) => { e.stopPropagation(); pick(q.id, e.shiftKey); }} onChange={() => undefined} className={clsx('wb-check absolute inset-0', anyPicked ? 'opacity-100' : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100')} />
-          {q.read ? null : <span role="img" aria-label={t.questionUnreadDot} title={t.questionUnreadDot} className={clsx('size-[9px] rounded-full bg-accent', anyPicked ? 'hidden' : 'group-hover:hidden')} />}
+          <input type="checkbox" checked={on} aria-label={t.ticketsSelectOne} onClick={(e) => { e.stopPropagation(); pick(q.id, e.shiftKey); }} onChange={() => undefined} className={clsx('wb-check absolute inset-0', anyPicked ? 'opacity-100' : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100')} />
+          {q.read ? null : <span role="img" aria-label={t.ticketUnreadDot} title={t.ticketUnreadDot} className={clsx('size-[9px] rounded-full bg-accent', anyPicked ? 'hidden' : 'group-hover:hidden')} />}
         </span>
         <p className={clsx('min-w-0 truncate text-[14px] leading-[1.4]', q.archived && 'text-ink-3', !q.read && 'font-semibold')} title={q.text || undefined}>
           {q.text || (quote ? <span className="italic text-ink-3">{quote}</span> : <span className="text-ink-3">{t.inboxNoText}</span>)}
@@ -283,9 +283,9 @@ export function QuestionsPage() {
             </span>
           ))}
           {asked.get(q.id) ? <span className="text-[11.5px] italic text-ink-3">{asked.get(q.id) === 'running' ? t.reqReading : t.reqWaiting}</span> : null}
-          {waiting ? <span className="rounded-full bg-accent-soft px-2 text-[11.5px] text-accent">{t.questionsProposals(waiting)}</span> : null}
+          {waiting ? <span className="rounded-full bg-accent-soft px-2 text-[11.5px] text-accent">{t.ticketsProposals(waiting)}</span> : null}
           <span className="min-w-[5.2rem] text-right tabular-nums" title={new Date(q.createdAt).toLocaleString()}>
-            {t.questionAge(days)}
+            {t.ticketAge(days)}
           </span>
         </div>
       </li>
@@ -294,7 +294,7 @@ export function QuestionsPage() {
   const proposalSection = (
     <section className="mt-3">
       <div className="flex items-baseline gap-1.5 border-b border-line-strong">
-        <h2 className="min-w-0 flex-1 py-1 text-[14px] font-semibold">{t.questionsProposalGroup}</h2>
+        <h2 className="min-w-0 flex-1 py-1 text-[14px] font-semibold">{t.ticketsProposalGroup}</h2>
         {waitingStandalone.length > 1 ? (
           <button type="button" onClick={() => void acceptChanges(waitingStandalone.map((c) => c.id)).catch(() => undefined)} className="px-0.5 py-1 text-[13px] text-accent hover:underline">
             {t.detailAcceptAll}
@@ -307,7 +307,7 @@ export function QuestionsPage() {
           const text = proposalText(c);
           return (
             <li key={c.id} onClick={() => setOpenId(c.id)} className={clsx('group grid cursor-pointer grid-cols-[1.25rem_1fr_auto] items-baseline gap-x-2.5 rounded-md px-2 py-1', openId === c.id ? 'bg-accent-soft' : 'hover:bg-sunk')}>
-              <span className="grid size-4 place-items-center self-center">{pending ? <span role="img" aria-label={t.questionUnreadDot} title={t.questionUnreadDot} className="size-[9px] rounded-full bg-accent" /> : null}</span>
+              <span className="grid size-4 place-items-center self-center">{pending ? <span role="img" aria-label={t.ticketUnreadDot} title={t.ticketUnreadDot} className="size-[9px] rounded-full bg-accent" /> : null}</span>
               <p className={clsx('min-w-0 truncate text-[14px] leading-[1.4]', pending ? 'font-semibold' : 'text-ink-3')} title={text || undefined}>
                 {text || <span className="text-ink-3">{t.inboxNoText}</span>}
               </p>
@@ -315,7 +315,7 @@ export function QuestionsPage() {
                 <span className="rounded-[3px] bg-review-soft px-1.5 text-review">{fieldName(c)}</span>
                 {pending ? null : <span>{t.inboxStatus[c.status]}</span>}
                 <span className="min-w-[5.2rem] text-right tabular-nums" title={new Date(c.createdAt).toLocaleString()}>
-                  {t.questionAge(Math.floor((Date.now() - (c.decidedAt ?? c.createdAt)) / DAY))}
+                  {t.ticketAge(Math.floor((Date.now() - (c.decidedAt ?? c.createdAt)) / DAY))}
                 </span>
               </div>
             </li>
@@ -336,8 +336,8 @@ export function QuestionsPage() {
         <BackLink fallback="/" label={t.back} className="mb-3">
           {t.back}
         </BackLink>
-        <h1 className="text-[1.75rem] font-semibold tracking-[-0.02em]">{t.questionsTitle}</h1>
-        <p className="mt-2 text-ink-2">{t.questionsPageIntro}</p>
+        <h1 className="text-[1.75rem] font-semibold tracking-[-0.02em]">{t.ticketsTitle}</h1>
+        <p className="mt-2 text-ink-2">{t.ticketsPageIntro}</p>
         {settings?.showAi ? (
           <p className="mt-2 flex items-center gap-2 text-[13.5px]">
             <span aria-hidden className={clsx('inline-block size-2 rounded-full', helper?.connected ? 'bg-done' : 'border border-ink-3')} />
@@ -349,8 +349,8 @@ export function QuestionsPage() {
         ) : null}
         <ConnectAssistant open={connecting} onClose={() => setConnecting(false)} />
 
-        <div role="tablist" aria-label={t.questionsTitle} className="mt-4 flex gap-1 border-b border-line">
-          {([['', t.questionsTabAll], ['unread', t.questionsTabUnread], ['archive', t.questionsTabArchive]] as const).map(([id, label]) => (
+        <div role="tablist" aria-label={t.ticketsTitle} className="mt-4 flex gap-1 border-b border-line">
+          {([['', t.ticketsTabAll], ['unread', t.ticketsTabUnread], ['archive', t.ticketsTabArchive]] as const).map(([id, label]) => (
             <button key={id} type="button" role="tab" aria-selected={f.tab === id} onClick={() => set({ tab: id })} className={clsx('-mb-px border-b-2 px-3 py-1.5 text-[14px]', f.tab === id ? 'border-accent font-medium text-ink' : 'border-transparent text-ink-3 hover:text-ink')}>
               {label}
             </button>
@@ -360,32 +360,32 @@ export function QuestionsPage() {
         <div role="search" className="sticky top-0 z-[5] mt-2 flex flex-wrap items-center gap-2 border-b border-line bg-sheet pb-2 pt-2.5">
           <label className="flex h-9 min-w-[14rem] flex-1 items-center gap-2 rounded-lg border border-transparent bg-sunk px-2.5 focus-within:border-accent">
             <Search size={15} className="shrink-0 text-ink-3" aria-hidden />
-            <input type="search" value={f.text} onChange={(e) => set({ text: e.target.value })} placeholder={t.questionsSearch} aria-label={t.questionsSearch} className="min-w-0 flex-1 bg-transparent outline-none" />
+            <input type="search" value={f.text} onChange={(e) => set({ text: e.target.value })} placeholder={t.ticketsSearch} aria-label={t.ticketsSearch} className="min-w-0 flex-1 bg-transparent outline-none" />
           </label>
           <Popover.Root>
             <Popover.Trigger asChild>
               <button type="button" className={clsx('inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[13.5px]', count ? 'border-transparent bg-accent-soft font-medium text-accent' : 'border-line-strong bg-sheet text-ink-2 hover:border-ink-3')}>
                 <SlidersHorizontal size={14} aria-hidden />
-                {count ? t.questionsFilterN(count) : t.questionsFilter}
+                {count ? t.ticketsFilterN(count) : t.ticketsFilter}
               </button>
             </Popover.Trigger>
             <Popover.Portal>
-              <Popover.Content align="end" sideOffset={6} aria-label={t.questionsFilter} className="wb-menu w-[19rem] p-0 text-[13.5px]">
+              <Popover.Content align="end" sideOffset={6} aria-label={t.ticketsFilter} className="wb-menu w-[19rem] p-0 text-[13.5px]">
                 <div className="grid gap-3 px-3.5 py-3">
                   <div>
-                    <div className="mb-1 text-[12.5px] text-ink-3">{t.questionsWhere}</div>
+                    <div className="mb-1 text-[12.5px] text-ink-3">{t.ticketsWhere}</div>
                     {filterSelect(
                       'where',
-                      t.questionsWhere,
+                      t.ticketsWhere,
                       <>
-                        <option value="">{t.questionsEverywhere}</option>
-                        {whereOptions.mats.length ? <option value="materials">{t.questionsAllMaterials}</option> : null}
+                        <option value="">{t.ticketsEverywhere}</option>
+                        {whereOptions.mats.length ? <option value="materials">{t.ticketsAllMaterials}</option> : null}
                         {whereOptions.types.map((ty) => (
                           <option key={ty} value={`mt:${ty}`}>
                             {t.resourceTypes[ty]}
                           </option>
                         ))}
-                        {whereOptions.books.length ? <option value="workbooks">{t.questionsAllWorkbooks}</option> : null}
+                        {whereOptions.books.length ? <option value="workbooks">{t.ticketsAllWorkbooks}</option> : null}
                         {[...whereOptions.mats, ...whereOptions.books].map(([k, title]) => (
                           <option key={k} value={`g:${k}`}>
                             {title}
@@ -395,34 +395,34 @@ export function QuestionsPage() {
                     )}
                   </div>
                   <div>
-                    <div className="mb-1 text-[12.5px] text-ink-3">{t.questionsAge}</div>
+                    <div className="mb-1 text-[12.5px] text-ink-3">{t.ticketsAge}</div>
                     {filterSelect(
                       'age',
-                      t.questionsAge,
+                      t.ticketsAge,
                       <>
-                        <option value="">{t.questionsAnyAge}</option>
-                        <option value="1">{t.questionsAgeDay}</option>
-                        <option value="7">{t.questionsAgeWeek}</option>
-                        <option value="30">{t.questionsAgeMonth}</option>
-                        <option value="old">{t.questionsAgeOlder}</option>
+                        <option value="">{t.ticketsAnyAge}</option>
+                        <option value="1">{t.ticketsAgeDay}</option>
+                        <option value="7">{t.ticketsAgeWeek}</option>
+                        <option value="30">{t.ticketsAgeMonth}</option>
+                        <option value="old">{t.ticketsAgeOlder}</option>
                       </>,
                     )}
                   </div>
                   <div className="grid gap-1.5">
                     <label className="flex items-center gap-2">
                       <input type="checkbox" checked={f.answered} onChange={(e) => set({ answered: e.target.checked })} className="wb-check" />
-                      {t.questionsHasAnswer}
+                      {t.ticketsHasAnswer}
                     </label>
                     {bridgeOn ? (
                       <label className="flex items-center gap-2">
                         <input type="checkbox" checked={f.unseen} onChange={(e) => set({ unseen: e.target.checked })} className="wb-check" />
-                        {t.questionsNotSeen}
+                        {t.ticketsNotSeen}
                       </label>
                     ) : null}
                   </div>
                   {labelIds.length ? (
-                    <div role="group" aria-label={t.questionsLabels}>
-                      <div className="mb-1 text-[12.5px] text-ink-3">{t.questionsLabels}</div>
+                    <div role="group" aria-label={t.ticketsLabels}>
+                      <div className="mb-1 text-[12.5px] text-ink-3">{t.ticketsLabels}</div>
                       <div className="flex flex-wrap gap-1.5">
                         {labelIds.map((id) => {
                           const on = f.labels.includes(id);
@@ -440,14 +440,14 @@ export function QuestionsPage() {
                   {filtered.length ? (
                     <Popover.Close asChild>
                       <button type="button" onClick={() => pickMany(ordered)} className="text-ink-2 hover:text-ink">
-                        {t.questionsSelectAll}
+                        {t.ticketsSelectAll}
                       </button>
                     </Popover.Close>
                   ) : null}
                   <span className="flex-1" />
                   {active ? (
                     <button type="button" onClick={() => set({ ...NO_FILTERS, text: f.text, tab: f.tab })} className="text-accent hover:underline">
-                      {t.questionsClearFilters}
+                      {t.ticketsClearFilters}
                     </button>
                   ) : null}
                 </div>
@@ -456,7 +456,7 @@ export function QuestionsPage() {
           </Popover.Root>
           {groups.length > 1 ? (
             <button type="button" onClick={() => setClosed(allClosed ? new Set() : new Set(names))} className="px-0.5 py-1 text-[13px] text-ink-3 hover:text-ink">
-              {allClosed ? t.questionsExpandAll : t.questionsCollapseAll}
+              {allClosed ? t.ticketsExpandAll : t.ticketsCollapseAll}
             </button>
           ) : null}
         </div>
@@ -464,7 +464,7 @@ export function QuestionsPage() {
         <AssistantStrip enabled={bridgeOn} />
 
         {nothing ? (
-          <Empty title={active ? t.questionsNoMatch : t.noQuestions}>{active ? t.questionsNoMatchHint : t.questionsNoneAnywhere}</Empty>
+          <Empty title={active ? t.ticketsNoMatch : t.noTickets}>{active ? t.ticketsNoMatchHint : t.ticketsNoneAnywhere}</Empty>
         ) : (
           <>
           {standalone.length ? proposalSection : null}
@@ -473,7 +473,7 @@ export function QuestionsPage() {
             return (
               <section key={g.key} className="mt-3">
                 <div className="flex items-baseline gap-1.5 border-b border-line-strong">
-                  <GroupCheck ids={[...g.parts.values()].flatMap((p) => p.items.map((q) => q.id))} picked={picked} onToggle={pickMany} label={t.questionsSelectGroup} />
+                  <GroupCheck ids={[...g.parts.values()].flatMap((p) => p.items.map((q) => q.id))} picked={picked} onToggle={pickMany} label={t.ticketsSelectGroup} />
                   <button type="button" aria-expanded={!shut} onClick={() => setClosed((c) => { const n = new Set(c); if (!n.delete(g.key)) n.add(g.key); return n; })} className="flex min-w-0 flex-1 items-baseline gap-1.5 py-1 text-left text-[14px] font-semibold">
                     <ChevronDown size={16} aria-hidden className={clsx('shrink-0 self-center text-ink-3 transition-transform', shut && '-rotate-90')} />
                     <Title text={g.title} />
@@ -494,7 +494,7 @@ export function QuestionsPage() {
                               <Title text={p.title} />
                             </Link>
                           ) : (
-                            <span className="pt-1.5 text-[12.5px] text-ink-3" title={t.questionsOtherWorkbook}>
+                            <span className="pt-1.5 text-[12.5px] text-ink-3" title={t.ticketsOtherWorkbook}>
                               <Title text={p.title} />
                             </span>
                           )}
@@ -521,7 +521,7 @@ export function QuestionsPage() {
     {openEntry && !openChange ? (
       <div className="w-[27rem] shrink-0 py-3 pr-3">
         <div className="h-full overflow-y-auto rounded-xl border border-line bg-sheet shadow-[var(--shadow)]">
-        <QuestionDetail key={openEntry.q.id} q={openEntry.q} item={itemOf(openEntry.q)} where={[openEntry.gTitle, openEntry.pTitle].filter(Boolean).join(' · ')} href={openEntry.pHref} onClose={() => setOpenId(null)} onAsk={() => setAsking([openEntry.q])} />
+        <TicketDetail key={openEntry.q.id} q={openEntry.q} item={itemOf(openEntry.q)} where={[openEntry.gTitle, openEntry.pTitle].filter(Boolean).join(' · ')} href={openEntry.pHref} onClose={() => setOpenId(null)} onAsk={() => setAsking([openEntry.q])} />
         </div>
       </div>
     ) : null}

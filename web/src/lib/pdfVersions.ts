@@ -57,7 +57,7 @@ export function placeStale(qc: QueryClient, resource: Resource, doc?: PDFDocumen
         void own?.loadingTask.destroy();
       }
     }
-    for (const key of ['pdf-annotations', 'pdf-pages', 'pdf-toc', 'pdf-unplaced', 'questions']) void qc.invalidateQueries({ queryKey: [key] });
+    for (const key of ['pdf-annotations', 'pdf-pages', 'pdf-toc', 'pdf-unplaced', 'tickets']) void qc.invalidateQueries({ queryKey: [key] });
     await refreshResources(qc);
   })().finally(() => running.delete(resource.id));
   running.set(resource.id, job);
@@ -80,13 +80,13 @@ export async function placeUnplaced(qc: QueryClient, resource: string, kind: Unp
     if (e instanceof ApiError && e.status === 409) return false;
     throw e;
   }
-  for (const key of ['pdf-annotations', 'pdf-pages', 'pdf-toc', 'questions']) void qc.invalidateQueries({ queryKey: [key] });
+  for (const key of ['pdf-annotations', 'pdf-pages', 'pdf-toc', 'tickets']) void qc.invalidateQueries({ queryKey: [key] });
   await refreshResources(qc);
   return true;
 }
 
 export async function dropUnplaced(qc: QueryClient, resource: string, kind: UnplacedKind, item: string): Promise<void> {
   qc.setQueryData(unplacedKey(resource), await api.delete<UnplacedItems>(`${base(resource)}/unplaced/${kind}/${encodeURIComponent(item)}`));
-  void qc.invalidateQueries({ queryKey: ['questions'] });
+  void qc.invalidateQueries({ queryKey: ['tickets'] });
   await refreshResources(qc);
 }

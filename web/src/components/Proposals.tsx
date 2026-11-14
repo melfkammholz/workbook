@@ -3,14 +3,14 @@ import { Check, Pencil, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { type CardPayload, type Change, type MergePayload, type WorkPayload, type ChangeValue as Val, type HighlightPayload, type QuestionPayload } from '@wb/shared';
-import { acceptChanges, decideChange, useQuestions } from '@/lib/api';
+import { acceptChanges, decideChange, useTickets } from '@/lib/api';
 import { cardText, previewDeck, useFlashcards } from '@/lib/flashcards';
 import { useT } from '@/lib/i18n';
 import { useMediaQuery } from '@/lib/useActiveTime';
 import { CardFace } from './CardFace';
 import { CardForm, ROOMY, useCardLayout } from './CardForm';
-import { QuestionCard } from './Questions';
-import { AnswerEditor, RenderedAnswer } from './QuestionAnswer';
+import { QuestionCard } from './Tickets';
+import { AnswerEditor, RenderedAnswer } from './TicketAnswer';
 import { TypstEditor } from './TypstEditor';
 import { Button, Dialog, clsx } from './ui';
 
@@ -205,7 +205,7 @@ function WorkEditor({ value, onChange }: { value: Value; onChange: (v: Value) =>
 /** The duplicates that would close, with the wording the survivor would get. */
 function MergeView({ c }: { c: Change }) {
   const t = useT();
-  const all = useQuestions().data;
+  const all = useTickets().data;
   const p = c.after as MergePayload;
   const text = (id: string) => all?.find((q) => q.id === id)?.text || t.inboxNoText;
   const survivor = all?.find((q) => q.id === c.ref.id);

@@ -58,7 +58,7 @@ export function searchEverything(m: CourseManager, q: string): SearchResponse {
       const href = `/resources/${encodeURIComponent(a.resource!)}${a.questionId || a.id ? `/${encodeURIComponent((a.questionId ?? a.id)!)}` : a.pageIndex !== undefined ? `/page:${a.pageIndex + 1}` : ''}`;
       mine.push({ ...base, title: a.pageIndex !== undefined ? `${title}, ${a.pageIndex + 1}` : title, href, course: null, courseTitle: null });
     } else if (a.kind === 'none') {
-      mine.push({ ...base, title: '', href: '/questions', course: null, courseTitle: null });
+      mine.push({ ...base, title: '', href: '/tickets', course: null, courseTitle: null });
     } else {
       // An item or a passage of a workbook's text; shared files' work is stored under their adventure.
       const s = byKey.get(hit.course ?? a.course ?? '');
