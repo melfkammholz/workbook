@@ -13,7 +13,10 @@ export interface Question {
   highlightId: string | null;
   /** A question on a page of a PDF that the new version of the file could not place: it waits to be fixed or dropped. */
   unplaced: boolean;
-  status: 'open' | 'done';
+  /** False while the assistant has brought something (a proposal, an answer) the student has not looked at; opening the question reads it. */
+  read: boolean;
+  /** Filed away: out of the main list, shown under Archive. Nothing is lost. */
+  archived: boolean;
   /** The answer in Typst, one per question; the student's own or an accepted assistant's. */
   answer: string | null;
   /** Who wrote `answer`; null without one. */
@@ -30,7 +33,7 @@ export interface Question {
   labels: string[];
   createdAt: number;
   updatedAt: number;
-  doneAt: number | null;
+  archivedAt: number | null;
 }
 
 export type AnswerBy = 'you' | 'assistant';
@@ -115,8 +118,8 @@ export interface MergePayload {
 }
 /** What accepting a merge replaced, so that undo puts it back. */
 export interface MergeUndo {
-  survivor: { text: string; answer: string | null; answerBy?: AnswerBy | null; status: 'open' | 'done'; doneAt: number | null; updatedAt: number; labels: string[] };
-  duplicates: { id: string; status: 'open' | 'done'; doneAt: number | null; answer: string | null; answerBy?: AnswerBy | null; labels: string[] }[];
+  survivor: { text: string; answer: string | null; answerBy?: AnswerBy | null; archived: boolean; archivedAt: number | null; updatedAt: number; labels: string[] };
+  duplicates: { id: string; archived: boolean; archivedAt: number | null; answer: string | null; answerBy?: AnswerBy | null; labels: string[] }[];
   /** Links that moved from a duplicate to the survivor; `kept`: the survivor had it already. */
   links?: { from: string; kind: QuestionLinkKind; ref: string; createdAt: number; kept: boolean }[];
 }

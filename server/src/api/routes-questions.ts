@@ -26,7 +26,7 @@ const bodies = {
     material: z.string().min(1).max(200).optional(),
     text: z.string().max(MAX_QUESTION),
   }),
-  update: z.object({ text: z.string().max(MAX_QUESTION), status: z.enum(['open', 'done']), answer: z.string().max(MAX_QUESTION).nullable() }).partial(),
+  update: z.object({ text: z.string().max(MAX_QUESTION), archived: z.boolean(), read: z.boolean(), answer: z.string().max(MAX_QUESTION).nullable() }).partial(),
 };
 
 /** Open questions: the student's own list, kept across workbooks and across a reset of one. */

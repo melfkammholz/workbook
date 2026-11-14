@@ -426,7 +426,7 @@ export const askQuestion = (where: QuestionPlace, text: string) => {
       : where.material
         ? { kind: 'material', resource: where.material }
         : { kind: 'none' };
-  const q: Question = { id, text, anchor, course: '', highlightId: null, unplaced: false, status: 'open', answer: null, answerBy: null, links: [], kind: null, who: null, mergedInto: null, labels: [], createdAt: t, updatedAt: t, doneAt: null };
+  const q: Question = { id, text, anchor, course: '', highlightId: null, unplaced: false, read: true, archived: false, answer: null, answerBy: null, links: [], kind: null, who: null, mergedInto: null, labels: [], createdAt: t, updatedAt: t, archivedAt: null };
   const item = where.item ?? null;
   if (item) patchWork(item, (w) => ({ ...w, questions: [...w.questions, q] }));
   patchQuestions((qs) => [...qs, q]);
@@ -434,9 +434,9 @@ export const askQuestion = (where: QuestionPlace, text: string) => {
   return saved(item, api.post('/api/questions', { id, text, ...(item ? { item } : {}), ...(page ? { page } : {}), ...(where.material ? { material: where.material } : {}) }));
 };
 export const addQuestion = (item: string, text: string) => askQuestion({ item }, text);
-export const updateQuestion = (item: string | null, id: string, patch: { text?: string; status?: 'open' | 'done'; answer?: string | null }) => {
+export const updateQuestion = (item: string | null, id: string, patch: { text?: string; archived?: boolean; read?: boolean; answer?: string | null }) => {
   const t = Date.now();
-  const apply = (qs: Question[]) => qs.map((q) => (q.id !== id ? q : { ...q, ...patch, ...(patch.answer !== undefined ? { answer: patch.answer?.trim() ? patch.answer : null, answerBy: patch.answer?.trim() ? ('you' as const) : null } : {}), ...(patch.status === 'open' ? { mergedInto: null } : {}), updatedAt: t, doneAt: patch.status ? (patch.status === 'done' ? t : null) : q.doneAt }));
+  const apply = (qs: Question[]) => qs.map((q) => (q.id !== id ? q : { ...q, ...patch, ...(patch.answer !== undefined ? { answer: patch.answer?.trim() ? patch.answer : null, answerBy: patch.answer?.trim() ? ('you' as const) : null } : {}), ...(patch.archived === false ? { mergedInto: null } : {}), ...(patch.text !== undefined || patch.answer !== undefined ? { updatedAt: t } : {}), archivedAt: patch.archived === undefined ? q.archivedAt : patch.archived ? t : null }));
   if (item) patchWork(item, (w) => ({ ...w, questions: apply(w.questions) }));
   patchQuestions(apply);
   return saved(item, api.patch(`/api/questions/${encodeURIComponent(id)}`, patch));

@@ -21,7 +21,7 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        status: { type: 'string', enum: ['open', 'done'] },
+        status: { type: 'string', enum: ['active', 'archived'] },
         course: { type: 'string', description: 'Workbook id' },
         resource: { type: 'string', description: 'Material id' },
         since: { type: 'string', description: 'ISO time: only questions made at or after it' },
@@ -122,7 +122,7 @@ const PROMPTS = [
     description: "Go through the student's new open questions and propose a type and labels for each.",
     arguments: [{ name: 'since', description: 'Only the questions made at or after this ISO time', required: false }],
     text: (a: Json) =>
-      `Triage the student's open questions in their workbook. First call list_proposals (do not repeat what was rejected) and list_labels (reuse existing names). Then call list_questions with status "open"${str(a.since) ? ` and since "${str(a.since)}"` : ''}, skipping questions that already have a type and labels. Where the wording is unclear, read get_context. For each question call propose with a type, labels and a one-line reason. Do not answer questions here, and do not close anything. Finish with a short list of what you proposed.`,
+      `Triage the student's open questions in their workbook. First call list_proposals (do not repeat what was rejected) and list_labels (reuse existing names). Then call list_questions with status "active"${str(a.since) ? ` and since "${str(a.since)}"` : ''}, skipping questions that already have a type and labels. Where the wording is unclear, read get_context. For each question call propose with a type, labels and a one-line reason. Do not answer questions here, and do not close anything. Finish with a short list of what you proposed.`,
   },
   {
     name: 'answer-recent',
@@ -189,7 +189,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
       .map((q) => ({
         id: q.id,
         text: q.text,
-        closed: q.status === 'done',
+        closed: q.archived,
         type: q.kind,
         labels: q.labels,
         answer: q.answer,
@@ -329,11 +329,11 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         const status = str(a.status);
         const qs = g()
           .listQuestions({ ...(course ? { course } : {}), ...(resource ? { resource } : {}) })
-          .filter((q) => (!status || q.status === status) && (Number.isNaN(since) || q.createdAt >= since))
+          .filter((q) => (!status || (status === 'archived' || status === 'done' ? q.archived : !q.archived)) && (Number.isNaN(since) || q.createdAt >= since))
           .sort((x, y) => y.createdAt - x.createdAt)
           .slice(0, Math.min(int(a.limit) ?? 50, 200));
         const names = new Map(g().listTags().map((l) => [l.id, l.name]));
-        return qs.map((q) => ({ id: q.id, text: q.text, status: q.status, ...(q.mergedInto ? { mergedInto: q.mergedInto } : {}), answer: q.answer, type: q.kind, labels: q.labels.flatMap((l) => (names.has(l) ? [names.get(l)!] : [])), where: where(q), created: new Date(q.createdAt).toISOString() }));
+        return qs.map((q) => ({ id: q.id, text: q.text, archived: q.archived, ...(q.mergedInto ? { mergedInto: q.mergedInto } : {}), answer: q.answer, type: q.kind, labels: q.labels.flatMap((l) => (names.has(l) ? [names.get(l)!] : [])), where: where(q), created: new Date(q.createdAt).toISOString() }));
       }
       case 'search': {
         const query = str(a.query);
@@ -421,7 +421,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         const q = id ? g().getQuestion(id) : null;
         if (!q) throw new ToolError('unknown question');
         const an = q.anchor;
-        const out: Json = { question: { id: q.id, text: q.text, status: q.status, answer: q.answer, where: where(q) } };
+        const out: Json = { question: { id: q.id, text: q.text, archived: q.archived, answer: q.answer, where: where(q) } };
         if (an.kind === 'page') {
           const pages: Json = {};
           for (const p of [an.pageIndex - 1, an.pageIndex, an.pageIndex + 1]) {

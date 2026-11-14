@@ -243,7 +243,7 @@ describe('Store', () => {
     const anchor = { kind: 'none' } as const;
     const q = store.addQuestion({ text: 'Warum?', anchor });
     expect(q).toMatchObject({ answer: null, answerBy: null, links: [] });
-    expect(store.updateQuestion(q.id, { answer: 'Weil.' })).toMatchObject({ answer: 'Weil.', answerBy: 'you', status: 'open' });
+    expect(store.updateQuestion(q.id, { answer: 'Weil.' })).toMatchObject({ answer: 'Weil.', answerBy: 'you', archived: false });
     expect(store.updateQuestion(q.id, { answer: 'Anders.', answerBy: 'assistant' })).toMatchObject({ answerBy: 'assistant' });
     expect(store.updateQuestion(q.id, { answer: '  ' })).toMatchObject({ answer: null, answerBy: null });
     // a link needs an existing target; a gone one disappears on read, and comes back with it
@@ -279,8 +279,8 @@ describe('Store', () => {
     expect(q1.text).toBe('Warum der Basisfall?');
     expect(q3.createdAt).toBeGreaterThan(q2.createdAt);
     expect(store.getState().questions.map((q) => q.text)).toEqual(['Warum der Basisfall?', 'Und der Schritt?', 'Neue Sitzung']);
-    expect(store.updateQuestion(q1.id, { text: 'Anders gefragt', status: 'done' })).toMatchObject({ text: 'Anders gefragt', status: 'done', doneAt: now });
-    expect(store.updateQuestion(q1.id, { status: 'open' })).toMatchObject({ status: 'open', doneAt: null });
+    expect(store.updateQuestion(q1.id, { text: 'Anders gefragt', archived: true })).toMatchObject({ text: 'Anders gefragt', archived: true, archivedAt: now });
+    expect(store.updateQuestion(q1.id, { archived: false })).toMatchObject({ archived: false, archivedAt: null });
     expect(store.listQuestions({ exercise: 'zzz' })).toEqual([]);
     expect(store.deleteQuestion(q2.id)).toBe(true);
     expect(store.deleteQuestion(q2.id)).toBe(false);
@@ -435,7 +435,7 @@ describe('one database for all courses', () => {
     c.listReflections('x');
     const q = c.addQuestion({ text: 'q', anchor: { kind: 'exercise', course: 'a', id: 'x' } });
     c.listQuestions({ course: 'a', exercise: 'x' });
-    c.updateQuestion(q.id, { status: 'done' });
+    c.updateQuestion(q.id, { archived: true });
     c.deleteQuestion(q.id);
     c.saveChecklistAnswer('l', 'q', 3, '');
     c.saveChecklistAnswer('l', 'q', null, '');
@@ -554,7 +554,7 @@ describe('migration 17', () => {
     const file = path.join(dir, 'workbook.db');
     oldDatabase(file, 16, `INSERT INTO open_questions (course, exercise_id, content, updated_at) VALUES ('c1', 'e1', 'Warum?', 5), ('c2', 'e1', 'Wie?', 6)`);
     const store = new Store(file);
-    expect(store.forCourse('c1').getState().questions).toMatchObject([{ text: 'Warum?', status: 'open', course: 'c1', anchor: { kind: 'exercise', course: 'c1', id: 'e1' }, createdAt: 5 }]);
+    expect(store.forCourse('c1').getState().questions).toMatchObject([{ text: 'Warum?', archived: false, course: 'c1', anchor: { kind: 'exercise', course: 'c1', id: 'e1' }, createdAt: 5 }]);
     expect(store.listQuestions().map((q) => q.text)).toEqual(['Warum?', 'Wie?']);
     expect(store.sql.get("SELECT name FROM sqlite_master WHERE name = 'open_questions'")).toBeUndefined();
     store.close();

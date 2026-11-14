@@ -510,31 +510,36 @@ export class Store {
     const course = 'course' in q.anchor ? q.anchor.course : '';
     this.tx(() => {
       this.run(
-        `INSERT INTO questions (id, text, anchor, course, highlight_id, status, who, created_at, updated_at) VALUES (?,?,?,?,?,'open',?,?,?)`,
-        id, q.text.trim().slice(0, MAX_QUESTION), JSON.stringify(q.anchor), course, q.highlightId ?? null, q.who ?? null, t, t,
+        `INSERT INTO questions (id, text, anchor, course, highlight_id, who, read, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)`,
+        id, q.text.trim().slice(0, MAX_QUESTION), JSON.stringify(q.anchor), course, q.highlightId ?? null, q.who ?? null, q.who ? 0 : 1, t, t,
       );
     });
     return this.getQuestion(id)!;
   }
 
-  /** Reopening forgets when it was done; the answer, if any, stays. */
-  updateQuestion(id: string, patch: { text?: string; status?: 'open' | 'done'; answer?: string | null; answerBy?: AnswerBy }): Question | null {
+  /**
+   * Archiving and reading are filing, not editing: they leave `updated_at` alone (a proposal waits on it). Restoring
+   * from the archive forgets when it was archived; the answer, if any, stays.
+   */
+  updateQuestion(id: string, patch: { text?: string; archived?: boolean; read?: boolean; answer?: string | null; answerBy?: AnswerBy }): Question | null {
     const cur = this.getQuestion(id);
     if (!cur) return null;
     const t = this.now();
-    const status = patch.status ?? cur.status;
-    const doneAt = status === 'done' ? (cur.status === 'done' ? cur.doneAt : t) : null;
-    // Reopening a merged duplicate is the student disagreeing: it stands on its own again.
-    if (patch.status === 'open') this.run('UPDATE questions SET merged_into = NULL WHERE id = ?', id);
+    const archived = patch.archived ?? cur.archived;
+    const archivedAt = archived ? (cur.archived ? cur.archivedAt : t) : null;
+    // Restoring a merged duplicate is the student disagreeing: it stands on its own again.
+    if (patch.archived === false) this.run('UPDATE questions SET merged_into = NULL WHERE id = ?', id);
+    const edits = patch.text !== undefined || patch.answer !== undefined;
     const answer = patch.answer === undefined ? cur.answer : patch.answer?.trim() ? patch.answer : null;
     this.run(
-      'UPDATE questions SET text = ?, status = ?, answer = ?, answer_by = ?, done_at = ?, updated_at = ? WHERE id = ?',
+      'UPDATE questions SET text = ?, archived = ?, archived_at = ?, read = ?, answer = ?, answer_by = ?, updated_at = ? WHERE id = ?',
       patch.text === undefined ? cur.text : patch.text.trim().slice(0, MAX_QUESTION),
-      status,
+      archived ? 1 : 0,
+      archivedAt,
+      (patch.read ?? cur.read) ? 1 : 0,
       answer,
       answer === null ? null : patch.answer === undefined ? cur.answerBy : (patch.answerBy ?? 'you'),
-      doneAt,
-      t,
+      edits ? t : cur.updatedAt,
       id,
     );
     return this.getQuestion(id);
@@ -547,7 +552,7 @@ export class Store {
    */
   reviews(): Map<string, AnnotationReview> {
     const out = new Map<string, AnnotationReview>();
-    for (const r of this.all('SELECT highlight_id, status FROM questions WHERE highlight_id IS NOT NULL ORDER BY created_at DESC, rowid DESC')) out.set(r.highlight_id as string, r.status === 'done' ? 'resolved' : 'open');
+    for (const r of this.all('SELECT highlight_id, archived FROM questions WHERE highlight_id IS NOT NULL ORDER BY created_at DESC, rowid DESC')) out.set(r.highlight_id as string, Number(r.archived) === 1 ? 'resolved' : 'open');
     return out;
   }
 
@@ -563,11 +568,11 @@ export class Store {
       }
       return;
     }
-    const status = review === 'resolved' ? 'done' : 'open';
-    if (cur) this.updateQuestion(cur.id as string, { status });
+    const archived = review === 'resolved';
+    if (cur) this.updateQuestion(cur.id as string, { archived });
     else {
       const q = this.addQuestion({ text: '', anchor, highlightId: source });
-      if (status === 'done') this.updateQuestion(q.id, { status });
+      if (archived) this.updateQuestion(q.id, { archived });
     }
   }
 
@@ -580,7 +585,7 @@ export class Store {
     const had = this.get('SELECT 1 FROM questions WHERE id = ?', id) !== undefined;
     if (had) {
       // Duplicates that were merged into it are open questions again.
-      this.run("UPDATE questions SET merged_into = NULL, status = 'open', done_at = NULL WHERE merged_into = ?", id);
+      this.run("UPDATE questions SET merged_into = NULL, archived = 0, archived_at = NULL WHERE merged_into = ?", id);
       this.run('DELETE FROM questions WHERE id = ?', id);
       this.unlinkAll('question', id);
     }
@@ -626,6 +631,7 @@ export class Store {
     const group = this.pendingGroup(questionId) ?? `g-${randomUUID()}`;
     const ids: string[] = [];
     this.tx(() => {
+      this.run('UPDATE questions SET read = 0 WHERE id = ?', questionId);
       for (const [field, before, after] of wanted) {
         this.run("DELETE FROM changes WHERE status = 'pending' AND ref_kind = 'question' AND ref_id = ? AND field = ?", questionId, field);
         const id = `ch-${randomUUID()}`;
@@ -660,6 +666,7 @@ export class Store {
     const question = kind === 'question' ? undefined : (payload as CardPayload | HighlightPayload).question;
     if (question !== undefined && !this.get('SELECT 1 FROM questions WHERE id = ?', question)) return { error: 'unknown question' };
     const id = `ch-${randomUUID()}`;
+    if (question !== undefined) this.run('UPDATE questions SET read = 0 WHERE id = ?', question);
     this.run(
       `INSERT INTO changes (id, who, ref_kind, ref_id, field, before, after, base_version, group_id, status, reason, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?,?)`,
       id, who, kind, '', 'create', null, JSON.stringify(payload), 0, (question && this.pendingGroup(question)) || `g-${randomUUID()}`, reason.slice(0, 500), this.now(),
@@ -678,6 +685,7 @@ export class Store {
     this.run("DELETE FROM changes WHERE status = 'pending' AND ref_kind = 'question' AND ref_id = ? AND field = 'merge'", survivor);
     if (Number(this.get("SELECT COUNT(*) AS n FROM changes WHERE status = 'pending'")!.n) >= MAX_PENDING_CHANGES) return { error: 'inbox full: the student has to go through what is waiting first' };
     const id = `ch-${randomUUID()}`;
+    this.run('UPDATE questions SET read = 0 WHERE id = ?', survivor);
     const payload: MergePayload = { duplicates: ids, ...(opts.text?.trim() ? { text: opts.text.trim() } : {}) };
     this.run(
       `INSERT INTO changes (id, who, ref_kind, ref_id, field, before, after, base_version, group_id, status, reason, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?,?)`,
@@ -763,12 +771,12 @@ export class Store {
       if (!u?.survivor) return null;
       const s = u.survivor;
       if (this.getQuestion(c.ref.id)) {
-        this.run('UPDATE questions SET text = ?, answer = ?, answer_by = ?, status = ?, done_at = ?, updated_at = ? WHERE id = ?', s.text, s.answer, s.answer === null ? null : (s.answerBy ?? 'assistant'), s.status, s.doneAt, s.updatedAt, c.ref.id);
+        this.run('UPDATE questions SET text = ?, answer = ?, answer_by = ?, archived = ?, archived_at = ?, updated_at = ? WHERE id = ?', s.text, s.answer, s.answer === null ? null : (s.answerBy ?? 'assistant'), wasArchived(s) ? 1 : 0, wasArchivedAt(s), s.updatedAt, c.ref.id);
         this.setTags('question', c.ref.id, s.labels);
       }
       for (const d of u.duplicates) {
         if (!this.getQuestion(d.id)) continue;
-        this.run('UPDATE questions SET merged_into = NULL, status = ?, done_at = ?, answer = ?, answer_by = ? WHERE id = ?', d.status, d.doneAt, d.answer, d.answer === null ? null : (d.answerBy ?? 'assistant'), d.id);
+        this.run('UPDATE questions SET merged_into = NULL, archived = ?, archived_at = ?, answer = ?, answer_by = ? WHERE id = ?', wasArchived(d) ? 1 : 0, wasArchivedAt(d), d.answer, d.answer === null ? null : (d.answerBy ?? 'assistant'), d.id);
       }
       for (const l of u.links ?? []) {
         if (!this.getQuestion(l.from)) continue;
@@ -786,8 +794,8 @@ export class Store {
     const all = dups.map((d) => this.getQuestion(d)!);
     const moved: NonNullable<MergeUndo['links']> = [];
     const undo_: MergeUndo = {
-      survivor: { text: s.text, answer: s.answer, answerBy: s.answerBy, status: s.status, doneAt: s.doneAt, updatedAt: s.updatedAt, labels: s.labels },
-      duplicates: all.map((q) => ({ id: q.id, status: q.status, doneAt: q.doneAt, answer: q.answer, answerBy: q.answerBy, labels: q.labels })),
+      survivor: { text: s.text, answer: s.answer, answerBy: s.answerBy, archived: s.archived, archivedAt: s.archivedAt, updatedAt: s.updatedAt, labels: s.labels },
+      duplicates: all.map((q) => ({ id: q.id, archived: q.archived, archivedAt: q.archivedAt, answer: q.answer, answerBy: q.answerBy, labels: q.labels })),
       links: moved,
     };
     // The survivor's answer wins; without one it takes the first duplicate's. Labels are the union, links move over.
@@ -805,7 +813,7 @@ export class Store {
       this.run('DELETE FROM question_links WHERE question_id = ?', d.id);
     }
     this.setTags('question', s.id, [...new Set(all.flatMap((q) => q.labels))]);
-    for (const q of all) this.run("UPDATE questions SET merged_into = ?, status = 'done', done_at = ? WHERE id = ?", s.id, q.status === 'done' ? (q.doneAt ?? t) : t, q.id);
+    for (const q of all) this.run("UPDATE questions SET merged_into = ?, archived = 1, archived_at = ? WHERE id = ?", s.id, q.archived ? (q.archivedAt ?? t) : t, q.id);
     this.run('UPDATE changes SET before = ? WHERE id = ?', JSON.stringify(undo_), c.id);
     return null;
   }
@@ -1157,7 +1165,7 @@ export class Store {
   }
 
   resolvedMarkCount(): number {
-    return Number(this.get("SELECT COUNT(*) AS n FROM questions q JOIN annotations a ON a.id = q.highlight_id AND a.course = q.course WHERE q.course = ? AND q.status = 'done' AND q.merged_into IS NULL", this.course)!.n);
+    return Number(this.get("SELECT COUNT(*) AS n FROM questions q JOIN annotations a ON a.id = q.highlight_id AND a.course = q.course WHERE q.course = ? AND q.archived = 1 AND q.merged_into IS NULL", this.course)!.n);
   }
 
   noteCount(): number {
@@ -1533,8 +1541,8 @@ export class Store {
           // Questions are global and carry their course in the anchor too.
           this.db.raw
             .prepare(
-              `INSERT INTO main.questions (id, text, anchor, course, highlight_id, status, answer, created_at, updated_at, done_at)
-               SELECT id, text, json_set(anchor, '$.course', ?), ?, highlight_id, status, answer, created_at, updated_at, done_at FROM legacy.questions ORDER BY rowid`,
+              `INSERT INTO main.questions (id, text, anchor, course, highlight_id, archived, answer, created_at, updated_at, archived_at)
+               SELECT id, text, json_set(anchor, '$.course', ?), ?, highlight_id, archived, answer, created_at, updated_at, archived_at FROM legacy.questions ORDER BY rowid`,
             )
             .run(this.course, this.course);
           this.setSetting('legacyImported', true);
@@ -1580,7 +1588,8 @@ function rowToQuestion(r: Row, labels: string[] = [], links: QuestionLink[] = []
     course: r.course as string,
     highlightId: (r.highlight_id as string | null) ?? null,
     unplaced: Number(r.unplaced) === 1,
-    status: r.status as 'open' | 'done',
+    read: Number(r.read) === 1,
+    archived: Number(r.archived) === 1,
     answer: (r.answer as string | null) ?? null,
     answerBy: r.answer ? ((r.answer_by as AnswerBy | null) ?? 'assistant') : null,
     links,
@@ -1590,9 +1599,13 @@ function rowToQuestion(r: Row, labels: string[] = [], links: QuestionLink[] = []
     labels,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
-    doneAt: r.done_at === null ? null : Number(r.done_at),
+    archivedAt: r.archived_at === null ? null : Number(r.archived_at),
   };
 }
+
+/** Undo data stored before the mail model has `status` and `doneAt`. */
+const wasArchived = (u: { archived?: boolean; status?: string }) => u.archived ?? u.status === 'done';
+const wasArchivedAt = (u: { archivedAt?: number | null; doneAt?: number | null }) => u.archivedAt ?? u.doneAt ?? null;
 
 function rowToProgress(r: Row): ProgressEntry {
   return {

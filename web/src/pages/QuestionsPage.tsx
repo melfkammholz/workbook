@@ -34,14 +34,15 @@ interface Filters {
   age: string;
   labels: string[];
   answered: boolean;
+  tab: '' | 'unread' | 'archive';
 }
 
-const NO_FILTERS: Filters = { text: '', where: '', kind: '', age: '', labels: [], answered: false };
+const NO_FILTERS: Filters = { text: '', where: '', kind: '', age: '', labels: [], answered: false, tab: '' };
 const DAY = 86_400_000;
 
 const readUrl = (): Filters => {
   const p = new URLSearchParams(location.search);
-  return { text: p.get('q') ?? '', where: p.get('in') ?? '', kind: p.get('type') ?? '', age: p.get('age') ?? '', labels: (p.get('labels') ?? '').split(',').filter(Boolean), answered: p.get('answer') === '1' };
+  return { text: p.get('q') ?? '', where: p.get('in') ?? '', kind: p.get('type') ?? '', age: p.get('age') ?? '', labels: (p.get('labels') ?? '').split(',').filter(Boolean), answered: p.get('answer') === '1', tab: p.get('tab') === 'unread' ? 'unread' : p.get('tab') === 'archive' ? 'archive' : '' };
 };
 
 const writeUrl = (f: Filters) => {
@@ -52,6 +53,7 @@ const writeUrl = (f: Filters) => {
   if (f.age) p.set('age', f.age);
   if (f.labels.length) p.set('labels', f.labels.join(','));
   if (f.answered) p.set('answer', '1');
+  if (f.tab) p.set('tab', f.tab);
   const search = p.toString() ? `?${p}` : '';
   if (search !== location.search) history.replaceState(history.state, '', `${location.pathname}${search}${location.hash}`);
 };
@@ -66,7 +68,6 @@ export function QuestionsPage() {
   const courses = useCourses().data;
   const resources = useResources(null).data?.resources;
   const labelDefs = useTags().data;
-  const [showDone, setShowDone] = useState(false);
   const [f, setF] = useState<Filters>(readUrl);
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const set = (patch: Partial<Filters>) => setF((x) => ({ ...x, ...patch }));
@@ -91,6 +92,8 @@ export function QuestionsPage() {
     for (const q of all ?? []) {
       if (q.unplaced) continue;
       const a = q.anchor;
+      // This page is about the open workbook and the student's materials; other workbooks' questions wait there.
+      if (a.kind !== 'page' && a.kind !== 'material' && a.kind !== 'none' && a.course !== courses?.activeId) continue;
       if (a.kind === 'none') out.push({ q, gKey: '', gTitle: t.questionsElsewhere, mtype: null, pKey: '', pTitle: '', pHref: null, pOrder: 0 });
       else if (a.kind === 'page' || a.kind === 'material') {
         const r = resources?.find((x) => x.id === a.resource);
@@ -125,7 +128,7 @@ export function QuestionsPage() {
     const needle = f.text.trim().toLowerCase();
     const now = Date.now();
     return entries.filter(({ q, gKey, gTitle, mtype, pTitle }) => {
-      if (!showDone && q.status !== 'open') return false;
+      if (f.tab === 'archive' ? !q.archived : q.archived || (f.tab === 'unread' && q.read)) return false;
       if (f.where) {
         const [k, v = ''] = [f.where.slice(0, f.where.indexOf(':')), f.where.slice(f.where.indexOf(':') + 1)];
         if (f.where === 'materials' ? !gKey.startsWith('m:') : f.where === 'workbooks' ? !gKey.startsWith('c:') : k === 'mt' ? mtype !== v : k === 'g' ? gKey !== v : false) return false;
@@ -140,7 +143,7 @@ export function QuestionsPage() {
       if (needle && !`${q.text} ${q.anchor.kind === 'text' ? q.anchor.quote : ''} ${q.answer ?? ''} ${gTitle} ${pTitle}`.toLowerCase().includes(needle)) return false;
       return true;
     });
-  }, [entries, f, showDone]);
+  }, [entries, f]);
 
   const groups = useMemo(() => {
     const gs = new Map<string, { key: string; title: string; mtype: ResourceType | null; parts: Map<string, { title: string; href: string | null; order: number; items: Question[] }> }>();
@@ -160,7 +163,6 @@ export function QuestionsPage() {
       </div>
     );
   }
-  const hasDone = all.some((q) => q.status === 'done');
   const active = !!(f.text || f.where || f.kind || f.age || f.labels.length || f.answered);
   const names = groups.map((g) => g.key);
   const allClosed = names.length > 0 && names.every((n) => closed.has(n));
@@ -179,6 +181,14 @@ export function QuestionsPage() {
         </BackLink>
         <h1 className="text-[1.75rem] font-semibold tracking-[-0.02em]">{t.questionsTitle}</h1>
         <p className="mt-2 text-ink-2">{t.questionsPageIntro}</p>
+
+        <div role="tablist" aria-label={t.questionsTitle} className="mt-4 flex gap-1 border-b border-line">
+          {([['', t.questionsTabAll], ['unread', t.questionsTabUnread], ['archive', t.questionsTabArchive]] as const).map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={f.tab === id} onClick={() => set({ tab: id })} className={clsx('-mb-px border-b-2 px-3 py-1.5 text-[14px]', f.tab === id ? 'border-accent font-medium text-ink' : 'border-transparent text-ink-3 hover:text-ink')}>
+              {label}
+            </button>
+          ))}
+        </div>
 
         <div role="search" className="sticky top-0 z-[5] mt-2 grid gap-2 border-b border-line bg-sheet pb-2 pt-2.5">
           <div className="flex flex-wrap items-center gap-2">
@@ -237,11 +247,6 @@ export function QuestionsPage() {
             {active ? (
               <button type="button" onClick={() => setF(NO_FILTERS)} className="px-0.5 py-1 text-[13px] text-accent hover:underline">
                 {t.questionsClearFilters}
-              </button>
-            ) : null}
-            {hasDone ? (
-              <button type="button" onClick={() => setShowDone(!showDone)} aria-pressed={showDone} className="px-0.5 py-1 text-[13px] text-ink-3 hover:text-ink">
-                {showDone ? t.hideDoneQuestions : t.showDoneQuestions}
               </button>
             ) : null}
             {groups.length > 1 ? (

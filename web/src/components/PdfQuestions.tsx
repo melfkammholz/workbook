@@ -1,11 +1,8 @@
 import { X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { MAX_QUOTE, SNIPPET_LENGTH, normalizeQuote, type PageRect, type Question, type Resource, type TextQuote } from '@wb/shared';
+import { SNIPPET_LENGTH, normalizeQuote, type PageRect, type Question, type Resource, type TextQuote } from '@wb/shared';
 import { askQuestion, useQuestions } from '@/lib/api';
-import { addPdfHighlight, usePdfAnnotationsOn } from '@/lib/pdfAnnotations';
 import { setAsked } from '@/lib/pdfAsked';
-import { useQueryClient } from '@tanstack/react-query';
-import { lastColor } from './AnnotationLayer';
 import { useT } from '@/lib/i18n';
 import { FoldSection } from './FoldSection';
 import { readSelection } from './PdfHighlights';
@@ -86,35 +83,37 @@ function paintKept(r: Range | null): void {
   else CSS.highlights.delete('wb-q-sel');
 }
 
+/** Whether new questions are tied to the page in view. Kept for the session only: a reload starts with the whole material again. */
+let tiedToPage = false;
+
 /**
  * Pinned under the pages, a card with one line: Enter saves a question about the material and the cursor stays.
- * `!p` ties it to the page in view, `!s` to the selection (and its page).
+ * The toggle under the line ties new questions to the page in view, or to the selection when there is one.
  */
 export function PdfQuestionBar({ resource, current, pageInfo, scroller }: { resource: Resource; current: number; pageInfo: PageInfo; scroller: RefObject<HTMLElement | null> }) {
   const t = useT();
   const [sel, clearSel] = useSelectedPassage(scroller);
-  const qc = useQueryClient();
-  const canHighlight = usePdfAnnotationsOn() && resource.stale === 0;
+  const [tied, setTied] = useState(tiedToPage);
   const questions = usePdfQuestions(resource);
   useEffect(() => {
     const byPage = new Map<number, TextQuote[]>();
     for (const q of questions) {
-      if (q.status !== 'open' || q.anchor.kind !== 'page' || !q.anchor.quote) continue;
+      if (q.archived || q.anchor.kind !== 'page' || !q.anchor.quote) continue;
       const list = byPage.get(q.anchor.pageIndex) ?? byPage.set(q.anchor.pageIndex, []).get(q.anchor.pageIndex)!;
       list.push({ quote: q.anchor.quote, prefix: q.anchor.prefix ?? '', suffix: q.anchor.suffix ?? '' });
     }
     setAsked(byPage);
     return () => setAsked(new Map());
   }, [questions]);
-  const save = (text: string, o: { tags: string[] }) => {
-    const use = o.tags.includes('s') || o.tags.includes('h') ? sel : null;
+  const toggle = () => {
+    tiedToPage = !tied;
+    setTied(!tied);
+  };
+  const save = (text: string) => {
+    const use = tied ? sel : null;
     const n = use ? use.page + 1 : current;
-    // `!h`: the passage also becomes a highlight, a record of its own that is not tied to the question.
-    if (use && o.tags.includes('h') && canHighlight && use.quote.quote.length <= MAX_QUOTE) {
-      addPdfHighlight(qc, resource.id, { version: resource.file.sha256, pageIndex: use.page, rects: use.rects, ...use.quote, color: lastColor() });
-    }
     if (use) clearSel();
-    if (!use && !o.tags.includes('p')) return void askQuestion({ material: resource.id }, text);
+    if (!tied) return void askQuestion({ material: resource.id }, text);
     void pageInfo(n).then((info) =>
       askQuestion(
         { page: { resource: resource.id, version: resource.file.sha256, pageIndex: n - 1, fingerprint: info.fingerprint, ...(use ? { ...use.quote } : {}), snippet: snippetOf(info.text, use?.quote.quote ?? null) } },
@@ -129,12 +128,19 @@ export function PdfQuestionBar({ resource, current, pageInfo, scroller }: { reso
           attr="data-pdf-question"
           placeholder={t.pdfQuestionPlaceholder}
           onSave={save}
-          tags={[
-            { key: 'p', hint: '', available: true },
-            { key: 's', hint: '', available: !!sel },
-            { key: 'h', hint: '', available: !!sel && canHighlight },
-          ]}
         />
+        <button
+          type="button"
+          role="switch"
+          aria-checked={tied}
+          onClick={toggle}
+          className={`mt-1 flex w-full items-center gap-2 px-1 text-left text-[12.5px] ${tied ? 'text-accent' : 'text-ink-3 hover:text-ink'}`}
+        >
+          <span aria-hidden className={`relative h-3.5 w-6 shrink-0 rounded-full ${tied ? 'bg-accent' : 'bg-line-strong'}`}>
+            <span className={`absolute top-0.5 size-2.5 rounded-full bg-sheet transition-[left] ${tied ? 'left-3' : 'left-0.5'}`} />
+          </span>
+          <span className="min-w-0 truncate">{!tied ? t.pdfQuestionTie : sel ? t.pdfQuestionTiedSelection(sel.page + 1) : t.pdfQuestionTiedPage(current)}</span>
+        </button>
       </QuestionCard>
     </div>
   );
@@ -144,7 +150,7 @@ export function PdfQuestionBar({ resource, current, pageInfo, scroller }: { reso
 export function PdfQuestionList({ resource, questions, current, labelOf, onGo }: { resource: Resource; questions: Question[]; current: number; labelOf: (n: number) => string; onGo: (n: number) => void }) {
   const t = useT();
   const [showDone, setShowDone] = useState(false);
-  const shown = questions.filter((q) => showDone || q.status === 'open');
+  const shown = questions.filter((q) => showDone || !q.archived);
   const groups = useMemo(() => {
     const out: { page: number; items: Question[] }[] = [];
     for (const q of shown) {
@@ -155,7 +161,7 @@ export function PdfQuestionList({ resource, questions, current, labelOf, onGo }:
     }
     return out;
   }, [shown]);
-  const hasDone = questions.some((q) => q.status === 'done');
+  const hasDone = questions.some((q) => q.archived);
   const ref = useRef<HTMLElement>(null);
   return (
     <FoldSection id="pdf-questions" title={t.pdfQuestionsTitle} defaultOpen sectionRef={ref} className="mt-5">
@@ -203,7 +209,7 @@ function CompactQuestion({ q }: { q: Question }) {
   return (
     <li>
       <button type="button" onClick={() => setOpen(true)} title={q.text || quote || undefined} className="flex w-full items-baseline gap-2 py-1 text-left text-[13.5px] hover:bg-sunk/60">
-        <span className={`min-w-0 flex-1 truncate ${q.status === 'done' ? 'text-ink-3 line-through' : ''}`}>{q.text || <span className="italic text-ink-3">{quote}</span>}</span>
+        <span className={`min-w-0 flex-1 truncate ${q.archived ? 'text-ink-3 line-through' : ''}`}>{q.text || <span className="italic text-ink-3">{quote}</span>}</span>
         {q.text && quote ? <span className="hidden max-w-[40%] shrink truncate text-[12px] italic text-ink-3 sm:inline">{quote}</span> : null}
       </button>
     </li>

@@ -75,7 +75,7 @@ describe('assistant bridge', () => {
     await app.inject({ method: 'POST', url: '/api/questions', payload: { item, text: 'Was ist foldr?' } });
     const all = JSON.parse((await tool('list_questions')).text);
     expect(all.some((q: { text: string }) => q.text === 'Was ist foldr?')).toBe(true);
-    expect(JSON.parse((await tool('list_questions', { status: 'done' })).text)).toEqual([]);
+    expect(JSON.parse((await tool('list_questions', { status: 'archived' })).text)).toEqual([]);
     expect(JSON.parse((await tool('list_questions', { since: new Date(Date.now() + 86_400_000).toISOString() })).text)).toEqual([]);
     expect(JSON.parse((await tool('list_questions', { since: '2000-01-01T00:00:00Z' })).text)).toHaveLength(all.length);
   });
@@ -150,14 +150,14 @@ describe('assistant bridge', () => {
     expect((await decide(answer.id, 'accept')).statusCode).toBe(409);
     const now = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.id);
     // accepting an answer does not close the question
-    expect(now).toMatchObject({ kind: 'how', status: 'open', answer: 'foldr faltet von rechts.', answerBy: 'assistant' });
+    expect(now).toMatchObject({ kind: 'how', archived: false, answer: 'foldr faltet von rechts.', answerBy: 'assistant' });
     expect(now.labels).toHaveLength(1);
     expect(JSON.parse((await tool('list_labels')).text)).toContain('Faltung');
     // undo puts back what was there
     await decide(answer.id, 'undo');
     await decide(kind.id, 'undo');
     const undone = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.id);
-    expect(undone).toMatchObject({ kind: null, status: 'open', answer: null });
+    expect(undone).toMatchObject({ kind: null, archived: false, answer: null });
     // rejected proposals stay visible to the assistant, with what the student said
     await tool('propose', { question: q.id, type: 'example' });
     const next = (await app.inject({ method: 'GET', url: '/api/changes' })).json().find((c: { status: string }) => c.status === 'pending');
@@ -177,12 +177,12 @@ describe('assistant bridge', () => {
     const accepted = (await app.inject({ method: 'POST', url: '/api/changes/accept', payload: { ids } })).json() as { batch: string; changes: { status: string }[] };
     expect(accepted.changes.every((c) => c.status === 'applied')).toBe(true);
     const now = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.id);
-    expect(now).toMatchObject({ text: 'Wie faltet foldr eine Liste?', kind: 'check', answer: 'Von rechts.', status: 'open' });
+    expect(now).toMatchObject({ text: 'Wie faltet foldr eine Liste?', kind: 'check', answer: 'Von rechts.', archived: false });
     // accepting again fails and changes nothing
     expect((await app.inject({ method: 'POST', url: '/api/changes/accept', payload: { ids } })).statusCode).toBe(409);
     expect((await app.inject({ method: 'POST', url: `/api/changes/batch/${accepted.batch}/undo` })).statusCode).toBe(200);
     const undone = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.id);
-    expect(undone).toMatchObject({ text: before.text, kind: before.kind, answer: before.answer, status: before.status });
+    expect(undone).toMatchObject({ text: before.text, kind: before.kind, answer: before.answer, archived: before.archived });
     expect((await app.inject({ method: 'POST', url: `/api/changes/batch/${accepted.batch}/undo` })).statusCode).toBe(409);
   });
 
@@ -302,7 +302,7 @@ describe('assistant bridge', () => {
     // question: marked as the assistant's, outside the student's passes; undo deletes it
     const q = (await decide(question!.id, 'accept')).json();
     const made = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.ref.id);
-    expect(made).toMatchObject({ text: 'Warum von rechts?', who: 'assistant', status: 'open' });
+    expect(made).toMatchObject({ text: 'Warum von rechts?', who: 'assistant', archived: false });
     await decide(question!.id, 'undo');
     expect((await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.ref.id)).toBeUndefined();
 
@@ -366,28 +366,28 @@ describe('assistant bridge', () => {
     expect(g().addQuestionLink(b, 'card', card)).toBe(true);
     expect((await tool('propose_merge', { survivor: a, duplicates: [b, c], text: 'Was ist foldl, und was macht es?', reason: 'gleiche Frage' })).error).toBe(false);
     const find = async (id: string) => (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === id);
-    expect(await find(b)).toMatchObject({ mergedInto: null, status: 'open' });
+    expect(await find(b)).toMatchObject({ mergedInto: null, archived: false });
     const merge = ((await app.inject({ method: 'GET', url: '/api/changes' })).json() as { id: string; field: string; status: string }[]).find((x) => x.field === 'merge' && x.status === 'pending')!;
     expect((await decide(merge.id, 'accept')).json().status).toBe('applied');
-    expect(await find(a)).toMatchObject({ text: 'Was ist foldl, und was macht es?', answer: 'Eine Faltung.', answerBy: 'you', status: 'open' });
+    expect(await find(a)).toMatchObject({ text: 'Was ist foldl, und was macht es?', answer: 'Eine Faltung.', answerBy: 'you', archived: false });
     expect((await find(a)).labels).toHaveLength(1);
     expect((await find(a)).links).toMatchObject([{ kind: 'card', ref: card, deck }]);
     expect((await find(b)).links).toEqual([]);
-    expect(await find(b)).toMatchObject({ mergedInto: a, status: 'done' });
-    expect(await find(c)).toMatchObject({ mergedInto: a, status: 'done' });
+    expect(await find(b)).toMatchObject({ mergedInto: a, archived: true });
+    expect(await find(c)).toMatchObject({ mergedInto: a, archived: true });
     // the survivor cannot be merged away while it survives, and a merged one cannot be merged again
     expect((await tool('propose_merge', { survivor: b, duplicates: [c] })).error).toBe(true);
     expect((await decide(merge.id, 'undo')).statusCode).toBe(200);
     expect(await find(a)).toMatchObject({ text: 'Was ist foldl?', answer: 'Eine Faltung.', labels: [] });
-    expect(await find(b)).toMatchObject({ mergedInto: null, status: 'open', answer: 'Faltet von links.' });
+    expect(await find(b)).toMatchObject({ mergedInto: null, archived: false, answer: 'Faltet von links.' });
     expect((await find(b)).links).toMatchObject([{ kind: 'card', ref: card }]);
     expect((await find(a)).links).toEqual([]);
     // reopening a merged duplicate frees it
     await tool('propose_merge', { survivor: a, duplicates: [c] });
     const again = ((await app.inject({ method: 'GET', url: '/api/changes' })).json() as { id: string; field: string; status: string }[]).find((x) => x.field === 'merge' && x.status === 'pending')!;
     await decide(again.id, 'accept');
-    await app.inject({ method: 'PATCH', url: `/api/questions/${c}`, payload: { status: 'open' } });
-    expect(await find(c)).toMatchObject({ mergedInto: null, status: 'open' });
+    await app.inject({ method: 'PATCH', url: `/api/questions/${c}`, payload: { archived: false } });
+    expect(await find(c)).toMatchObject({ mergedInto: null, archived: false });
     // a waiting merge goes out of date when a duplicate disappears
     await tool('propose_merge', { survivor: a, duplicates: [b] });
     g().deleteQuestion(b);
@@ -397,7 +397,7 @@ describe('assistant bridge', () => {
   it('writes an answer and links over the API', async () => {
     const q = g().addQuestion({ text: 'Was ist eine Faltung?', anchor: { kind: 'none' } });
     const patch = await app.inject({ method: 'PATCH', url: `/api/questions/${q.id}`, payload: { answer: 'Ein *Reduktionsmuster*.' } });
-    expect(patch.json()).toMatchObject({ answer: 'Ein *Reduktionsmuster*.', answerBy: 'you', status: 'open', links: [] });
+    expect(patch.json()).toMatchObject({ answer: 'Ein *Reduktionsmuster*.', answerBy: 'you', archived: false, links: [] });
     const deck = courses.flashcards.create('Fragen').id;
     const card = courses.flashcards.addCard(deck, 'basic', 'F', 'B', null).cardId;
     expect((await app.inject({ method: 'POST', url: `/api/questions/${q.id}/links`, payload: { kind: 'card', ref: 'nope' } })).statusCode).toBe(404);

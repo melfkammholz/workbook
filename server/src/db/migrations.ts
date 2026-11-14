@@ -890,6 +890,19 @@ export const MIGRATIONS: Migration[] = [
   },
   /* 38: works the student removed: their keys (DOI, title and year, normalized entry text) so a re-read or a page citing them does not bring them back. */
   `CREATE TABLE work_removed (key TEXT PRIMARY KEY) WITHOUT ROWID;`,
+  /*
+   * 39: questions work like mail: `read` (0: the assistant brought something the student has not looked at yet) and
+   * `archived` replace open/done. A question that was done is archived; every old one counts as read.
+   */ `
+  ALTER TABLE questions ADD COLUMN read INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE questions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE questions ADD COLUMN archived_at INTEGER;
+  UPDATE questions SET archived = 1, archived_at = COALESCE(done_at, updated_at) WHERE status = 'done';
+  DROP INDEX questions_course;
+  ALTER TABLE questions DROP COLUMN status;
+  ALTER TABLE questions DROP COLUMN done_at;
+  CREATE INDEX questions_course ON questions (course, archived);
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

@@ -67,12 +67,12 @@ describe('"come back to" is a question', () => {
     expect(a.review).toBeNull();
     expect(s.listQuestions()).toEqual([]);
     expect(s.updateAnnotation(a.id, { review: 'open' })!.review).toBe('open');
-    expect(s.listQuestions()).toEqual([expect.objectContaining({ text: '', status: 'open', highlightId: a.id, anchor: expect.objectContaining({ kind: 'text', target: 'x', quote: 'Typklasse' }) })]);
+    expect(s.listQuestions()).toEqual([expect.objectContaining({ text: '', archived: false, highlightId: a.id, anchor: expect.objectContaining({ kind: 'text', target: 'x', quote: 'Typklasse' }) })]);
     expect(s.updateAnnotation(a.id, { review: 'resolved' })!.review).toBe('resolved');
-    expect(s.listQuestions()[0]).toMatchObject({ status: 'done' });
+    expect(s.listQuestions()[0]).toMatchObject({ archived: true });
     expect(s.resolvedMarkCount()).toBe(1);
     // Resolving it as a question shows on the highlight.
-    s.updateQuestion(s.listQuestions()[0]!.id, { status: 'open' });
+    s.updateQuestion(s.listQuestions()[0]!.id, { archived: false });
     expect(s.getAnnotation(a.id)!.review).toBe('open');
     expect(s.updateAnnotation(a.id, { review: null })!.review).toBeNull();
     expect(s.listQuestions()).toEqual([]);
@@ -99,10 +99,10 @@ describe('migration 19', () => {
     expect(qs).toHaveLength(4);
     expect(qs.every((q) => q.text === '')).toBe(true);
     const by = (id: string) => qs.find((q) => q.highlightId === id);
-    expect(by('a1')).toMatchObject({ status: 'open', course: 'c', anchor: { kind: 'text', course: 'c', quote: 'q' } });
-    expect(by('a2')).toMatchObject({ status: 'done' });
-    expect(by('h1')).toMatchObject({ status: 'open', anchor: { kind: 'page', resource: 'r1', pageIndex: 3, fingerprint: 'fp', quote: 'zitat' } });
-    expect(by('p1')).toMatchObject({ status: 'done', anchor: { kind: 'page', fingerprint: 'fp' } });
+    expect(by('a1')).toMatchObject({ archived: false, course: 'c', anchor: { kind: 'text', course: 'c', quote: 'q' } });
+    expect(by('a2')).toMatchObject({ archived: true });
+    expect(by('h1')).toMatchObject({ archived: false, anchor: { kind: 'page', resource: 'r1', pageIndex: 3, fingerprint: 'fp', quote: 'zitat' } });
+    expect(by('p1')).toMatchObject({ archived: true, anchor: { kind: 'page', fingerprint: 'fp' } });
     for (const t of ['annotations', 'pdf_annotations', 'pdf_pages']) expect((s.sql.all(`PRAGMA table_info(${t})`) as { name: string }[]).map((c) => c.name)).not.toContain('review');
     s.close();
   });

@@ -18,7 +18,7 @@ export interface Cell {
 export const questionsOn = (questions: Question[], itemId: string): Question[] =>
   questions.filter((q) => (q.anchor.kind === 'exercise' || q.anchor.kind === 'item') && q.anchor.id === itemId);
 
-export const openQuestionsOn = (questions: Question[], itemId: string): Question[] => questionsOn(questions, itemId).filter((q) => q.status === 'open');
+export const openQuestionsOn = (questions: Question[], itemId: string): Question[] => questionsOn(questions, itemId).filter((q) => !q.archived);
 
 /** Why the student might want to look at this exercise again. */
 export function cellFor(data: ReviewData, exerciseId: string): Cell {

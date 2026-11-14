@@ -1,5 +1,5 @@
 import * as Popover from '@radix-ui/react-popover';
-import { HelpCircle, Pencil, Trash2, X } from 'lucide-react';
+import { HelpCircle, Mail, Pencil, Trash2, X } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { type Question } from '@wb/shared';
 import { useTags } from '@/lib/tags';
@@ -35,29 +35,6 @@ function submitKey(e: React.KeyboardEvent, submit: () => void, cancel?: () => vo
   }
 }
 
-/** A tag a question may carry: typed as `!p` after the text, taken out of it when saved. */
-export interface QuestionTag {
-  key: string;
-  /** Shown under the line, e.g. "!p page 3". */
-  hint: string;
-  /** False: the hint is dimmed and the tag does nothing (no selection to take). */
-  available: boolean;
-}
-
-/** Takes `!x` words (surrounded by spaces) out of a text; returns the text without them and the ones found. */
-export function parseTags(raw: string, known: readonly string[]): { text: string; tags: string[] } {
-  const tags: string[] = [];
-  const text = raw
-    .replace(/(^|\s)!([a-z])(?=\s|$)/g, (m, pre: string, k: string) => {
-      if (!known.includes(k)) return m;
-      if (!tags.includes(k)) tags.push(k);
-      return pre;
-    })
-    .replace(/ {2,}/g, ' ')
-    .trim();
-  return { text, tags };
-}
-
 /** The look of the place a question is written in: a small card with an optional line about where it will land. */
 export function QuestionCard({ context, onClose, className, children }: { context?: string | null; onClose?: () => void; className?: string; children: React.ReactNode }) {
   const t = useT();
@@ -78,27 +55,22 @@ export function QuestionCard({ context, onClose, className, children }: { contex
   );
 }
 
-/**
- * One line to write a question into: Enter saves it and the cursor stays, ready for the next. `!x` tags at the end
- * ask for more than the text (`!p`: this page, `!s`: the selection); the line under it lists what is on offer..
- */
+/** One line to write a question into: Enter saves it and the cursor stays, ready for the next. */
 export function CaptureField({
   onSave,
   autoFocus = false,
   fieldRef,
   attr,
   placeholder,
-  tags = [],
   onCancel,
   onBlurEmpty,
 }: {
-  onSave: (text: string, o: { tags: string[] }) => void;
+  onSave: (text: string) => void;
   autoFocus?: boolean;
   fieldRef?: React.Ref<HTMLTextAreaElement>;
   /** A data attribute to find the field by (the hotkey focuses it). */
   attr?: string;
   placeholder?: string;
-  tags?: QuestionTag[];
   onCancel?: () => void;
   /** The line lost the focus with nothing written in it. */
   onBlurEmpty?: () => void;
@@ -107,10 +79,10 @@ export function CaptureField({
   const [text, setText] = useState('');
   const grow = useAutoGrow(text);
   const save = () => {
-    const parsed = parseTags(text, tags.filter((x) => x.available).map((x) => x.key));
-    if (!parsed.text) return;
+    const trimmed = text.trim();
+    if (!trimmed) return;
     setText('');
-    onSave(parsed.text, { tags: parsed.tags });
+    onSave(trimmed);
   };
   return (
     <div>
@@ -137,7 +109,7 @@ export function CaptureField({
 
 /** A question on an item: the line to write it, saved to that item. */
 export function QuestionInput({ item, autoFocus = false }: { item: string; autoFocus?: boolean }) {
-  return <CaptureField autoFocus={autoFocus} onSave={(text, o) => void askQuestion({ item }, text)} />;
+  return <CaptureField autoFocus={autoFocus} onSave={(text) => void askQuestion({ item }, text)} />;
 }
 
 /**
@@ -149,7 +121,21 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
   const [draft, setDraft] = useState<string | null>(null);
   const [answerOpen, setAnswerOpen] = useState(false);
   const ref = useAutoGrow(draft ?? '');
-  const done = q.status === 'done';
+  const done = q.archived;
+  /** Looking at what the assistant brought (its answer, its proposals) reads the question. */
+  const readNow = () => {
+    if (!q.read) void updateQuestion(item, q.id, { read: true });
+  };
+  const toggleAnswer = () => {
+    if (!answerOpen) readNow();
+    setAnswerOpen(!answerOpen);
+  };
+  const unreadDot = q.read ? null : <span role="img" aria-label={t.questionUnreadDot} title={t.questionUnreadDot} className="mr-1.5 inline-block size-1.5 shrink-0 rounded-full bg-accent align-middle" />;
+  const markUnread = q.read ? (
+    <IconButton label={t.questionMarkUnread} className="size-5" onClick={() => void updateQuestion(item, q.id, { read: false })}>
+      <Mail size={12} />
+    </IconButton>
+  ) : null;
   const waiting = usePendingProposals().get(q.id);
   const into = useQuestions().data?.find((x) => x.id === q.mergedInto);
   const labelNames = new Map((useTags().data ?? []).map((l) => [l.id, l.name]));
@@ -195,15 +181,17 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
         ) : (
           <div className={clsx('grid items-baseline', where ? 'grid-cols-[13rem_1fr_auto]' : 'grid-cols-[1fr_auto]')} style={{ columnGap: '0.625rem' }}>
             {where ? <span className="truncate text-[12.5px] text-accent">{where}</span> : null}
-            <p className={clsx('min-w-0 truncate text-[14px] leading-[1.4]', done && 'text-ink-3 line-through')} title={q.text || undefined}>
+            <p className={clsx('min-w-0 truncate text-[14px] leading-[1.4]', done && 'text-ink-3 line-through', !q.read && 'font-semibold')} title={q.text || undefined}>
+              {unreadDot}
               {q.text || (quote ? <span className="italic text-ink-3">{quote}</span> : <span className="text-ink-3">{t.inboxNoText}</span>)}
               {q.mergedInto ? <span className="ml-2 text-[12.5px] text-ink-3">{t.mergedInto}: {into?.text || t.inboxNoText}</span> : null}
             </p>
             <div className="flex items-center gap-1.5 whitespace-nowrap text-[12px] text-ink-3">
-              {waiting ? <ProposalMarker changes={waiting} /> : null}
-              <AnswerToggle q={q} open={answerOpen} onToggle={() => setAnswerOpen(!answerOpen)} />
+              {waiting ? <span onClickCapture={readNow} className="contents"><ProposalMarker changes={waiting} /></span> : null}
+              <AnswerToggle q={q} open={answerOpen} onToggle={toggleAnswer} />
               <span className="flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                 <QuestionMake item={item} q={q} />
+                {markUnread}
                 <IconButton label={t.editQuestion} className="size-5" onClick={() => setDraft(q.text)}>
                   <Pencil size={12} />
                 </IconButton>
@@ -225,7 +213,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
                 checked={done}
                 aria-label={done ? t.questionReopen : t.questionDone}
                 title={done ? t.questionReopen : t.questionDone}
-                onChange={() => void updateQuestion(item, q.id, { status: done ? 'open' : 'done' })}
+                onChange={() => void updateQuestion(item, q.id, { archived: !done })}
                 className="wb-check shrink-0"
               />
             </div>
@@ -243,7 +231,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
         checked={done}
         aria-label={done ? t.questionReopen : t.questionDone}
         title={done ? t.questionReopen : t.questionDone}
-        onChange={() => void updateQuestion(item, q.id, { status: done ? 'open' : 'done' })}
+        onChange={() => void updateQuestion(item, q.id, { archived: !done })}
         className="wb-check mt-1 shrink-0"
       />
       {draft !== null ? (
@@ -273,7 +261,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
       ) : (
         <>
           <div className="min-w-0 flex-1">
-            <p className={clsx('whitespace-pre-wrap break-words text-[14px] leading-snug', done && 'text-ink-3 line-through')}>{q.text}</p>
+            <p className={clsx('whitespace-pre-wrap break-words text-[14px] leading-snug', done && 'text-ink-3 line-through', !q.read && 'font-semibold')}>{unreadDot}{q.text}</p>
             {extra}
             {q.mergedInto ? <p className="mt-0.5 break-words text-[12.5px] text-ink-3">{t.mergedInto}: {into?.text || t.inboxNoText}</p> : null}
             {q.kind || q.labels.length || q.who ? (
@@ -284,9 +272,9 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
               </p>
             ) : null}
           </div>
-          {waiting ? <ProposalMarker changes={waiting} /> : null}
+          {waiting ? <span onClickCapture={readNow} className="contents"><ProposalMarker changes={waiting} /></span> : null}
           {q.links.length ? <OutcomeIcons links={q.links} /> : null}
-          <AnswerToggle q={q} open={answerOpen} onToggle={() => setAnswerOpen(!answerOpen)} size="md" />
+          <AnswerToggle q={q} open={answerOpen} onToggle={toggleAnswer} size="md" />
           <span className="flex shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
             <QuestionMake item={item} q={q} size="md" />
             <IconButton label={t.editQuestion} className="size-6" onClick={() => setDraft(q.text)}>
@@ -308,8 +296,8 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
 export function QuestionList({ item, questions }: { item: string | null; questions: Question[] }) {
   const t = useT();
   const [showDone, setShowDone] = useState(false);
-  const open = questions.filter((q) => q.status === 'open');
-  const done = questions.filter((q) => q.status === 'done');
+  const open = questions.filter((q) => !q.archived);
+  const done = questions.filter((q) => q.archived);
   const shown = showDone ? [...open, ...done] : open;
   return (
     <div>
