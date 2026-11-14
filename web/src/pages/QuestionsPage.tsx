@@ -34,15 +34,16 @@ interface Filters {
   age: string;
   labels: string[];
   answered: boolean;
+  unseen: boolean;
   tab: '' | 'unread' | 'archive';
 }
 
-const NO_FILTERS: Filters = { text: '', where: '', kind: '', age: '', labels: [], answered: false, tab: '' };
+const NO_FILTERS: Filters = { text: '', where: '', kind: '', age: '', labels: [], answered: false, unseen: false, tab: '' };
 const DAY = 86_400_000;
 
 const readUrl = (): Filters => {
   const p = new URLSearchParams(location.search);
-  return { text: p.get('q') ?? '', where: p.get('in') ?? '', kind: p.get('type') ?? '', age: p.get('age') ?? '', labels: (p.get('labels') ?? '').split(',').filter(Boolean), answered: p.get('answer') === '1', tab: p.get('tab') === 'unread' ? 'unread' : p.get('tab') === 'archive' ? 'archive' : '' };
+  return { text: p.get('q') ?? '', where: p.get('in') ?? '', kind: p.get('type') ?? '', age: p.get('age') ?? '', labels: (p.get('labels') ?? '').split(',').filter(Boolean), answered: p.get('answer') === '1', unseen: p.get('unseen') === '1', tab: p.get('tab') === 'unread' ? 'unread' : p.get('tab') === 'archive' ? 'archive' : '' };
 };
 
 const writeUrl = (f: Filters) => {
@@ -53,6 +54,7 @@ const writeUrl = (f: Filters) => {
   if (f.age) p.set('age', f.age);
   if (f.labels.length) p.set('labels', f.labels.join(','));
   if (f.answered) p.set('answer', '1');
+  if (f.unseen) p.set('unseen', '1');
   if (f.tab) p.set('tab', f.tab);
   const search = p.toString() ? `?${p}` : '';
   if (search !== location.search) history.replaceState(history.state, '', `${location.pathname}${search}${location.hash}`);
@@ -68,6 +70,8 @@ export function QuestionsPage() {
   const courses = useCourses().data;
   const resources = useResources(null).data?.resources;
   const labelDefs = useTags().data;
+  const settings = useSettings().data;
+  const bridgeOn = !!(settings?.showAi && settings.assistantBridge);
   const [f, setF] = useState<Filters>(readUrl);
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const set = (patch: Partial<Filters>) => setF((x) => ({ ...x, ...patch }));
@@ -135,6 +139,7 @@ export function QuestionsPage() {
       }
       if (f.kind && q.kind !== f.kind) return false;
       if (f.answered && !q.answer) return false;
+      if (f.unseen && q.fetched) return false;
       if (f.age) {
         const days = (now - q.createdAt) / DAY;
         if (f.age === 'old' ? days <= 30 : days > Number(f.age)) return false;
@@ -163,7 +168,7 @@ export function QuestionsPage() {
       </div>
     );
   }
-  const active = !!(f.text || f.where || f.kind || f.age || f.labels.length || f.answered);
+  const active = !!(f.text || f.where || f.kind || f.age || f.labels.length || f.answered || f.unseen);
   const names = groups.map((g) => g.key);
   const allClosed = names.length > 0 && names.every((n) => closed.has(n));
   const searching = !!f.text.trim();
@@ -243,6 +248,11 @@ export function QuestionsPage() {
             <button type="button" aria-pressed={f.answered} onClick={() => set({ answered: !f.answered })} className={selectClass(f.answered)}>
               {t.questionsHasAnswer}
             </button>
+            {bridgeOn ? (
+              <button type="button" aria-pressed={f.unseen} onClick={() => set({ unseen: !f.unseen })} className={selectClass(f.unseen)}>
+                {t.questionsNotSeen}
+              </button>
+            ) : null}
             <span className="flex-1" />
             {active ? (
               <button type="button" onClick={() => setF(NO_FILTERS)} className="px-0.5 py-1 text-[13px] text-accent hover:underline">

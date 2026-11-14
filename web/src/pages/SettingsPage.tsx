@@ -55,6 +55,8 @@ function AssistantBridge({ settings, set }: { settings: Settings; set: (p: Parti
     if (settings.assistantBridge && !settings.bridgeToken) void newToken();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.assistantBridge, settings.bridgeToken]);
+  const skillsCommand = `curl -fsS ${window.location.origin}/skills/install.sh | sh`;
+  const [skillsCopied, setSkillsCopied] = useState(false);
   const command = `claude mcp add --transport http workbook ${window.location.origin}/mcp --header "Authorization: Bearer ${settings.bridgeToken}"`;
   return (
     <div className="space-y-3">
@@ -79,6 +81,23 @@ function AssistantBridge({ settings, set }: { settings: Settings; set: (p: Parti
               </Button>
               <Button onClick={() => void newToken()}>{t.bridgeNewToken}</Button>
               <span className="text-xs text-ink-3">{t.bridgeNewTokenBody}</span>
+            </div>
+          </div>
+          <div>
+            <p className="mb-1 text-sm font-medium">{t.skillsTitle}</p>
+            <p className="mb-1 text-[13px] text-ink-2">{t.skillsBody}</p>
+            <pre className="overflow-x-auto wb-field px-3 py-2 text-xs">{skillsCommand}</pre>
+            <div className="mt-2">
+              <Button
+                onClick={() => {
+                  void navigator.clipboard?.writeText(skillsCommand).then(() => {
+                    setSkillsCopied(true);
+                    setTimeout(() => setSkillsCopied(false), 1500);
+                  });
+                }}
+              >
+                {skillsCopied ? t.bridgeCopied : t.skillsCopy}
+              </Button>
             </div>
           </div>
           <div>

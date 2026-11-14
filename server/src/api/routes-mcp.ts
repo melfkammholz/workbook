@@ -6,10 +6,12 @@ import { hasTests, sharedOwner } from '../content/loader.js';
 import { plainText } from '../content/search.js';
 import { runChecks } from '../runners/checks.js';
 import { searchEverything } from '../courses/search.js';
+import { SKILLS_VERSION, installScript, skillFile } from '../skills.js';
 import type { Deps } from './deps.js';
 
 const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const MAX_TEXT = 12_000;
+const MAX_QUESTIONS = 20;
 
 type Json = Record<string, unknown>;
 class ToolError extends Error {}
@@ -17,16 +19,20 @@ class ToolError extends Error {}
 const TOOLS = [
   {
     name: 'list_questions',
-    description: "The student's open questions (newest first), with where each was asked. Filters are all optional.",
+    description: "The student's questions (newest first) with where each was asked, what the student rejected for it before (rejected), and when you last read it (lastRead). Scoped to the active workbook plus materials unless you say otherwise; at most 20 at a time, and `remaining` counts the rest. Every question this returns is logged as read by you, with your purpose, and the student sees that. Use unfetched_only to get only those you have not read yet.",
     inputSchema: {
       type: 'object',
       properties: {
-        status: { type: 'string', enum: ['active', 'archived'] },
-        course: { type: 'string', description: 'Workbook id' },
-        resource: { type: 'string', description: 'Material id' },
+        purpose: { type: 'string', description: 'Required. Why you read them, e.g. the name of the skill ("answer-recent"). The student sees it.' },
+        workbook: { type: 'string', description: 'Workbook id; "all" for every workbook. Default: the active one' },
+        resource: { type: 'string', description: 'Only questions about this material' },
+        item: { type: 'string', description: 'Only questions about this workbook item (exercise, lesson, page)' },
         since: { type: 'string', description: 'ISO time: only questions made at or after it' },
-        limit: { type: 'integer', description: 'Default 50' },
+        status: { type: 'string', enum: ['active', 'archived'] },
+        unfetched_only: { type: 'boolean', description: 'Only questions you have never read' },
+        limit: { type: 'integer', description: 'Default and maximum 20' },
       },
+      required: ['purpose'],
     },
   },
   {
@@ -44,8 +50,8 @@ const TOOLS = [
   },
   {
     name: 'get_context',
-    description: 'A question with its surroundings: the page of a material (with the pages around it) or the item it was asked about, with a marker where it was asked. Hints and author notes are included only if the student allows it; hint, do not reveal unless asked.',
-    inputSchema: { type: 'object', properties: { question: { type: 'string' } }, required: ['question'] },
+    description: 'A question with its surroundings (logged as read by you, with your purpose): the page of a material (with the pages around it) or the item it was asked about, with a marker where it was asked. Hints and author notes are included only if the student allows it; hint, do not reveal unless asked.',
+    inputSchema: { type: 'object', properties: { question: { type: 'string' }, purpose: { type: 'string', description: 'Required. Why you read it, e.g. the name of the skill. The student sees it.' } }, required: ['question', 'purpose'] },
   },
   {
     name: 'get_exercise_work',
@@ -122,28 +128,28 @@ const PROMPTS = [
     description: "Go through the student's new open questions and propose a type and labels for each.",
     arguments: [{ name: 'since', description: 'Only the questions made at or after this ISO time', required: false }],
     text: (a: Json) =>
-      `Triage the student's open questions in their workbook. First call list_proposals (do not repeat what was rejected) and list_labels (reuse existing names). Then call list_questions with status "active"${str(a.since) ? ` and since "${str(a.since)}"` : ''}, skipping questions that already have a type and labels. Where the wording is unclear, read get_context. For each question call propose with a type, labels and a one-line reason. Do not answer questions here, and do not close anything. Finish with a short list of what you proposed.`,
+      `Triage the student's open questions in their workbook. First call list_proposals (do not repeat what was rejected) and list_labels (reuse existing names). Then call list_questions with purpose "triage-questions", status "active"${str(a.since) ? ` and since "${str(a.since)}"` : ''}, skipping questions that already have a type and labels. Where the wording is unclear, read get_context. For each question call propose with a type, labels and a one-line reason. Do not answer questions here, and do not close anything. Finish with a short list of what you proposed.`,
   },
   {
     name: 'answer-recent',
     description: 'Propose short answers for the questions made since a time, from the text they were asked about.',
     arguments: [{ name: 'since', description: 'ISO time; questions made at or after it (see list_questions)', required: true }],
     text: (a: Json) =>
-      `Answer the open questions made since ${str(a.since) ?? '(ask the student from when)'} in the student's workbook. Read list_proposals first. For each such question from list_questions (use its since filter), read get_context and, if needed, search or read_page. Then propose an answer with propose: short, in the student's language, grounded in the text they were reading, saying where in it. Where the answer is a definition or fact worth remembering, also call propose_card with the same question id (and resource + page + quote or item), so the card is grouped under the question and accepting it links them; one card at most per question, none where a card would not help. If the text does not answer it, say so in the reason instead of guessing. Do not reveal solutions of exercises unless the question asks for one. Summarize what you proposed.`,
+      `Answer the open questions made since ${str(a.since) ?? '(ask the student from when)'} in the student's workbook. Read list_proposals first. For each such question from list_questions (purpose "answer-recent", use its since filter; its rejected field says what the student turned down for that question, so do not repeat it), read get_context and, if needed, search or read_page. Then propose an answer with propose: short, in the student's language, grounded in the text they were reading, saying where in it. Where the answer is a definition or fact worth remembering, also call propose_card with the same question id (and resource + page + quote or item), so the card is grouped under the question and accepting it links them; one card at most per question, none where a card would not help. If the text does not answer it, say so in the reason instead of guessing. Do not reveal solutions of exercises unless the question asks for one. Summarize what you proposed.`,
   },
   {
     name: 'cards-from-confusion',
     description: 'Turn what the student found confusing in their questions ("x makes no sense") into flashcards, grouped under each question.',
     arguments: [{ name: 'since', description: 'ISO time; questions made at or after it', required: false }],
     text: (a: Json) =>
-      `Look for what the student finds unclear in their open questions${str(a.since) ? ` made since ${str(a.since)}` : ''}: wording like "definition x makes no sense", "I do not get ...", "what is the difference between ...". Read the resource workbook://questions (or list_proposals first, so you do not repeat what was rejected), then get_context for each such question. Where the confusion is about one idea that a card could pin down, call propose_card with question set to that question's id, a front that asks the idea plainly, a short back that clears the confusion, and where it comes from (resource + page + exact quote, or item). Also propose an answer with propose where the text gives one. Leave out questions that are about their own code or that you cannot ground in the text. Finish with a short list of what you proposed.`,
+      `Look for what the student finds unclear in their open questions${str(a.since) ? ` made since ${str(a.since)}` : ''}: wording like "definition x makes no sense", "I do not get ...", "what is the difference between ...". Call list_questions with purpose "cards-from-confusion" (each question's rejected field says what the student turned down; do not repeat it), then get_context for each such question. Where the confusion is about one idea that a card could pin down, call propose_card with question set to that question's id, a front that asks the idea plainly, a short back that clears the confusion, and where it comes from (resource + page + exact quote, or item). Also propose an answer with propose where the text gives one. Leave out questions that are about their own code or that you cannot ground in the text. Finish with a short list of what you proposed.`,
   },
   {
     name: 'draft-flashcards',
     description: 'Propose flashcards from a material or from the questions the student asked; they decide in their inbox.',
     arguments: [{ name: 'resource', description: 'Material id; default: the open questions', required: false }],
     text: (a: Json) =>
-      `Propose flashcards for the student${str(a.resource) ? ` from the material ${str(a.resource)} (read it with read_page, page by page)` : ' from their open questions (list_questions, get_context)'}. First call list_proposals (do not repeat what was rejected) and list_decks (use an existing deck's title where the topic fits). Then call propose_card once per card: one idea per card, a clear front, a short back, and where it comes from (resource + page + an exact quote, or item). Cards you cannot ground in the text are left out. You cannot create cards yourself: the student accepts, edits or rejects each one in their inbox. Finish with a short list of what you proposed.`,
+      `Propose flashcards for the student${str(a.resource) ? ` from the material ${str(a.resource)} (read it with read_page, page by page)` : ' from their open questions (list_questions and get_context, purpose "draft-flashcards")'}. First call list_proposals (do not repeat what was rejected) and list_decks (use an existing deck's title where the topic fits). Then call propose_card once per card: one idea per card, a clear front, a short back, and where it comes from (resource + page + an exact quote, or item). Cards you cannot ground in the text are left out. You cannot create cards yourself: the student accepts, edits or rejects each one in their inbox. Finish with a short list of what you proposed.`,
   },
   {
     name: 'fix-references',
@@ -166,6 +172,13 @@ const PROMPTS = [
 
 const QUESTIONS_URI = 'workbook://questions';
 
+/** Every read of a question says why; the student sees the latest purpose next to the question. */
+const purposeOf = (a: Json): string => {
+  const p = str(a.purpose)?.trim().slice(0, 80);
+  if (!p) throw new ToolError('purpose is required: say why you read the questions (for example the name of the skill); the student sees it');
+  return p;
+};
+
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
 const int = (v: unknown): number | undefined => (typeof v === 'number' && Number.isInteger(v) ? v : undefined);
 const cut = (s: string) => (s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT)}\n… (cut, ${s.length - MAX_TEXT} more characters)` : s);
@@ -177,6 +190,18 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
 
   /** A new token; the old one stops working. */
   const newToken = () => g().saveSettings({ bridgeToken: crypto.randomBytes(24).toString('base64url') });
+
+  // The token is for /mcp only: anywhere else it is refused, so a session that has it cannot read the student's data through the app's own API.
+  app.addHook('onRequest', async (req, reply) => {
+    if (req.headers.authorization?.startsWith('Bearer ') && !req.url.startsWith('/mcp')) return reply.code(401).send({ error: 'the assistant token only works on /mcp' });
+  });
+
+  // The skills carry no secret (the token is added to the MCP server, not to them), so they are served to anyone who can reach the app.
+  app.get('/skills/install.sh', async (req, reply) => reply.type('text/x-shellscript; charset=utf-8').send(installScript(`${req.protocol}://${req.headers.host ?? ''}`)));
+  app.get<{ Params: { name: string } }>('/skills/:name/SKILL.md', async (req, reply) => {
+    const f = skillFile(req.params.name);
+    return f === null ? reply.code(404).send({ error: 'unknown skill' }) : reply.type('text/markdown; charset=utf-8').send(f);
+  });
 
   app.post('/api/bridge/token', async () => newToken());
   app.get('/api/bridge/digests', async () => g().listDigests());
@@ -321,19 +346,42 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
   const call = async (name: string, a: Json): Promise<unknown> => {
     switch (name) {
       case 'list_questions': {
-        const course = str(a.course);
+        const purpose = purposeOf(a);
+        const workbook = str(a.workbook) ?? str(a.course);
+        const wb = workbook === 'all' ? null : (workbook ?? d.store.course);
         const resource = str(a.resource);
+        const item = str(a.item);
         const sinceRaw = str(a.since);
         const since = sinceRaw ? Date.parse(sinceRaw) : NaN;
         if (sinceRaw && Number.isNaN(since)) throw new ToolError('since must be an ISO time');
         const status = str(a.status);
-        const qs = g()
-          .listQuestions({ ...(course ? { course } : {}), ...(resource ? { resource } : {}) })
-          .filter((q) => (!status || (status === 'archived' || status === 'done' ? q.archived : !q.archived)) && (Number.isNaN(since) || q.createdAt >= since))
-          .sort((x, y) => y.createdAt - x.createdAt)
-          .slice(0, Math.min(int(a.limit) ?? 50, 200));
+        const unfetched = a.unfetched_only === true;
+        const rejected = new Map<string, Json[]>();
+        for (const c of g().listChanges({ limit: 200 })) {
+          if (c.status === 'rejected' && c.ref.kind === 'question') (rejected.get(c.ref.id) ?? rejected.set(c.ref.id, []).get(c.ref.id)!).push({ field: c.field, proposed: c.after, reason: c.reason, studentSaid: c.feedback });
+        }
+        const all = g()
+          .listQuestions({ ...(resource ? { resource } : {}), ...(item ? { exercise: item } : {}) })
+          // A workbook's questions, plus the ones about materials, which belong to no workbook.
+          .filter((q) => (wb === null || !('course' in q.anchor) || q.anchor.course === wb) && (!status || (status === 'archived' || status === 'done' ? q.archived : !q.archived)) && (Number.isNaN(since) || q.createdAt >= since) && (!unfetched || !q.fetched))
+          .sort((x, y) => y.createdAt - x.createdAt);
+        const qs = all.slice(0, Math.min(int(a.limit) ?? MAX_QUESTIONS, MAX_QUESTIONS));
         const names = new Map(g().listTags().map((l) => [l.id, l.name]));
-        return qs.map((q) => ({ id: q.id, text: q.text, archived: q.archived, ...(q.mergedInto ? { mergedInto: q.mergedInto } : {}), answer: q.answer, type: q.kind, labels: q.labels.flatMap((l) => (names.has(l) ? [names.get(l)!] : [])), where: where(q), created: new Date(q.createdAt).toISOString() }));
+        const out = qs.map((q) => ({
+          id: q.id,
+          text: q.text,
+          archived: q.archived,
+          ...(q.mergedInto ? { mergedInto: q.mergedInto } : {}),
+          answer: q.answer,
+          type: q.kind,
+          labels: q.labels.flatMap((l) => (names.has(l) ? [names.get(l)!] : [])),
+          where: where(q),
+          created: new Date(q.createdAt).toISOString(),
+          lastRead: q.fetched ? { at: new Date(q.fetched.at).toISOString(), purpose: q.fetched.purpose } : null,
+          ...(rejected.has(q.id) ? { rejected: rejected.get(q.id) } : {}),
+        }));
+        g().logQuestionFetches(qs.map((q) => q.id), purpose);
+        return { questions: out, remaining: all.length - qs.length };
       }
       case 'search': {
         const query = str(a.query);
@@ -418,8 +466,10 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
       }
       case 'get_context': {
         const id = str(a.question);
+        const purpose = purposeOf(a);
         const q = id ? g().getQuestion(id) : null;
         if (!q) throw new ToolError('unknown question');
+        g().logQuestionFetches([q.id], purpose);
         const an = q.anchor;
         const out: Json = { question: { id: q.id, text: q.text, archived: q.archived, answer: q.answer, where: where(q) } };
         if (an.kind === 'page') {
@@ -548,8 +598,8 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         return ok({
           protocolVersion: asked && PROTOCOLS.includes(asked) ? asked : PROTOCOLS[0],
           capabilities: { tools: {}, prompts: {}, resources: {} },
-          serverInfo: { name: 'workbook', version: '1' },
-          instructions: "The student's workbook: their open questions, their own text and the text of their materials. You cannot change anything yourself: propose changes (type, labels, answers) or new things (cards, page notes, questions) and the student decides in their inbox. Read list_proposals first so you do not repeat a rejected one. For exercises you can read the student's saved work and run their tests, but you never propose changes to their code. You may also keep your own digests.",
+          serverInfo: { name: 'workbook', version: SKILLS_VERSION },
+          instructions: "The student's workbook: their open questions, their own text and the text of their materials. You cannot change anything yourself: propose changes (type, labels, answers) or new things (cards, page notes, questions) and the student decides in their inbox. Every read of a question needs a purpose (the student sees it next to the question), and list_questions shows 20 at a time with what was rejected for each; do not repeat a rejection. Everything goes through this MCP: the student's app API is not for you, and the token does not work there. Where a skill (workbook-answer-recent, workbook-cards-from-confusion, workbook-exercise-help) fits, use it. For exercises you can read the student's saved work and run their tests, but you never propose changes to their code. You may also keep your own digests.",
         });
       }
       case 'ping':
@@ -570,7 +620,9 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         return ok({ resources: [{ uri: QUESTIONS_URI, name: 'questions', description: "The student's questions with their answers, what was made from them (cards, notes, highlights) and whether they are closed. Read-only.", mimeType: 'application/json' }] });
       case 'resources/read': {
         if (params.uri !== QUESTIONS_URI) return error(-32002, `unknown resource "${String(params.uri)}"`);
-        return ok({ contents: [{ uri: QUESTIONS_URI, mimeType: 'application/json', text: JSON.stringify(questionsOverview(), null, 1) }] });
+        const overview = questionsOverview();
+        g().logQuestionFetches(overview.map((q) => q.id), 'resource workbook://questions');
+        return ok({ contents: [{ uri: QUESTIONS_URI, mimeType: 'application/json', text: JSON.stringify(overview, null, 1) }] });
       }
       case 'tools/call':
         try {

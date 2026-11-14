@@ -1,5 +1,5 @@
 import * as Popover from '@radix-ui/react-popover';
-import { HelpCircle, Mail, Pencil, Trash2, X } from 'lucide-react';
+import { Eye, HelpCircle, Mail, Pencil, Trash2, X } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { type Question } from '@wb/shared';
 import { useTags } from '@/lib/tags';
@@ -137,6 +137,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
     </IconButton>
   ) : null;
   const waiting = usePendingProposals().get(q.id);
+  const seen = q.fetched ? <span role="img" aria-label={t.questionSeenBy(q.fetched.purpose, t.questionAge(Math.floor((Date.now() - q.fetched.at) / 86_400_000)))} title={t.questionSeenBy(q.fetched.purpose, t.questionAge(Math.floor((Date.now() - q.fetched.at) / 86_400_000)))} className="flex"><Eye size={12} /></span> : null;
   const into = useQuestions().data?.find((x) => x.id === q.mergedInto);
   const labelNames = new Map((useTags().data ?? []).map((l) => [l.id, l.name]));
   const store = () => {
@@ -187,6 +188,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
               {q.mergedInto ? <span className="ml-2 text-[12.5px] text-ink-3">{t.mergedInto}: {into?.text || t.inboxNoText}</span> : null}
             </p>
             <div className="flex items-center gap-1.5 whitespace-nowrap text-[12px] text-ink-3">
+              {seen}
               {waiting ? <span onClickCapture={readNow} className="contents"><ProposalMarker changes={waiting} /></span> : null}
               <AnswerToggle q={q} open={answerOpen} onToggle={toggleAnswer} />
               <span className="flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">

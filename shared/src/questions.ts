@@ -31,6 +31,8 @@ export interface Question {
   mergedInto: string | null;
   /** Ids of the student's labels on it (topics, clusters). */
   labels: string[];
+  /** The assistant's latest read of it through the MCP, with the purpose it gave; null if it never read it. */
+  fetched: { at: number; purpose: string } | null;
   createdAt: number;
   updatedAt: number;
   archivedAt: number | null;

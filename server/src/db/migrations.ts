@@ -903,6 +903,16 @@ export const MIGRATIONS: Migration[] = [
   ALTER TABLE questions DROP COLUMN done_at;
   CREATE INDEX questions_course ON questions (course, archived);
   `,
+  /* 40: every time the assistant read a question through the MCP, with the purpose it gave (the student sees the latest as a glyph). */
+  `
+  CREATE TABLE question_fetches (
+    id          INTEGER PRIMARY KEY,
+    question_id TEXT NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+    at          INTEGER NOT NULL,
+    purpose     TEXT NOT NULL
+  );
+  CREATE INDEX question_fetches_q ON question_fetches (question_id, id);
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

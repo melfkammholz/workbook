@@ -33,7 +33,7 @@ const g = () => courses.global;
 const rpc = (method: string, params?: object, headers: Record<string, string> = {}, id: number | null = 1) =>
   app.inject({ method: 'POST', url: '/mcp', headers: { authorization: `Bearer ${token}`, ...headers }, payload: { jsonrpc: '2.0', ...(id !== null ? { id } : {}), method, ...(params ? { params } : {}) } });
 const tool = async (name: string, args: object = {}) => {
-  const r = (await rpc('tools/call', { name, arguments: args })).json();
+  const r = (await rpc('tools/call', { name, arguments: { purpose: 'test', ...args } })).json();
   return { error: !!r.result.isError, text: r.result.content[0].text as string };
 };
 
@@ -70,14 +70,70 @@ describe('assistant bridge', () => {
     expect((await rpc('nope')).json().error.code).toBe(-32601);
   });
 
+  it('wants a purpose for every read of a question and logs it', async () => {
+    const bare = (await rpc('tools/call', { name: 'list_questions', arguments: {} })).json().result;
+    expect(bare.isError).toBe(true);
+    expect(bare.content[0].text).toContain('purpose is required');
+    const item = courses.active!.content.current.all()[0]!.meta.id;
+    const q = (await app.inject({ method: 'POST', url: '/api/questions', payload: { item, text: 'Wurde das gelesen?' } })).json();
+    expect(g().getQuestion(q.id)!.fetched).toBeNull();
+    const fresh = JSON.parse((await tool('list_questions', { unfetched_only: true, item, purpose: 'answer-recent' })).text);
+    expect(fresh.questions.map((x: { id: string }) => x.id)).toContain(q.id);
+    expect(g().getQuestion(q.id)!.fetched).toMatchObject({ purpose: 'answer-recent' });
+    expect((await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.id).fetched.purpose).toBe('answer-recent');
+    // Read once, it is not "unfetched" any more.
+    expect(JSON.parse((await tool('list_questions', { unfetched_only: true, item })).text).questions.map((x: { id: string }) => x.id)).not.toContain(q.id);
+    await tool('get_context', { question: q.id, purpose: 'cards' });
+    expect(g().getQuestion(q.id)!.fetched!.purpose).toBe('cards');
+    await app.inject({ method: 'DELETE', url: `/api/questions/${q.id}` });
+  });
+
+  it('scopes list_questions: limit with the rest counted, workbook, material, rejections', async () => {
+    const item = courses.active!.content.current.all()[0]!.meta.id;
+    const ids: string[] = [];
+    for (let i = 0; i < 22; i++) ids.push((await app.inject({ method: 'POST', url: '/api/questions', payload: { item, text: `Frage ${i}` } })).json().id);
+    const page = JSON.parse((await tool('list_questions', { item })).text);
+    expect(page.questions).toHaveLength(20);
+    expect(page.remaining).toBeGreaterThanOrEqual(2);
+    expect(JSON.parse((await tool('list_questions', { item, limit: 500 })).text).questions).toHaveLength(20);
+    expect(JSON.parse((await tool('list_questions', { workbook: 'nowhere', item })).text).questions).toHaveLength(0);
+    expect(JSON.parse((await tool('list_questions', { workbook: 'all', item })).text).questions.length).toBe(20);
+    expect(JSON.parse((await tool('list_questions', { resource: 'no-such-material' })).text).questions).toEqual([]);
+    // A rejection shows up on its own question only.
+    const target = page.questions[0].id as string;
+    await tool('propose', { question: target, type: 'why', reason: 'test' });
+    const change = (await app.inject({ method: 'GET', url: '/api/changes' })).json().find((c: { ref: { id: string }; status: string }) => c.ref.id === target && c.status === 'pending');
+    await app.inject({ method: 'POST', url: `/api/changes/${change.id}/reject`, payload: { feedback: 'zu vage' } });
+    const after = JSON.parse((await tool('list_questions', { item })).text).questions;
+    expect(after.find((x: { id: string }) => x.id === target).rejected[0]).toMatchObject({ field: 'kind', studentSaid: 'zu vage' });
+    expect(after.filter((x: { rejected?: unknown }) => x.rejected)).toHaveLength(1);
+    for (const id of ids) await app.inject({ method: 'DELETE', url: `/api/questions/${id}` });
+  });
+
+  it('serves the skills, and the token works on /mcp only', async () => {
+    const sh = await app.inject({ method: 'GET', url: '/skills/install.sh' });
+    expect(sh.statusCode).toBe(200);
+    for (const n of ['workbook-answer-recent', 'workbook-cards-from-confusion', 'workbook-exercise-help']) {
+      expect(sh.body).toContain(`${n}/SKILL.md`);
+      const f = await app.inject({ method: 'GET', url: `/skills/${n}/SKILL.md` });
+      expect(f.body).toMatch(new RegExp(`^---\\nname: ${n}\\ndescription: .+`));
+      expect(f.body).not.toContain(token);
+    }
+    expect((await app.inject({ method: 'GET', url: '/skills/nope/SKILL.md' })).statusCode).toBe(404);
+    for (const url of ['/api/questions', '/api/settings']) {
+      expect((await app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } })).statusCode).toBe(401);
+    }
+    expect((await app.inject({ method: 'GET', url: '/api/questions' })).statusCode).toBe(200);
+  });
+
   it('lists questions, with filters', async () => {
     const item = courses.active!.content.current.all()[0]!.meta.id;
     await app.inject({ method: 'POST', url: '/api/questions', payload: { item, text: 'Was ist foldr?' } });
-    const all = JSON.parse((await tool('list_questions')).text);
+    const all = JSON.parse((await tool('list_questions')).text).questions;
     expect(all.some((q: { text: string }) => q.text === 'Was ist foldr?')).toBe(true);
-    expect(JSON.parse((await tool('list_questions', { status: 'archived' })).text)).toEqual([]);
-    expect(JSON.parse((await tool('list_questions', { since: new Date(Date.now() + 86_400_000).toISOString() })).text)).toEqual([]);
-    expect(JSON.parse((await tool('list_questions', { since: '2000-01-01T00:00:00Z' })).text)).toHaveLength(all.length);
+    expect(JSON.parse((await tool('list_questions', { status: 'archived' })).text).questions).toEqual([]);
+    expect(JSON.parse((await tool('list_questions', { since: new Date(Date.now() + 86_400_000).toISOString() })).text).questions).toEqual([]);
+    expect(JSON.parse((await tool('list_questions', { since: '2000-01-01T00:00:00Z' })).text).questions).toHaveLength(all.length);
   });
 
   it('searches and reads an item, with solutions only if allowed', async () => {
@@ -128,12 +184,12 @@ describe('assistant bridge', () => {
   });
 
   it('proposes, and nothing changes until the student accepts', async () => {
-    const q = JSON.parse((await tool('list_questions')).text)[0];
+    const q = JSON.parse((await tool('list_questions')).text).questions[0];
     expect((await tool('propose', { question: q.id, type: 'nonsense' })).error).toBe(true);
     expect((await tool('propose', { question: 'nope', type: 'why' })).error).toBe(true);
     const filed = await tool('propose', { question: q.id, type: 'concept', labels: ['Faltung'], answer: 'foldr faltet von rechts.', reason: 'Begriff' });
     expect(JSON.parse(filed.text).filed).toBe(3);
-    expect(JSON.parse((await tool('list_questions')).text)[0]).toMatchObject({ type: null, labels: [], answer: null });
+    expect(JSON.parse((await tool('list_questions')).text).questions[0]).toMatchObject({ type: null, labels: [], answer: null });
     // a new proposal for the same field replaces the waiting one
     await tool('propose', { question: q.id, type: 'why' });
     const changes = (await app.inject({ method: 'GET', url: '/api/changes' })).json() as { id: string; field: string; status: string; after: unknown }[];
@@ -167,7 +223,7 @@ describe('assistant bridge', () => {
   });
 
   it('rewrites a question and accepts and undoes several proposals as one batch', async () => {
-    const q = JSON.parse((await tool('list_questions')).text)[0];
+    const q = JSON.parse((await tool('list_questions')).text).questions[0];
     const before = (await app.inject({ method: 'GET', url: '/api/questions' })).json().find((x: { id: string }) => x.id === q.id);
     const filed = await tool('propose', { question: q.id, type: 'check', text: 'Wie faltet foldr eine Liste?', answer: 'Von rechts.' });
     expect(JSON.parse(filed.text).filed).toBe(3);
@@ -187,7 +243,7 @@ describe('assistant bridge', () => {
   });
 
   it('expires an answer proposal when the question was edited, and caps the inbox', async () => {
-    const q = JSON.parse((await tool('list_questions')).text)[0];
+    const q = JSON.parse((await tool('list_questions')).text).questions[0];
     await tool('propose', { question: q.id, answer: 'Antwort' });
     await app.inject({ method: 'PATCH', url: `/api/questions/${q.id}`, payload: { text: 'Was ist foldl?' } });
     const changes = (await app.inject({ method: 'GET', url: '/api/changes' })).json() as { field: string; status: string }[];

@@ -451,12 +451,27 @@ export class Store {
     const rows = this.all(`SELECT * FROM questions ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at, rowid`, ...params);
     const labels = this.tagLinks('question');
     const links = this.questionLinks(rows.map((r) => r.id as string), filter.course === undefined && filter.exercise === undefined && filter.resource === undefined);
-    return rows.map((r) => rowToQuestion(r, labels.get(r.id as string) ?? [], links.get(r.id as string) ?? []));
+    const fetched = this.questionFetches();
+    return rows.map((r) => rowToQuestion(r, labels.get(r.id as string) ?? [], links.get(r.id as string) ?? [], fetched.get(r.id as string) ?? null));
+  }
+
+  /** The assistant read these questions through the MCP; `purpose` says why (the skill or prompt that asked). */
+  logQuestionFetches(ids: string[], purpose: string): void {
+    const t = this.now();
+    for (const id of ids) this.run('INSERT INTO question_fetches (question_id, at, purpose) SELECT id, ?, ? FROM questions WHERE id = ?', t, purpose, id);
+  }
+
+  /** The latest read of each question that was read. */
+  private questionFetches(): Map<string, { at: number; purpose: string }> {
+    const rows = this.all('SELECT question_id, at, purpose FROM question_fetches WHERE id IN (SELECT MAX(id) FROM question_fetches GROUP BY question_id)');
+    return new Map(rows.map((r) => [r.question_id as string, { at: Number(r.at), purpose: r.purpose as string }]));
   }
 
   getQuestion(id: string): Question | null {
     const r = this.get('SELECT * FROM questions WHERE id = ?', id);
-    return r ? rowToQuestion(r, this.tagsOf('question', id), this.questionLinks([id], false).get(id) ?? []) : null;
+    if (!r) return null;
+    const f = this.get('SELECT at, purpose FROM question_fetches WHERE question_id = ? ORDER BY id DESC LIMIT 1', id);
+    return rowToQuestion(r, this.tagsOf('question', id), this.questionLinks([id], false).get(id) ?? [], f ? { at: Number(f.at), purpose: f.purpose as string } : null);
   }
 
   /** The links of these questions (`all`: of every question, in one query), without those whose target is gone. */
@@ -1580,7 +1595,7 @@ function rowToChange(r: Row): Change {
   };
 }
 
-function rowToQuestion(r: Row, labels: string[] = [], links: QuestionLink[] = []): Question {
+function rowToQuestion(r: Row, labels: string[] = [], links: QuestionLink[] = [], fetched: Question['fetched'] = null): Question {
   return {
     id: r.id as string,
     text: r.text as string,
@@ -1597,6 +1612,7 @@ function rowToQuestion(r: Row, labels: string[] = [], links: QuestionLink[] = []
     who: (r.who as string | null) ?? null,
     mergedInto: (r.merged_into as string | null) ?? null,
     labels,
+    fetched,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
     archivedAt: r.archived_at === null ? null : Number(r.archived_at),
