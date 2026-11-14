@@ -48,7 +48,7 @@ function precompress(): Plugin {
 /** The font files and character maps pdf.js needs for PDFs that do not embed their fonts (served at /pdfjs/, copied into the build). */
 function pdfjsAssets(): Plugin {
   const root = path.resolve(import.meta.dirname, '../node_modules/pdfjs-dist');
-  const dirs = ['standard_fonts', 'cmaps'];
+  const dirs = ['standard_fonts', 'cmaps', 'wasm'];
   return {
     name: 'wb-pdfjs-assets',
     configureServer(server) {

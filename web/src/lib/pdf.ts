@@ -27,8 +27,8 @@ export function preloadPdf(): void {
   });
 }
 
-/** Fonts and character maps for PDFs that do not embed them: without these their math symbols and CJK text are not drawn. */
-const FONT_ASSETS = { standardFontDataUrl: '/pdfjs/standard_fonts/', cMapUrl: '/pdfjs/cmaps/', cMapPacked: true };
+/** Fonts and character maps for PDFs that do not embed them: without these their math symbols and CJK text are not drawn; the wasm decoders draw JBIG2 and JPEG 2000 images (scanned text, bitmap-font math). */
+const FONT_ASSETS = { standardFontDataUrl: '/pdfjs/standard_fonts/', cMapUrl: '/pdfjs/cmaps/', cMapPacked: true, wasmUrl: '/pdfjs/wasm/' };
 
 /**
  * The whole file is sent in one response (`disableRange`): the server is on this computer, and the browser keeps the
