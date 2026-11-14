@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { WorkFields, ImportCandidate, ImportChoice, ImportPreview, BibEntry, BibEntryInput, LibraryWork, SimilarWork, Work, Anchor, Placed, Reanchored, StaleItems, UnplacedItems, AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
-import { MIN_CONFIDENCE, MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_ENTRY_TEXT, normalizeTitle, workFields, fieldsConfidence, workKeys } from '@wb/shared';
+import type { WorkEdit, WorkState, WorkFields, ImportCandidate, ImportChoice, ImportPreview, BibEntry, BibEntryInput, LibraryWork, SimilarWork, Work, Anchor, Placed, Reanchored, StaleItems, UnplacedItems, AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
+import { WORK_STATES, MIN_CONFIDENCE, MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_ENTRY_TEXT, normalizeTitle, workFields, fieldsConfidence, workKeys } from '@wb/shared';
 import type { Store } from '../db/store.js';
 import { crossrefLookup, LOOKUP_PAUSE_MS, type FetchFn } from './crossref.js';
 import { parseBibText, type ImportedWork } from './bibimport.js';
@@ -89,7 +89,11 @@ function toWork(r: Row): Work {
     doi: r.doi as string,
     url: r.url as string,
     raw: r.raw as string,
-    wantToRead: Number(r.want_to_read) === 1,
+    volume: (r.volume as string) ?? '',
+    pages: (r.pages as string) ?? '',
+    arxiv: (r.arxiv as string) ?? '',
+    edited: Number(r.edited) === 1,
+    state: WORK_STATES.find((x) => x === r.state) ?? null,
     resource: (r.resource as string | null) ?? null,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
@@ -542,7 +546,7 @@ export class Resources {
         const conf = fieldsConfidence(f);
         if (work && !used.has(work) && this.sql.get('SELECT id FROM works WHERE id = ?', work)) {
           // Same entry as before: the work stays (a text the student fixed re-reads its fields).
-          if (!byId.has(e.id ?? '') || byId.get(e.id!)!.entry_text !== text) {
+          if ((!byId.has(e.id ?? '') || byId.get(e.id!)!.entry_text !== text) && !this.sql.get('SELECT 1 AS x FROM works WHERE id = ? AND edited = 1', work)) {
             this.sql.run('UPDATE works SET title = ?, authors = ?, year = ?, venue = ?, doi = ?, url = ?, raw = ?, confidence = ?, source = \'\', updated_at = ? WHERE id = ?', f.title, f.authors, f.year, f.venue, f.doi, f.url, text, conf, t, work);
           }
         } else {
@@ -555,7 +559,7 @@ export class Resources {
       });
       // Works that lost their entry here and have no other reason to stay.
       this.sql.run(
-        `DELETE FROM works WHERE want_to_read = 0 AND imported = 0 AND resource IS NULL AND NOT EXISTS (SELECT 1 FROM work_citations c WHERE c.work = works.id)`,
+        `DELETE FROM works WHERE state IS NULL AND edited = 0 AND imported = 0 AND resource IS NULL AND NOT EXISTS (SELECT 1 FROM work_citations c WHERE c.work = works.id)`,
       );
       this.sql.run("DELETE FROM tag_links WHERE kind = 'work' AND ref NOT IN (SELECT id FROM works)");
     });
@@ -642,7 +646,7 @@ export class Resources {
     const seen = new Set<string>();
     for (;;) {
       if (!this.store.getSettings().lookupReferences) return;
-      const next = (this.sql.all("SELECT * FROM works WHERE imported = 0 AND source = '' AND raw <> ''") as Row[])
+      const next = (this.sql.all("SELECT * FROM works WHERE imported = 0 AND edited = 0 AND source = '' AND raw <> ''") as Row[])
         .map((r) => ({ r, w: toWork(r) }))
         .find(({ w }) => !seen.has(w.id) && w.confidence < MIN_CONFIDENCE && !this.sql.get('SELECT key FROM work_lookups WHERE key = ? AND fields = ?', lookupKey(w.raw), ''));
       if (!next) return;
@@ -665,7 +669,7 @@ export class Resources {
       const now = this.sql.get("SELECT raw FROM works WHERE id = ? AND source = ''", next.w.id);
       if (!now || now.raw !== next.w.raw) continue;
       const f = fields;
-      this.sql.run("UPDATE works SET title = ?, authors = ?, year = ?, venue = ?, doi = ?, url = ?, confidence = 1, source = 'crossref', updated_at = ? WHERE id = ?", f.title, f.authors, f.year, f.venue, f.doi, f.url || next.w.url, this.now(), next.w.id);
+      this.sql.run("UPDATE works SET title = ?, authors = ?, year = ?, venue = ?, doi = ?, url = ?, confidence = 1, source = 'crossref', updated_at = ? WHERE id = ? AND edited = 0", f.title, f.authors, f.year, f.venue, f.doi, f.url || next.w.url, this.now(), next.w.id);
     }
   }
 
@@ -682,8 +686,8 @@ export class Resources {
     this.sql.tx(() => {
       this.sql.run('UPDATE work_citations SET work = ? WHERE work = ?', into, from);
       this.sql.run(
-        'UPDATE works SET want_to_read = ?, resource = ?, doi = ?, updated_at = ? WHERE id = ?',
-        Number(a.want_to_read) === 1 || Number(b.want_to_read) === 1 ? 1 : 0,
+        'UPDATE works SET state = ?, resource = ?, doi = ?, updated_at = ? WHERE id = ?',
+        (b.state as string | null) ?? (a.state as string | null),
         (b.resource as string | null) ?? (a.resource as string | null),
         (b.doi as string) || (a.doi as string),
         this.now(),
@@ -801,10 +805,20 @@ export class Resources {
     return toWork(row);
   }
 
-  setWantToRead(work: string, want: boolean): Work {
-    const row = this.sql.get('SELECT * FROM works WHERE id = ?', work);
-    if (!row) throw new ResourceError('unknown-item');
-    this.sql.run('UPDATE works SET want_to_read = ?, updated_at = ? WHERE id = ?', want ? 1 : 0, this.now(), work);
+  /** Sorts a work (null: back to the Unsorted tray). */
+  setWorkState(work: string, state: WorkState | null): Work {
+    if (!this.sql.get('SELECT id FROM works WHERE id = ?', work)) throw new ResourceError('unknown-item');
+    this.sql.run('UPDATE works SET state = ?, updated_at = ? WHERE id = ?', state, this.now(), work);
+    return toWork(this.sql.get('SELECT * FROM works WHERE id = ?', work)!);
+  }
+
+  /** The student's edit of a work's fields; the work is locked from then on (re-reads and lookups leave it alone). */
+  editWork(work: string, f: WorkEdit): Work {
+    if (!this.sql.get('SELECT id FROM works WHERE id = ?', work)) throw new ResourceError('unknown-item');
+    this.sql.run(
+      'UPDATE works SET title = ?, authors = ?, year = ?, venue = ?, doi = ?, url = ?, volume = ?, pages = ?, arxiv = ?, edited = 1, confidence = 1, updated_at = ? WHERE id = ?',
+      f.title.trim().slice(0, 300), f.authors.trim().slice(0, 400), f.year, f.venue.trim().slice(0, 300), f.doi.trim().slice(0, 200), f.url.trim().slice(0, 500), f.volume.trim().slice(0, 50), f.pages.trim().slice(0, 50), f.arxiv.trim().slice(0, 50), this.now(), work,
+    );
     return toWork(this.sql.get('SELECT * FROM works WHERE id = ?', work)!);
   }
 

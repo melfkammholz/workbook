@@ -134,11 +134,11 @@ describe('stored bibliography', () => {
       const up = await app.inject({ method: 'POST', url: `/api/resources/upload?${new URLSearchParams({ filename: 'P.pdf', title: 'P', type: 'paper' })}`, headers: { 'content-type': 'application/octet-stream' }, payload: pdf });
       const id = (up.json() as { id: string }).id;
       const version = 'a'.repeat(64);
-      const put = async (entries: unknown[]) => (await app.inject({ method: 'PUT', url: `/api/resources/${id}/bibliography`, payload: { version, entries } })).json() as { id: string; text: string; work: { id: string; title: string; year: number | null; wantToRead: boolean } }[];
+      const put = async (entries: unknown[]) => (await app.inject({ method: 'PUT', url: `/api/resources/${id}/bibliography`, payload: { version, entries } })).json() as { id: string; text: string; work: { id: string; title: string; year: number | null; state: string | null; edited: boolean; volume: string } }[];
       const e = (text: string, i: number, extra: object = {}) => ({ text, pageIndex: 3, y: 0.1 * (i + 1), citedAt: [{ pageIndex: 1, y: 0.4 }], ...extra });
       const first = await put([e('Hutton, G. (2016). Programming in Haskell. CUP.', 0), e('Bratko, I. (2012). Prolog Programming. Pearson.', 1)]);
       expect(first.map((x) => [x.work.title, x.work.year])).toEqual([['Programming in Haskell', 2016], ['Prolog Programming', 2012]]);
-      await app.inject({ method: 'PUT', url: `/api/works/${first[0]!.work.id}/want`, payload: { want: true } });
+      await app.inject({ method: 'PUT', url: `/api/works/${first[0]!.work.id}/state`, payload: { state: 'later' } });
       // Tags on a work show in the library and go when the work does.
       const tag = (await app.inject({ method: 'POST', url: '/api/tags', payload: { name: 'Reading list' } })).json() as { id: string };
       expect((await app.inject({ method: 'PUT', url: `/api/tags/on/work/${first[1]!.work.id}`, payload: { ids: [tag.id] } })).statusCode).toBe(200);
@@ -148,15 +148,21 @@ describe('stored bibliography', () => {
       // A re-read with the same texts (a new version of the file): same works. A fixed text under a known id keeps the work too.
       const again = await put([e('Bratko, I. (2012). Prolog Programming. Pearson.', 0), e('Hutton, G. (2017). Programming in Haskell. CUP.', 1, { id: first[0]!.id })]);
       expect(again[0]!.work.id).toBe(first[1]!.work.id);
-      expect(again[1]!.work).toMatchObject({ id: first[0]!.work.id, year: 2017, wantToRead: true });
-      // Dropping an entry takes its work along, unless the student wants to read it.
+      expect(again[1]!.work).toMatchObject({ id: first[0]!.work.id, year: 2017, state: 'later' });
+      // A hand-edited work is locked: a re-read with other text leaves its fields alone.
+      const patched = await app.inject({ method: 'PATCH', url: `/api/works/${first[1]!.work.id}`, payload: { title: 'My title', authors: 'Me', year: 2001, venue: 'V', doi: '', url: '', volume: '7', pages: '1-2', arxiv: '' } });
+      expect(patched.json()).toMatchObject({ title: 'My title', volume: '7', edited: true, confidence: 1 });
+      const reread = await put([e('Bratko, I. (2012). Prolog Programming, 4th ed. Pearson.', 0, { id: again[0]!.id }), e('Hutton, G. (2017). Programming in Haskell. CUP.', 1, { id: again[1]!.id })]);
+      expect(reread[0]!.work).toMatchObject({ id: first[1]!.work.id, title: 'My title', year: 2001, edited: true });
+      expect((await app.inject({ method: 'PATCH', url: '/api/works/nope', payload: { title: 'x', authors: '', year: null, venue: '', doi: '', url: '', volume: '', pages: '', arxiv: '' } })).statusCode).toBe(404);
+      // Dropping an entry takes its work along, unless the student sorted it (state) or edited it.
       const fewer = await put([e('Hutton, G. (2017). Programming in Haskell. CUP.', 0, { id: again[1]!.id })]);
       expect(fewer).toHaveLength(1);
       const none = await put([]);
       expect(none).toEqual([]);
-      const wanted = (await app.inject({ method: 'PUT', url: `/api/works/${first[0]!.work.id}/want`, payload: { want: false } })).statusCode;
+      const wanted = (await app.inject({ method: 'PUT', url: `/api/works/${first[0]!.work.id}/state`, payload: { state: null } })).statusCode;
       expect(wanted).toBe(200);
-      expect((await app.inject({ method: 'PUT', url: '/api/works/nope/want', payload: { want: true } })).statusCode).toBe(404);
+      expect((await app.inject({ method: 'PUT', url: '/api/works/nope/state', payload: { state: 'later' } })).statusCode).toBe(404);
     } finally {
       await app.close();
       courses.close();

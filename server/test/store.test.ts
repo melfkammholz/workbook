@@ -353,7 +353,7 @@ describe('migration 33 (one tag concept)', () => {
     );
     const store = new Store(file);
     // The page mark named like a highlight label is that tag; the default tag comes last.
-    expect(store.listTags()).toEqual([{ id: 'l1', name: 'Wichtig', color: 'yellow' }, { id: 'm1', name: 'Klausur', color: '' }, { id: 'tg-interesting', name: 'Interesting', color: '' }]);
+    expect(store.listTags()).toEqual([{ id: 'l1', name: 'Wichtig', color: 'yellow' }, { id: 'm1', name: 'Klausur', color: '' }, { id: 'tg-interesting', name: 'Interesting', color: '' }, { id: 'tg-fundamental', name: 'Fundamental', color: '' }, { id: 'tg-state-of-the-art', name: 'State of the art', color: '' }, { id: 'tg-historic', name: 'Historic', color: '' }]);
     expect(store.tagsOf('question', 'q1')).toEqual(['l1']);
     expect(store.tagsOf('resource', 'r1')).toEqual(['m1']);
     expect([...store.tagsOf('pdfPage', 'p1')].sort()).toEqual(['l1', 'm1']);
@@ -541,7 +541,7 @@ describe('migration 16', () => {
     const got = store.getSettings();
     expect(got.displayName).toBe('Ada');
     // Labels and page marks are tags now: the colored labels first, then the marks, then the default tag.
-    expect(store.listTags()).toEqual([{ id: 'l1', name: 'Wichtig', color: '#ff0000' }, { id: 'l2', name: '', color: 'blue' }, { id: 'm1', name: 'Klausur', color: '' }, { id: 'm2', name: 'Unklar', color: '' }, { id: 'tg-interesting', name: 'Interesting', color: '' }]);
+    expect(store.listTags()).toEqual([{ id: 'l1', name: 'Wichtig', color: '#ff0000' }, { id: 'l2', name: '', color: 'blue' }, { id: 'm1', name: 'Klausur', color: '' }, { id: 'm2', name: 'Unklar', color: '' }, { id: 'tg-interesting', name: 'Interesting', color: '' }, { id: 'tg-fundamental', name: 'Fundamental', color: '' }, { id: 'tg-state-of-the-art', name: 'State of the art', color: '' }, { id: 'tg-historic', name: 'Historic', color: '' }]);
     expect(String(store.sql.get("SELECT value FROM settings WHERE course = '' AND key = 'settings'")!.value)).not.toContain('Wichtig');
     store.close();
     fs.rmSync(dir, { recursive: true, force: true });

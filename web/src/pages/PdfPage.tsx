@@ -12,7 +12,7 @@ import { PdfQuestionBar, PdfQuestionList, usePdfQuestions } from '@/components/P
 import { PdfToc, type TocActions } from '@/components/PdfToc';
 import { useBibImport } from '@/components/BibImport';
 import { PdfReferences } from '@/components/PdfReferences';
-import { fixEntry, rereadBibliography, setWantToRead, useBibliography, useBibliographyReader, type Fix } from '@/lib/bibliography';
+import { fixEntry, rereadBibliography, useBibliography, useBibliographyReader, type Fix } from '@/lib/bibliography';
 import { BibliographyContext, CitationContext } from '@/components/PdfLinks';
 import { NotesView, SlidesView, type Marks, type PdfLayout, type Size } from '@/components/PdfViewer';
 import { IconButton, Segmented, Spinner, Empty } from '@/components/ui';
@@ -200,7 +200,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   const questions = usePdfQuestions(resource);
   const bibliography = useBibliography(resource.id).data;
   useBibliographyReader(qc, resource.id, resource.file.sha256, doc, bibliography);
-  const bibliographyCard = useMemo(() => (bibliography?.length ? { entries: bibliography, onWant: (e: BibEntry, want: boolean) => setWantToRead(qc, resource.id, e.work, want) } : undefined), [bibliography, qc, resource.id]);
+  const bibliographyCard = useMemo(() => (bibliography?.length ? { entries: bibliography } : undefined), [bibliography]);
   const bibImport = useBibImport();
   const settings = useSettings().data;
   const tagList = useTags().data ?? [];
@@ -706,7 +706,6 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
                   current={current}
                   labelOf={labelOf}
                   onGo={goto}
-                  onWant={(e, want) => setWantToRead(qc, resource.id, e.work, want)}
                   onFix={(i: number, fix: Fix) => void fixEntry(qc, resource.id, resource.file.sha256, bibliography, i, fix)?.catch(() => undefined)}
                   onReread={() => void rereadBibliography(qc, resource.id, resource.file.sha256, doc).catch(() => undefined)}
                 />

@@ -1,12 +1,13 @@
-import { MIN_CONFIDENCE, type SimilarWork, type Work } from '@wb/shared';
-import { Bookmark, Link2, Unlink } from 'lucide-react';
+import { MIN_CONFIDENCE, WORK_STATES, type SimilarWork, type Work, type WorkState } from '@wb/shared';
+import { Bookmark, Check, EyeOff, Lightbulb, Link2, Pencil, Unlink } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'wouter';
-import { keepWorksSeparate, linkWork, mergeWork, setWantToRead } from '@/lib/bibliography';
+import { keepWorksSeparate, linkWork, mergeWork, setWorkState } from '@/lib/bibliography';
 import { useT } from '@/lib/i18n';
 import { useResources } from '@/lib/resources';
 import { useQueryClient } from '@tanstack/react-query';
-import { clsx } from './ui';
+import { IconButton, clsx } from './ui';
+import { WorkEditDialog } from './WorkEditDialog';
 
 /** Whether the fields read from a reference's text can be shown; if not, the raw text is. */
 export const sure = (w: Pick<Work, 'confidence' | 'title'>) => !!w.title && w.confidence >= MIN_CONFIDENCE;
@@ -105,10 +106,54 @@ export function WorkEntry({ work, size = 'md', fallback }: { work: Pick<Work, 'c
   );
 }
 
-/** The line under a cited work in a text: "Open" when the student has it as a material, otherwise the reading wish. */
-export function CiteWorkActions({ work }: { work: Work }) {
+const STATE_ICON = { later: Bookmark, read: Check, know: Lightbulb, skip: EyeOff } as const;
+
+/** One state per work: Later, Read, Know, Skip. Pressing the one that is on puts the work back to Unsorted. */
+export function WorkStateButtons({ work, labels = false, size = 'md' }: { work: Pick<Work, 'id' | 'state'>; labels?: boolean; size?: 'sm' | 'md' }) {
   const t = useT();
   const qc = useQueryClient();
+  const names: Record<WorkState, string> = { later: t.workStateLater, read: t.workStateRead, know: t.workStateKnow, skip: t.workStateSkip };
+  return (
+    <span className="inline-flex items-center gap-0.5" role="group" aria-label={t.workStateLater}>
+      {WORK_STATES.map((st) => {
+        const Icon = STATE_ICON[st];
+        const on = work.state === st;
+        return (
+          <button
+            key={st}
+            type="button"
+            aria-pressed={on}
+            aria-label={names[st]}
+            data-tip={t.workStateTip[st]}
+            onClick={() => setWorkState(qc, work.id, on ? null : st)}
+            className={clsx('inline-flex items-center justify-center gap-1 rounded-md hover:bg-sunk', labels ? 'h-7 px-1.5 text-[12px]' : size === 'sm' ? 'size-6' : 'size-8', on ? 'bg-accent-soft font-medium text-accent' : 'text-ink-2')}
+          >
+            <Icon size={size === 'sm' ? 13 : 15} />
+            {labels ? names[st] : null}
+          </button>
+        );
+      })}
+    </span>
+  );
+}
+
+/** The pencil that opens the form for a work's fields. */
+export function WorkEditButton({ work, className }: { work: Work; className?: string }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <IconButton label={t.workEdit} onClick={() => setOpen(true)} className={className ?? 'size-6'}>
+        <Pencil size={13} />
+      </IconButton>
+      {open ? <WorkEditDialog work={work} onClose={() => setOpen(false)} /> : null}
+    </>
+  );
+}
+
+/** The line under a cited work in a text: "Open" when the student has it as a material, and the sorting buttons. */
+export function CiteWorkActions({ work }: { work: Work }) {
+  const t = useT();
   const resources = useResources(null).data?.resources;
   const linked = work.resource ? resources?.find((r) => r.id === work.resource) : undefined;
   return (
@@ -118,16 +163,7 @@ export function CiteWorkActions({ work }: { work: Work }) {
           {t.workOpen}
         </Link>
       ) : null}
-      <button
-        type="button"
-        aria-pressed={work.wantToRead}
-        aria-label={work.wantToRead ? t.pdfRefWantOn : t.pdfRefWant}
-        data-tip={work.wantToRead ? t.pdfRefWantOn : t.pdfRefWant}
-        onClick={() => setWantToRead(qc, '', work, !work.wantToRead)}
-        className={clsx('inline-flex size-6 items-center justify-center rounded-md hover:bg-sunk', work.wantToRead ? 'text-accent' : 'text-ink-2')}
-      >
-        <Bookmark size={13} fill={work.wantToRead ? 'currentColor' : 'none'} />
-      </button>
+      <WorkStateButtons work={work} size="sm" />
     </span>
   );
 }

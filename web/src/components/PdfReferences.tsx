@@ -1,15 +1,14 @@
 import type { BibEntry } from '@wb/shared';
-import { Bookmark, Merge, Pencil, RefreshCw, Split } from 'lucide-react';
+import { Merge, RefreshCw, Split } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useT } from '@/lib/i18n';
 import type { Fix } from '@/lib/bibliography';
-import { SimilarWorks, WorkEntry, WorkHave } from './WorkBits';
+import { SimilarWorks, WorkEditButton, WorkEntry, WorkHave, WorkStateButtons } from './WorkBits';
 import { FoldSection } from './FoldSection';
 import { IconButton, clsx } from './ui';
 
 /**
- * The references of the PDF as it lists them. A click goes to the entry; the pages that cite it are chips; "want to
- * read" is a wish (never counted); a wrongly split entry is fixed in place (new text, join with the one above, split).
+ * The references of the PDF as it lists them. A click goes to the entry; the pages that cite it are chips; the sorting buttons say what the student does with the work; a wrongly split entry is fixed in place (new text, join with the one above, split).
  */
 export function PdfReferences({
   resource,
@@ -17,7 +16,6 @@ export function PdfReferences({
   current,
   labelOf,
   onGo,
-  onWant,
   onFix,
   onReread,
 }: {
@@ -27,7 +25,6 @@ export function PdfReferences({
   current: number;
   labelOf: (n: number) => string;
   onGo: (page: number) => void;
-  onWant: (e: BibEntry, want: boolean) => void;
   onFix: (index: number, fix: Fix) => void;
   onReread: () => void;
 }) {
@@ -64,11 +61,10 @@ export function PdfReferences({
                   <button type="button" data-tip={t.pdfRefGo(labelOf(e.pageIndex + 1))} onClick={() => onGo(e.pageIndex + 1)} className="min-w-0 flex-1 text-left">
                     <WorkEntry work={e.work} size="sm" fallback={e.text} />
                   </button>
-                  <IconButton label={e.work.wantToRead ? t.pdfRefWantOn : t.pdfRefWant} aria-pressed={e.work.wantToRead} onClick={() => onWant(e, !e.work.wantToRead)} className={clsx('size-6', e.work.wantToRead && 'text-accent')}>
-                    <Bookmark size={13} fill={e.work.wantToRead ? 'currentColor' : 'none'} />
-                  </IconButton>
+                  <WorkStateButtons work={e.work} size="sm" />
+                  <WorkEditButton work={e.work} className="size-6 opacity-0 focus-visible:opacity-100 group-hover/r:opacity-100" />
                   <IconButton label={t.pdfRefEdit} onClick={() => setEditing(e.id)} className="size-6 opacity-0 focus-visible:opacity-100 group-hover/r:opacity-100">
-                    <Pencil size={13} />
+                    <Split size={13} />
                   </IconButton>
                 </div>
                 <Cited entry={e} labelOf={labelOf} onGo={onGo} />

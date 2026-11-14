@@ -119,6 +119,17 @@ export interface WorkFields {
   url: string;
 }
 
+/** The student's sorting of a work; null (not yet sorted) is the Unsorted tray. */
+export const WORK_STATES = ['later', 'read', 'know', 'skip'] as const;
+export type WorkState = (typeof WORK_STATES)[number];
+
+/** What the edit dialog changes: the fields of a work. */
+export interface WorkEdit extends WorkFields {
+  volume: string;
+  pages: string;
+  arxiv: string;
+}
+
 export const MAX_BIB_ENTRIES = 3000;
 export const MAX_ENTRY_TEXT = 2000;
 
@@ -497,10 +508,14 @@ export interface BibEntry {
 }
 
 /** A work in the student's library; one per distinct reference, shared by the PDFs that cite it. */
-export interface Work extends WorkFields {
+export interface Work extends WorkEdit {
   id: string;
+  /** The text the PDF gave (or the BibTeX); the fields above are the truth. */
   raw: string;
-  wantToRead: boolean;
+  /** Hand-edited: re-reads of a PDF's list and online lookups leave its fields alone. */
+  edited: boolean;
+  /** Null: not sorted yet (the Unsorted tray). */
+  state: WorkState | null;
   /** A material of the student's that is this work, once linked. */
   resource: string | null;
   createdAt: number;

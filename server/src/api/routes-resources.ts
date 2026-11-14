@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { MAX_TAGS_ON_ONE, MAX_BIB_ENTRIES, MAX_ENTRY_TEXT, MAX_PAGE_MARKS, MAX_PAGE_NOTE, MAX_QUOTE, MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_RECTS, QUOTE_CONTEXT, RESOURCE_TYPES, isAnnotationColor } from '@wb/shared';
+import { WORK_STATES, MAX_TAGS_ON_ONE, MAX_BIB_ENTRIES, MAX_ENTRY_TEXT, MAX_PAGE_MARKS, MAX_PAGE_NOTE, MAX_QUOTE, MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_RECTS, QUOTE_CONTEXT, RESOURCE_TYPES, isAnnotationColor } from '@wb/shared';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { mimeOf, ResourceError } from '../resources/service.js';
@@ -274,11 +274,20 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
       return fail(e, reply);
     }
   });
-  app.put<{ Params: { wid: string } }>('/api/works/:wid/want', async (req, reply) => {
-    const b = parse(z.object({ want: z.boolean() }), req.body, reply);
+  app.put<{ Params: { wid: string } }>('/api/works/:wid/state', async (req, reply) => {
+    const b = parse(z.object({ state: z.enum(WORK_STATES).nullable() }), req.body, reply);
     if (!b) return;
     try {
-      return r().setWantToRead(req.params.wid, b.want);
+      return r().setWorkState(req.params.wid, b.state);
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+  app.patch<{ Params: { wid: string } }>('/api/works/:wid', async (req, reply) => {
+    const b = parse(z.object({ title: z.string().max(300), authors: z.string().max(400), year: z.number().int().min(0).max(3000).nullable(), venue: z.string().max(300), doi: z.string().max(200), url: z.string().max(500), volume: z.string().max(50), pages: z.string().max(50), arxiv: z.string().max(50) }), req.body, reply);
+    if (!b) return;
+    try {
+      return r().editWork(req.params.wid, b);
     } catch (e) {
       return fail(e, reply);
     }

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { entryAt, type Destination, type ImportChoice, linesOf, parseBibliography, textItems, type BibEntry, type BibEntryInput, type LibraryWork, type PageLines, type Work } from '@wb/shared';
+import { entryAt, type Destination, type ImportChoice, linesOf, parseBibliography, textItems, type BibEntry, type BibEntryInput, type LibraryWork, type PageLines, type Work, type WorkEdit, type WorkState } from '@wb/shared';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useEffect } from 'react';
 import { api, useSettings } from './api';
@@ -162,13 +162,28 @@ export const keepWorksSeparate = (qc: QueryClient, a: string, b: string) => api.
 /** "I have this": the work is that material, or none. */
 export const linkWork = (qc: QueryClient, work: string, resource: string | null) => api.put(`/api/works/${encodeURIComponent(work)}/resource`, { resource }).then(done(qc), failed(qc));
 
-export function setWantToRead(qc: QueryClient, resource: string, work: Work, want: boolean): void {
-  if (resource) qc.setQueryData<BibEntry[]>(bibliographyKey(resource), (list) => list?.map((e) => (e.work.id === work.id ? { ...e, work: { ...e.work, wantToRead: want } } : e)));
-  else qc.setQueryData<LibraryWork[]>(worksKey, (list) => list?.map((w) => (w.id === work.id ? { ...w, wantToRead: want } : w)));
-  void api.put(`/api/works/${encodeURIComponent(work.id)}/want`, { want }).then(() => void qc.invalidateQueries({ queryKey: worksKey })).catch(() => {
-    void qc.invalidateQueries({ queryKey: resource ? bibliographyKey(resource) : worksKey });
+/** Sorts a work (null: back to Unsorted); the library and every PDF's list show it at once. */
+export function setWorkState(qc: QueryClient, work: string, state: WorkState | null): void {
+  qc.setQueriesData<BibEntry[]>({ queryKey: ['pdf-bibliography'] }, (list) => list?.map((e) => (e.work.id === work ? { ...e, work: { ...e.work, state } } : e)));
+  qc.setQueryData<LibraryWork[]>(worksKey, (list) => list?.map((w) => (w.id === work ? { ...w, state } : w)));
+  void api.put(`/api/works/${encodeURIComponent(work)}/state`, { state }).catch(() => {
+    refreshWorks(qc);
     reportSaveFailed();
   });
+}
+
+/** The student's edit of a work's fields (the work is locked from then on). */
+export function editWork(qc: QueryClient, work: string, fields: WorkEdit): Promise<Work> {
+  return api.patch<Work>(`/api/works/${encodeURIComponent(work)}`, fields).then(
+    (w) => {
+      refreshWorks(qc);
+      return w;
+    },
+    (e: unknown) => {
+      reportSaveFailed();
+      throw e;
+    },
+  );
 }
 
 /** The student's tags on a work of the library, shown at once. */

@@ -866,6 +866,28 @@ export const MIGRATIONS: Migration[] = [
     PRIMARY KEY (work, course, page)
   ) WITHOUT ROWID;
   `,
+  /*
+   * 37: works are edited by the student and sorted. `volume`, `pages` and `arxiv` are fields next to the others (the
+   * text the PDF gave stays in `raw`); `edited` locks a hand-edited work against re-reads and online lookups. `state`
+   * (null = unsorted, later, read, know, skip) replaces `want_to_read`, which becomes `later`. Kind labels are tags.
+   */
+  (db) => {
+    db.exec(`
+    ALTER TABLE works ADD COLUMN volume TEXT NOT NULL DEFAULT '';
+    ALTER TABLE works ADD COLUMN pages TEXT NOT NULL DEFAULT '';
+    ALTER TABLE works ADD COLUMN arxiv TEXT NOT NULL DEFAULT '';
+    ALTER TABLE works ADD COLUMN edited INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE works ADD COLUMN state TEXT;
+    UPDATE works SET state = 'later' WHERE want_to_read = 1;
+    `);
+    const t = Date.now();
+    const has = db.prepare('SELECT 1 AS x FROM tags WHERE name = ? COLLATE NOCASE');
+    let sort = Number((db.prepare('SELECT COALESCE(MAX(sort), -1) + 1 AS n FROM tags').get() as { n: number }).n);
+    const insert = db.prepare('INSERT INTO tags (id, name, color, sort, created_at, updated_at) VALUES (?,?,?,?,?,?)');
+    for (const [id, name] of [['tg-fundamental', 'Fundamental'], ['tg-state-of-the-art', 'State of the art'], ['tg-historic', 'Historic']] as const) {
+      if (!has.get(name)) insert.run(id, name, '', sort++, t, t);
+    }
+  },
 ];
 
 /** The course a mounted `/content` folder is. */

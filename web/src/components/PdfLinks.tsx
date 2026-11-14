@@ -1,10 +1,9 @@
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import { entryAt, findCitations, textItems, type BibEntry } from '@wb/shared';
-import { Bookmark } from 'lucide-react';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useT } from '@/lib/i18n';
-import { sure } from '@/components/WorkBits';
+import { sure, WorkStateButtons } from '@/components/WorkBits';
 import { cropOf, CROP_H, CROP_W, linksOf, resolveDest, type PageLink, type Target } from '@/lib/pdfLinks';
 
 /** What a click on an internal link does; the viewer keeps the way back. */
@@ -15,14 +14,14 @@ export const HOVER_MS = 350;
 /** The entries to link plain-text citations to (V6, a setting of the viewer); undefined when it is off or there are none. */
 export const CitationContext = createContext<readonly BibEntry[] | undefined>(undefined);
 
-/** The PDF's reference entries, so a link into them shows the paper's card (V6b); `onWant` toggles the reading wish. */
-export const BibliographyContext = createContext<{ entries: readonly BibEntry[]; onWant: (e: BibEntry, want: boolean) => void } | undefined>(undefined);
+/** The PDF's reference entries, so a link into them shows the paper's card (V6b); the card has the sorting buttons. */
+export const BibliographyContext = createContext<{ entries: readonly BibEntry[] } | undefined>(undefined);
 
 const CARD_W = 340;
 const CARD_H = 190;
 
 /** What a link into the bibliography shows: the paper's data, kept open while the pointer is on it; the crop is one click away. */
-function CitationCard({ doc, target, entry, at, onWant, onEnter, onLeave }: { doc: PDFDocumentProxy; target: Target; entry: BibEntry; at: DOMRect; onWant: (want: boolean) => void; onEnter: () => void; onLeave: () => void }) {
+function CitationCard({ doc, target, entry, at, onEnter, onLeave }: { doc: PDFDocumentProxy; target: Target; entry: BibEntry; at: DOMRect; onEnter: () => void; onLeave: () => void }) {
   const t = useT();
   const w = entry.work;
   const card = useRef<HTMLDivElement>(null);
@@ -46,15 +45,7 @@ function CitationCard({ doc, target, entry, at, onWant, onEnter, onLeave }: { do
           {w.doi ? <p className="break-all text-[12px] text-ink-3">DOI {w.doi}</p> : null}
           <p className="mt-1 text-[12px] text-ink-2">{w.resource ? t.workHave.replace(/:$/, '') : t.pdfCardMissing}</p>
           <div className="mt-2 flex items-center gap-2">
-            <button
-              type="button"
-              aria-pressed={w.wantToRead}
-              onClick={() => onWant(!w.wantToRead)}
-              className={`inline-flex items-center gap-1 rounded-md border border-line px-2 py-0.5 hover:bg-sunk ${w.wantToRead ? 'text-accent' : 'text-ink-2'}`}
-            >
-              <Bookmark size={13} fill={w.wantToRead ? 'currentColor' : 'none'} />
-              {w.wantToRead ? t.pdfRefWantOn : t.pdfRefWant}
-            </button>
+            <WorkStateButtons work={w} labels />
             <button type="button" onClick={() => setCrop(card.current?.getBoundingClientRect() ?? null)} className="text-ink-2 hover:text-ink hover:underline">
               {t.pdfCardShowText}
             </button>
@@ -194,7 +185,6 @@ export function PdfLinkLayer({ doc, page, follow }: { doc: PDFDocumentProxy; pag
           target={peek.target}
           entry={peek.entry}
           at={peek.at}
-          onWant={(want) => bib.onWant(peek.entry!, want)}
           onEnter={() => clearTimeout(timer.current)}
           onLeave={leaveSoon}
         />
