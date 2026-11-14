@@ -39,9 +39,9 @@ workbook is a git repository that you add in the app.
   page lists them all, and a chapter's checklist shows what is still open in it. Optional, like flashcards.
 * **Flashcards you write yourself.** Decks of cards in your own words, reviewed with spaced repetition (FSRS). A card
   can be made right from an exercise, and decks belong to you, not to a workbook. See [Flashcards](#flashcards).
-* **Open questions.** Write down what you do not understand yet, on an exercise, in the text or in a PDF, and tick it off
-  when it is cleared up. One page lists all of them, with search and filters. "Come back to" on a highlight or a page
-  is an empty question.
+* **Tickets.** Write down what you do not understand yet, on an exercise, in the text or in a PDF, and file it away
+  when it is cleared up. One page, Tickets, lists all of them with search and filters, together with what the assistant
+  proposes. "Come back to" on a highlight or a page is a ticket without text.
 * **Materials and library.** Upload scripts, slides and other files, sort them into types and series, and see them per
   workbook or in one library. The PDF viewer has a table of contents, highlights, notes per page or slide, and questions.
   A new version of a file keeps your highlights and notes where they belong, and lists what it could not place.
@@ -51,9 +51,9 @@ workbook is a git repository that you add in the app.
   exercise to the next.
 * **Feedback from your own AI chat.** You can copy a prompt with the task, your answer and the test results into the
   chat you already use. Hints and solutions are never part of it.
-* **An assistant that reads along.** Optional: Claude Code can read your open questions, search your text and read your
+* **An assistant that reads along.** Optional: Claude Code can read your tickets, search your text and read your
   materials through a local connection, and run your saved code's tests. It cannot change anything. It only suggests
-  types, labels, answers, cards and notes, and you accept or reject each one on the questions page. See
+  types, labels, answers, cards and notes, and you accept or reject each one on the Tickets page. See
   [Assistant](#assistant).
 * **Optional extras.** If you turn them on, there are achievements, animal friends, a plant per chapter and small
   celebrations. They reward work done, never speed.
@@ -126,11 +126,11 @@ the same tab, using the placeholders `{title}`, `{task}`, `{language}`, `{answer
 
 ### Assistant
 
-Optional: turn on *Let Claude Code read your questions* in the settings and run the command shown there once in a
+Optional: turn on *Let Claude Code read your tickets* in the settings and run the command shown there once in a
 terminal. The connection (MCP) is local and protected by a token; *New token* makes the old command stop working.
-The assistant can read open questions, search, read pages and materials, read your saved code and run its tests, and keep
+The assistant can read tickets, search, read pages and materials, read your saved code and run its tests, and keep
 notes of its own that you can see and delete. Two switches decide whether it may see solutions and author notes, and
-your progress. It never writes into your work: its suggestions wait on the questions page until you accept, edit or
+your progress. It never writes into your work: its suggestions wait on the Tickets page until you accept, edit or
 reject them, and an accepted one can be undone.
 
 ### Flashcards
