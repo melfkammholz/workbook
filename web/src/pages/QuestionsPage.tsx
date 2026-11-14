@@ -3,6 +3,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { QuestionDetail } from '@/components/QuestionDetail';
 import { ProposalDetail } from '@/components/ProposalDetail';
 import { useChangeText } from '@/components/Proposals';
+import { ConnectAssistant } from '@/components/ConnectAssistant';
 import { AssistantStrip } from '@/components/AssistantStrip';
 import { AskDialog, BulkBar, itemOf } from '@/components/QuestionsBulk';
 import { clsx } from 'clsx';
@@ -82,6 +83,7 @@ export function QuestionsPage() {
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const [openId, setOpenId] = useState<string | null>(null);
   const [asking, setAsking] = useState<Question[] | null>(null);
+  const [connecting, setConnecting] = useState(false);
   const lastPicked = useRef<string | null>(null);
   const proposals = usePendingProposals();
   const helper = useAssistant(bridgeOn).data;
@@ -338,6 +340,16 @@ export function QuestionsPage() {
         </BackLink>
         <h1 className="text-[1.75rem] font-semibold tracking-[-0.02em]">{t.questionsTitle}</h1>
         <p className="mt-2 text-ink-2">{t.questionsPageIntro}</p>
+        {settings?.showAi ? (
+          <p className="mt-2 flex items-center gap-2 text-[13.5px]">
+            <span aria-hidden className={clsx('inline-block size-2 rounded-full', helper?.connected ? 'bg-done' : 'border border-ink-3')} />
+            <span className="text-ink-2">{helper?.connected ? t.helperConnected : t.helperNotConnected}</span>
+            <button type="button" onClick={() => setConnecting(true)} className="text-accent hover:underline">
+              {helper?.connected ? t.connectManage : t.connectOpen}
+            </button>
+          </p>
+        ) : null}
+        <ConnectAssistant open={connecting} onClose={() => setConnecting(false)} />
 
         <div role="tablist" aria-label={t.questionsTitle} className="mt-4 flex gap-1 border-b border-line">
           {([['', t.questionsTabAll], ['unread', t.questionsTabUnread], ['archive', t.questionsTabArchive]] as const).map(([id, label]) => (

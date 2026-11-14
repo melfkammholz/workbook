@@ -5,6 +5,7 @@ import type { Question } from '@wb/shared';
 import { sendAssistantRequest, setQuestionTags, updateQuestion, useAssistant } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useTags } from '@/lib/tags';
+import { ConnectAssistant } from './ConnectAssistant';
 import { Button, Dialog, clsx } from './ui';
 
 type Ask = 'answer' | 'cards' | 'assess';
@@ -23,6 +24,7 @@ export function AskDialog({ questions, onClose }: { questions: Question[]; onClo
   const [note, setNote] = useState('');
   const [copied, setCopied] = useState(false);
   const [sent, setSent] = useState(false);
+  const [connecting, setConnecting] = useState(false);
   const helper = useAssistant().data;
   const canSend = !!helper?.allowed;
   const send = () => {
@@ -55,7 +57,18 @@ export function AskDialog({ questions, onClose }: { questions: Question[]; onClo
       <p className="mt-3 border-t border-line pt-2 text-[12.5px] text-ink-3">
         {t.askReads} <b className="font-semibold text-ink-2">{t.askChanges}</b>
       </p>
-      <p className="mt-1 text-[12.5px] text-ink-3">{canSend ? (helper?.connected ? t.askHelperOn : t.askHelperOff) : t.askCopyHint}</p>
+      <p className="mt-1 text-[12.5px] text-ink-3">
+        {canSend ? (helper?.connected ? t.askHelperOn : t.askHelperOff) : t.askCopyHint}
+        {!helper?.connected ? (
+          <>
+            {' '}
+            <button type="button" onClick={() => setConnecting(true)} className="text-accent hover:underline">
+              {t.connectOpen}
+            </button>
+          </>
+        ) : null}
+      </p>
+      <ConnectAssistant open={connecting} onClose={() => setConnecting(false)} />
       <div className="mt-3 flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>
           {t.cancel}
