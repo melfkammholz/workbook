@@ -458,6 +458,11 @@ export const deleteQuestion = (item: string | null, id: string) => {
 /** The assistant inbox: proposals waiting, and what was decided lately. Only asked for while the bridge is on. */
 export const changesKey = ['changes'] as const;
 export const useChanges = (enabled = true) => useQuery({ queryKey: changesKey, queryFn: () => api.get<Change[]>('/api/changes'), staleTime: 20_000, refetchInterval: 60_000, enabled });
+/**
+ * A proposal that stands on its own and gets a row on the questions page: a card or note from a highlight, a merge, a
+ * reference. Everything else (and cards made from a question) belongs to a question and shows in its panel.
+ */
+export const isStandalone = (c: Change) => c.field === 'work' || c.field === 'merge' || (c.field === 'create' && !(c.after as { question?: string } | null)?.question);
 /** Waiting proposals by question, only while the bridge is on. Questions without any are not in the map. */
 export const usePendingProposals = () => {
   const settings = useSettings().data;
@@ -465,7 +470,7 @@ export const usePendingProposals = () => {
   return useMemo(() => {
     const out = new Map<string, Change[]>();
     for (const c of data ?? []) {
-      if (c.status !== 'pending') continue;
+      if (c.status !== 'pending' || isStandalone(c)) continue;
       // Changes to a question, and cards or notes proposed from it.
       const id = c.field === 'create' ? (c.after as { question?: string } | null)?.question : c.ref.kind === 'question' ? c.ref.id : undefined;
       if (id) (out.get(id) ?? out.set(id, []).get(id)!).push(c);

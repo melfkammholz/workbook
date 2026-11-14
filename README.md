@@ -53,7 +53,7 @@ workbook is a git repository that you add in the app.
   chat you already use. Hints and solutions are never part of it.
 * **An assistant that reads along.** Optional: Claude Code can read your open questions, search your text and read your
   materials through a local connection, and run your saved code's tests. It cannot change anything. It only suggests
-  types, labels, answers, cards and notes, and you accept or reject each one in the assistant inbox. See
+  types, labels, answers, cards and notes, and you accept or reject each one on the questions page. See
   [Assistant](#assistant).
 * **Optional extras.** If you turn them on, there are achievements, animal friends, a plant per chapter and small
   celebrations. They reward work done, never speed.
@@ -130,7 +130,7 @@ Optional: turn on *Let Claude Code read your questions* in the settings and run 
 terminal. The connection (MCP) is local and protected by a token; *New token* makes the old command stop working.
 The assistant can read open questions, search, read pages and materials, read your saved code and run its tests, and keep
 notes of its own that you can see and delete. Two switches decide whether it may see solutions and author notes, and
-your progress. It never writes into your work: its suggestions wait in the assistant inbox until you accept, edit or
+your progress. It never writes into your work: its suggestions wait on the questions page until you accept, edit or
 reject them, and an accepted one can be undone.
 
 ### Flashcards

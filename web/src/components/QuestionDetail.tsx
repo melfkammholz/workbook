@@ -9,12 +9,11 @@ import { ProposalList, useChangeText } from './Proposals';
 import { AnswerPanel, OutcomeIcons } from './QuestionAnswer';
 import { QuestionMake } from './QuestionMake';
 import { TagPicker } from './TagPicker';
+import { UNDO_DAYS } from './ProposalDetail';
 import { Title } from './Title';
 import { Button, clsx } from './ui';
 
 const DAY = 86_400_000;
-/** Accepted proposals can be taken back for this long. */
-const UNDO_DAYS = 7;
 
 interface Event {
   at: number;

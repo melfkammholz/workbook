@@ -1,14 +1,16 @@
 import { ChevronDown, Search } from 'lucide-react';
 import { QuestionDetail } from '@/components/QuestionDetail';
+import { ProposalDetail } from '@/components/ProposalDetail';
+import { useChangeText } from '@/components/Proposals';
 import { AskDialog, BulkBar, itemOf } from '@/components/QuestionsBulk';
 import { clsx } from 'clsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Title } from '@/components/Title';
 import { Link } from 'wouter';
-import { QUESTION_KINDS, RESOURCE_TYPES, type Question, type QuestionKind, type ResourceType } from '@wb/shared';
+import { QUESTION_KINDS, RESOURCE_TYPES, type Change, type Question, type QuestionKind, type ResourceType } from '@wb/shared';
 import { Empty, Spinner } from '@/components/ui';
 import { useTags } from '@/lib/tags';
-import { updateQuestion, useCourses, useOutline, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
+import { acceptChanges, isStandalone, updateQuestion, useChanges, useCourses, useOutline, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { useResources } from '@/lib/resources';
@@ -80,6 +82,8 @@ export function QuestionsPage() {
   const [asking, setAsking] = useState<Question[] | null>(null);
   const lastPicked = useRef<string | null>(null);
   const proposals = usePendingProposals();
+  const changes = useChanges(bridgeOn).data;
+  const { show, fieldName } = useChangeText();
   const set = (patch: Partial<Filters>) => setF((x) => ({ ...x, ...patch }));
   useEffect(() => {
     writeUrl(f);
@@ -156,6 +160,26 @@ export function QuestionsPage() {
     });
   }, [entries, f]);
 
+  const proposalText = (c: Change) => (c.field === 'merge' ? (all?.find((q) => q.id === c.ref.id)?.text ?? '') : show(c, c.after));
+  /** Proposals that stand on their own: waiting ones with All and Unread, decided ones in the archive. */
+  const standalone = useMemo(() => {
+    const needle = f.text.trim().toLowerCase();
+    const now = Date.now();
+    // Filters about questions (place, type, labels, answers) leave proposals out; only age and text apply to both.
+    if (!bridgeOn || f.where || f.kind || f.labels.length || f.answered || f.unseen) return [];
+    return (changes ?? []).filter((c) => {
+      if (!isStandalone(c)) return false;
+      if (f.tab === 'archive' ? c.status !== 'applied' && c.status !== 'rejected' : c.status !== 'pending') return false;
+      if (f.age) {
+        const days = (now - c.createdAt) / DAY;
+        if (f.age === 'old' ? days <= 30 : days > Number(f.age)) return false;
+      }
+      if (needle && !`${fieldName(c)} ${proposalText(c)}`.toLowerCase().includes(needle)) return false;
+      return true;
+    });
+  }, [changes, f, bridgeOn, all]);
+  const openChange = openId ? standalone.find((c) => c.id === openId) : undefined;
+
   const groups = useMemo(() => {
     const gs = new Map<string, { key: string; title: string; mtype: ResourceType | null; parts: Map<string, { title: string; href: string | null; order: number; items: Question[] }> }>();
     for (const e of filtered) {
@@ -171,6 +195,7 @@ export function QuestionsPage() {
   const ordered = useMemo(() => groups.flatMap((g) => [...g.parts.values()].sort((a, b) => a.order - b.order || a.title.localeCompare(b.title)).flatMap((p) => p.items.map((q) => q.id))), [groups]);
   const entryOf = useMemo(() => new Map(entries.map((e) => [e.q.id, e])), [entries]);
   const openEntry = openId ? entryOf.get(openId) : undefined;
+  const waitingStandalone = standalone.filter((c) => c.status === 'pending');
 
   const pick = (id: string, range: boolean) => {
     setPicked((cur) => {
@@ -219,6 +244,7 @@ export function QuestionsPage() {
   }
   const active = !!(f.text || f.where || f.kind || f.age || f.labels.length || f.answered || f.unseen);
   const names = groups.map((g) => g.key);
+  const nothing = filtered.length === 0 && standalone.length === 0;
   const allClosed = names.length > 0 && names.every((n) => closed.has(n));
   const searching = !!f.text.trim();
   const anyPicked = picked.size > 0;
@@ -254,6 +280,39 @@ export function QuestionsPage() {
       </li>
     );
   };
+  const proposalSection = (
+    <section className="mt-3">
+      <div className="flex items-baseline gap-1.5 border-b border-line-strong">
+        <h2 className="min-w-0 flex-1 py-1 text-[14px] font-semibold">{t.questionsProposalGroup}</h2>
+        {waitingStandalone.length > 1 ? (
+          <button type="button" onClick={() => void acceptChanges(waitingStandalone.map((c) => c.id)).catch(() => undefined)} className="px-0.5 py-1 text-[13px] text-accent hover:underline">
+            {t.detailAcceptAll}
+          </button>
+        ) : null}
+      </div>
+      <ul className="divide-y divide-dotted divide-line">
+        {standalone.map((c) => {
+          const pending = c.status === 'pending';
+          const text = proposalText(c);
+          return (
+            <li key={c.id} onClick={() => setOpenId(c.id)} className={clsx('group grid cursor-pointer grid-cols-[1.25rem_1fr_auto] items-baseline gap-x-2.5 rounded-md px-2 py-1', openId === c.id ? 'bg-accent-soft' : 'hover:bg-sunk')}>
+              <span className="grid size-4 place-items-center self-center">{pending ? <span role="img" aria-label={t.questionUnreadDot} title={t.questionUnreadDot} className="size-[9px] rounded-full bg-accent" /> : null}</span>
+              <p className={clsx('min-w-0 truncate text-[14px] leading-[1.4]', pending ? 'font-semibold' : 'text-ink-3')} title={text || undefined}>
+                {text || <span className="text-ink-3">{t.inboxNoText}</span>}
+              </p>
+              <div className="flex items-center gap-1.5 whitespace-nowrap text-[12px] text-ink-3">
+                <span className="rounded-[3px] bg-review-soft px-1.5 text-review">{fieldName(c)}</span>
+                {pending ? null : <span>{t.inboxStatus[c.status]}</span>}
+                <span className="min-w-[5.2rem] text-right tabular-nums" title={new Date(c.createdAt).toLocaleString()}>
+                  {t.questionAge(Math.floor((Date.now() - (c.decidedAt ?? c.createdAt)) / DAY))}
+                </span>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
   const filterSelect = (key: 'where' | 'kind' | 'age', label: string, children: React.ReactNode) => (
     <select value={f[key]} onChange={(e) => set({ [key]: e.target.value })} aria-label={label} className={selectClass(!!f[key])}>
       {children}
@@ -367,10 +426,12 @@ export function QuestionsPage() {
           ) : null}
         </div>
 
-        {filtered.length === 0 ? (
+        {nothing ? (
           <Empty title={active ? t.questionsNoMatch : t.noQuestions}>{active ? t.questionsNoMatchHint : t.questionsNoneAnywhere}</Empty>
         ) : (
-          groups.map((g) => {
+          <>
+          {standalone.length ? proposalSection : null}
+          {groups.map((g) => {
             const shut = closed.has(g.key) && !searching;
             return (
               <section key={g.key} className="mt-3">
@@ -407,12 +468,18 @@ export function QuestionsPage() {
                 )}
               </section>
             );
-          })
+          })}
+          </>
         )}
         {anyPicked ? <BulkBar picked={ordered.filter((i) => picked.has(i)).flatMap((i) => entryOf.get(i)?.q ?? [])} archive={f.tab === 'archive'} ai={!!settings?.showAi} onAsk={() => setAsking(ordered.filter((i) => picked.has(i)).flatMap((i) => entryOf.get(i)?.q ?? []))} onClear={() => setPicked(new Set())} /> : null}
       </div>
     </div>
-    {openEntry ? (
+    {openChange ? (
+      <div className="w-[26rem] shrink-0 overflow-y-auto border-l border-line bg-sheet">
+        <ProposalDetail key={openChange.id} c={openChange} onClose={() => setOpenId(null)} />
+      </div>
+    ) : null}
+    {openEntry && !openChange ? (
       <div className="w-[26rem] shrink-0 overflow-y-auto border-l border-line bg-sheet">
         <QuestionDetail key={openEntry.q.id} q={openEntry.q} item={itemOf(openEntry.q)} where={[openEntry.gTitle, openEntry.pTitle].filter(Boolean).join(' · ')} href={openEntry.pHref} onClose={() => setOpenId(null)} onAsk={() => setAsking([openEntry.q])} />
       </div>
