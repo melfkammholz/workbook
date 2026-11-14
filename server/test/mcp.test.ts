@@ -107,6 +107,11 @@ describe('assistant bridge', () => {
     const after = JSON.parse((await tool('list_questions', { item })).text).questions;
     expect(after.find((x: { id: string }) => x.id === target).rejected[0]).toMatchObject({ field: 'kind', studentSaid: 'zu vage' });
     expect(after.filter((x: { rejected?: unknown }) => x.rejected)).toHaveLength(1);
+    // Taking the rejection back opens the proposal again (and it is no longer a rejection).
+    const undone = await app.inject({ method: 'POST', url: `/api/changes/${change.id}/undo` });
+    expect(undone.statusCode).toBe(200);
+    expect(undone.json()).toMatchObject({ status: 'pending', feedback: '' });
+    expect(JSON.parse((await tool('list_questions', { item })).text).questions.filter((x: { rejected?: unknown }) => x.rejected)).toHaveLength(0);
     for (const id of ids) await app.inject({ method: 'DELETE', url: `/api/questions/${id}` });
   });
 

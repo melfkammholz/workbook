@@ -41,7 +41,7 @@ export function ProposalDetail({ c, onClose }: { c: Change; onClose: () => void 
   const { fieldName } = useChangeText();
   const [error, setError] = useState(false);
   const now = Date.now();
-  const left = c.status === 'applied' && c.decidedAt ? UNDO_DAYS - Math.floor((now - c.decidedAt) / DAY) : 0;
+  const left = (c.status === 'applied' || c.status === 'rejected') && c.decidedAt ? UNDO_DAYS - Math.floor((now - c.decidedAt) / DAY) : 0;
   return (
     <aside aria-label={t.detailProposal} className="flex min-h-full flex-col gap-4 px-[18px] pb-[18px] pt-4 text-[14px]">
       <div className="flex items-center gap-2 text-[12.5px] text-ink-3">

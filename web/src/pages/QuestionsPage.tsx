@@ -1,4 +1,5 @@
-import { ChevronDown, Search } from 'lucide-react';
+import { ChevronDown, Search, SlidersHorizontal } from 'lucide-react';
+import * as Popover from '@radix-ui/react-popover';
 import { QuestionDetail } from '@/components/QuestionDetail';
 import { ProposalDetail } from '@/components/ProposalDetail';
 import { useChangeText } from '@/components/Proposals';
@@ -64,7 +65,7 @@ const writeUrl = (f: Filters) => {
   if (search !== location.search) history.replaceState(history.state, '', `${location.pathname}${search}${location.hash}`);
 };
 
-const selectClass = (on: boolean) => clsx('h-[30px] rounded-lg border px-2 text-[13.5px]', on ? 'border-transparent bg-accent-soft font-medium text-accent' : 'border-line-strong bg-sheet text-ink-2');
+const selectClass = (on: boolean) => clsx('h-[30px] w-full rounded-lg border px-2 text-[13.5px]', on ? 'border-transparent bg-accent-soft font-medium text-accent' : 'border-line-strong bg-sheet text-ink-2');
 
 /** All the questions, open ones first: by material and page, then by workbook and item in reading order. Filters live in the address. */
 export function QuestionsPage() {
@@ -251,6 +252,7 @@ export function QuestionsPage() {
     );
   }
   const active = !!(f.text || f.where || f.kind || f.age || f.labels.length || f.answered || f.unseen);
+  const count = [f.where, f.kind, f.age].filter(Boolean).length + f.labels.length + (f.answered ? 1 : 0) + (f.unseen ? 1 : 0);
   const names = groups.map((g) => g.key);
   const nothing = filtered.length === 0 && standalone.length === 0;
   const allClosed = names.length > 0 && names.every((n) => closed.has(n));
@@ -345,93 +347,124 @@ export function QuestionsPage() {
           ))}
         </div>
 
-        <div role="search" className="sticky top-0 z-[5] mt-2 grid gap-2 border-b border-line bg-sheet pb-2 pt-2.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="flex h-9 min-w-[14rem] flex-1 items-center gap-2 rounded-lg border border-transparent bg-sunk px-2.5 focus-within:border-accent">
-              <Search size={15} className="shrink-0 text-ink-3" aria-hidden />
-              <input type="search" value={f.text} onChange={(e) => set({ text: e.target.value })} placeholder={t.questionsSearch} aria-label={t.questionsSearch} className="min-w-0 flex-1 bg-transparent outline-none" />
-            </label>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {filterSelect(
-              'where',
-              t.questionsWhere,
-              <>
-                <option value="">{t.questionsEverywhere}</option>
-                {whereOptions.mats.length ? <option value="materials">{t.questionsAllMaterials}</option> : null}
-                {whereOptions.types.map((ty) => (
-                  <option key={ty} value={`mt:${ty}`}>
-                    {t.resourceTypes[ty]}
-                  </option>
-                ))}
-                {whereOptions.books.length ? <option value="workbooks">{t.questionsAllWorkbooks}</option> : null}
-                {[...whereOptions.mats, ...whereOptions.books].map(([k, title]) => (
-                  <option key={k} value={`g:${k}`}>
-                    {title}
-                  </option>
-                ))}
-              </>,
-            )}
-            {filterSelect(
-              'kind',
-              t.questionsKindFilter,
-              <>
-                <option value="">{t.questionsAnyKind}</option>
-                {QUESTION_KINDS.map((k: QuestionKind) => (
-                  <option key={k} value={k}>
-                    {t.questionKinds[k]}
-                  </option>
-                ))}
-              </>,
-            )}
-            {filterSelect(
-              'age',
-              t.questionsAge,
-              <>
-                <option value="">{t.questionsAnyAge}</option>
-                <option value="1">{t.questionsAgeDay}</option>
-                <option value="7">{t.questionsAgeWeek}</option>
-                <option value="30">{t.questionsAgeMonth}</option>
-                <option value="old">{t.questionsAgeOlder}</option>
-              </>,
-            )}
-            <button type="button" aria-pressed={f.answered} onClick={() => set({ answered: !f.answered })} className={selectClass(f.answered)}>
-              {t.questionsHasAnswer}
+        <div role="search" className="sticky top-0 z-[5] mt-2 flex flex-wrap items-center gap-2 border-b border-line bg-sheet pb-2 pt-2.5">
+          <label className="flex h-9 min-w-[14rem] flex-1 items-center gap-2 rounded-lg border border-transparent bg-sunk px-2.5 focus-within:border-accent">
+            <Search size={15} className="shrink-0 text-ink-3" aria-hidden />
+            <input type="search" value={f.text} onChange={(e) => set({ text: e.target.value })} placeholder={t.questionsSearch} aria-label={t.questionsSearch} className="min-w-0 flex-1 bg-transparent outline-none" />
+          </label>
+          <Popover.Root>
+            <Popover.Trigger asChild>
+              <button type="button" className={clsx('inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[13.5px]', count ? 'border-transparent bg-accent-soft font-medium text-accent' : 'border-line-strong bg-sheet text-ink-2 hover:border-ink-3')}>
+                <SlidersHorizontal size={14} aria-hidden />
+                {count ? t.questionsFilterN(count) : t.questionsFilter}
+              </button>
+            </Popover.Trigger>
+            <Popover.Portal>
+              <Popover.Content align="end" sideOffset={6} aria-label={t.questionsFilter} className="wb-menu w-[19rem] p-0 text-[13.5px]">
+                <div className="grid gap-3 px-3.5 py-3">
+                  <div>
+                    <div className="mb-1 text-[12.5px] text-ink-3">{t.questionsWhere}</div>
+                    {filterSelect(
+                      'where',
+                      t.questionsWhere,
+                      <>
+                        <option value="">{t.questionsEverywhere}</option>
+                        {whereOptions.mats.length ? <option value="materials">{t.questionsAllMaterials}</option> : null}
+                        {whereOptions.types.map((ty) => (
+                          <option key={ty} value={`mt:${ty}`}>
+                            {t.resourceTypes[ty]}
+                          </option>
+                        ))}
+                        {whereOptions.books.length ? <option value="workbooks">{t.questionsAllWorkbooks}</option> : null}
+                        {[...whereOptions.mats, ...whereOptions.books].map(([k, title]) => (
+                          <option key={k} value={`g:${k}`}>
+                            {title}
+                          </option>
+                        ))}
+                      </>,
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <div className="mb-1 text-[12.5px] text-ink-3">{t.questionsKindFilter}</div>
+                      {filterSelect(
+                        'kind',
+                        t.questionsKindFilter,
+                        <>
+                          <option value="">{t.questionsAnyKind}</option>
+                          {QUESTION_KINDS.map((k: QuestionKind) => (
+                            <option key={k} value={k}>
+                              {t.questionKinds[k]}
+                            </option>
+                          ))}
+                        </>,
+                      )}
+                    </div>
+                    <div>
+                      <div className="mb-1 text-[12.5px] text-ink-3">{t.questionsAge}</div>
+                      {filterSelect(
+                        'age',
+                        t.questionsAge,
+                        <>
+                          <option value="">{t.questionsAnyAge}</option>
+                          <option value="1">{t.questionsAgeDay}</option>
+                          <option value="7">{t.questionsAgeWeek}</option>
+                          <option value="30">{t.questionsAgeMonth}</option>
+                          <option value="old">{t.questionsAgeOlder}</option>
+                        </>,
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={f.answered} onChange={(e) => set({ answered: e.target.checked })} className="wb-check" />
+                      {t.questionsHasAnswer}
+                    </label>
+                    {bridgeOn ? (
+                      <label className="flex items-center gap-2">
+                        <input type="checkbox" checked={f.unseen} onChange={(e) => set({ unseen: e.target.checked })} className="wb-check" />
+                        {t.questionsNotSeen}
+                      </label>
+                    ) : null}
+                  </div>
+                  {labelIds.length ? (
+                    <div role="group" aria-label={t.questionsLabels}>
+                      <div className="mb-1 text-[12.5px] text-ink-3">{t.questionsLabels}</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {labelIds.map((id) => {
+                          const on = f.labels.includes(id);
+                          return (
+                            <button key={id} type="button" aria-pressed={on} onClick={() => set({ labels: on ? f.labels.filter((x) => x !== id) : [...f.labels, id] })} className={clsx('h-[26px] rounded-full border px-2.5 text-[13px]', on ? 'border-transparent bg-accent-soft font-medium text-accent' : 'border-line-strong text-ink-2 hover:border-ink-3 hover:text-ink')}>
+                              {labelName(id)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-3 border-t border-line px-3.5 py-2 text-[13px]">
+                  {filtered.length ? (
+                    <Popover.Close asChild>
+                      <button type="button" onClick={() => pickMany(ordered)} className="text-ink-2 hover:text-ink">
+                        {t.questionsSelectAll}
+                      </button>
+                    </Popover.Close>
+                  ) : null}
+                  <span className="flex-1" />
+                  {active ? (
+                    <button type="button" onClick={() => set({ ...NO_FILTERS, text: f.text, tab: f.tab })} className="text-accent hover:underline">
+                      {t.questionsClearFilters}
+                    </button>
+                  ) : null}
+                </div>
+              </Popover.Content>
+            </Popover.Portal>
+          </Popover.Root>
+          {groups.length > 1 ? (
+            <button type="button" onClick={() => setClosed(allClosed ? new Set() : new Set(names))} className="px-0.5 py-1 text-[13px] text-ink-3 hover:text-ink">
+              {allClosed ? t.questionsExpandAll : t.questionsCollapseAll}
             </button>
-            {bridgeOn ? (
-              <button type="button" aria-pressed={f.unseen} onClick={() => set({ unseen: !f.unseen })} className={selectClass(f.unseen)}>
-                {t.questionsNotSeen}
-              </button>
-            ) : null}
-            <span className="flex-1" />
-            {active ? (
-              <button type="button" onClick={() => setF(NO_FILTERS)} className="px-0.5 py-1 text-[13px] text-accent hover:underline">
-                {t.questionsClearFilters}
-              </button>
-            ) : null}
-            {filtered.length ? (
-              <button type="button" onClick={() => pickMany(ordered)} className="px-0.5 py-1 text-[13px] text-ink-3 hover:text-ink">
-                {t.questionsSelectAll}
-              </button>
-            ) : null}
-            {groups.length > 1 ? (
-              <button type="button" onClick={() => setClosed(allClosed ? new Set() : new Set(names))} className="px-0.5 py-1 text-[13px] text-ink-3 hover:text-ink">
-                {allClosed ? t.questionsExpandAll : t.questionsCollapseAll}
-              </button>
-            ) : null}
-          </div>
-          {labelIds.length ? (
-            <div role="group" aria-label={t.questionsLabels} className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-1 text-[13px] text-ink-3">{t.questionsLabels}</span>
-              {labelIds.map((id) => {
-                const on = f.labels.includes(id);
-                return (
-                  <button key={id} type="button" aria-pressed={on} onClick={() => set({ labels: on ? f.labels.filter((x) => x !== id) : [...f.labels, id] })} className={clsx('h-[30px] rounded-full border px-3 text-[13.5px]', on ? 'border-transparent bg-accent-soft font-medium text-accent' : 'border-line-strong text-ink-2 hover:border-ink-3 hover:text-ink')}>
-                    {labelName(id)}
-                  </button>
-                );
-              })}
-            </div>
           ) : null}
         </div>
 
@@ -486,13 +519,17 @@ export function QuestionsPage() {
       </div>
     </div>
     {openChange ? (
-      <div className="w-[26rem] shrink-0 overflow-y-auto border-l border-line bg-sheet">
+      <div className="w-[27rem] shrink-0 py-3 pr-3">
+        <div className="h-full overflow-y-auto rounded-xl border border-line bg-sheet shadow-[var(--shadow)]">
         <ProposalDetail key={openChange.id} c={openChange} onClose={() => setOpenId(null)} />
+        </div>
       </div>
     ) : null}
     {openEntry && !openChange ? (
-      <div className="w-[26rem] shrink-0 overflow-y-auto border-l border-line bg-sheet">
+      <div className="w-[27rem] shrink-0 py-3 pr-3">
+        <div className="h-full overflow-y-auto rounded-xl border border-line bg-sheet shadow-[var(--shadow)]">
         <QuestionDetail key={openEntry.q.id} q={openEntry.q} item={itemOf(openEntry.q)} where={[openEntry.gTitle, openEntry.pTitle].filter(Boolean).join(' · ')} href={openEntry.pHref} onClose={() => setOpenId(null)} onAsk={() => setAsking([openEntry.q])} />
+        </div>
       </div>
     ) : null}
     {asking ? <AskDialog questions={asking} onClose={() => setAsking(null)} /> : null}

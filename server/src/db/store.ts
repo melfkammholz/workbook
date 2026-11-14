@@ -952,6 +952,11 @@ export class Store {
     const r = this.get('SELECT * FROM changes WHERE id = ?', id);
     if (!r) return { error: 'unknown change' };
     const c = rowToChange(r);
+    // A rejection only closed the proposal: taking it back opens it again, nothing was changed.
+    if (c.status === 'rejected') {
+      this.run("UPDATE changes SET status = 'pending', feedback = '', decided_at = NULL WHERE id = ?", id);
+      return rowToChange(this.get('SELECT * FROM changes WHERE id = ?', id)!);
+    }
     if (c.status !== 'applied') return { error: `is ${c.status}, not applied` };
     try {
       this.tx(() => {

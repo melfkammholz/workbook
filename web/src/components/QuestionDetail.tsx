@@ -167,14 +167,14 @@ export function QuestionDetail({ q, item, where, href, onClose, onAsk }: { q: Qu
         <div className="mb-1.5 text-[12.5px] font-semibold text-ink-2">{t.detailHistory}</div>
         <ul className="relative space-y-0.5 pl-3.5 text-[13px] text-ink-2 before:absolute before:bottom-1.5 before:left-[3px] before:top-1.5 before:w-px before:bg-line-strong">
           {history.map((e, i) => {
-            const left = e.change?.status === 'applied' && e.change.decidedAt ? UNDO_DAYS - Math.floor((now - e.change.decidedAt) / DAY) : 0;
+            const left = (e.change?.status === 'applied' || e.change?.status === 'rejected') && e.change.decidedAt ? UNDO_DAYS - Math.floor((now - e.change.decidedAt) / DAY) : 0;
             return (
               <li key={i} className="relative flex items-baseline gap-2 py-0.5">
                 <span className={clsx('absolute -left-3.5 top-[0.6rem] size-[7px] rounded-full border-[1.5px]', e.assistant || e.change ? 'border-accent bg-accent' : 'border-line-strong bg-sheet')} aria-hidden />
                 <span className="min-w-0 flex-1">
                   {e.text}
                   {e.change && e.change.feedback ? <span className="text-ink-3"> · {e.change.feedback}</span> : null}
-                  {e.change && e.change.status === 'applied' && left > 0 ? (
+                  {e.change && (e.change.status === 'applied' || e.change.status === 'rejected') && left > 0 ? (
                     <button type="button" onClick={() => void undo(e.change!)} className="ml-2 inline-flex items-center gap-1 text-[12px] text-accent hover:underline" title={t.histUndoLeft(left)}>
                       <Undo2 size={12} aria-hidden /> {t.inboxUndo}
                     </button>
@@ -196,12 +196,14 @@ export function QuestionDetail({ q, item, where, href, onClose, onAsk }: { q: Qu
         <Button
           size="sm"
           variant="ghost"
+          aria-label={t.deleteQuestion}
+          title={t.deleteQuestion}
           onClick={() => {
             onClose();
             void deleteQuestion(item, q.id);
           }}
         >
-          <Trash2 size={14} aria-hidden /> {t.deleteQuestion}
+          <Trash2 size={15} aria-hidden />
         </Button>
         <Button
           size="sm"
