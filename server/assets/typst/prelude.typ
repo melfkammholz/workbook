@@ -56,6 +56,27 @@
   )
 }
 
+/// A work from the workbook's references (`references.bib` / `references.yml`), with the author's words about what to
+/// take from it: `#cite-work("stam1999")[the part on subtyping]`. `_cite-work` gets the works from the generated header.
+#let _cite-work(works, key, body) = {
+  if key not in works { panic("cite-work: unknown key \"" + key + "\" (not in references.bib or references.yml)") }
+  let w = works.at(key)
+  html.elem(
+    "span",
+    attrs: (
+      class: "wb-cite-work",
+      data-work: key,
+      data-title: w.title,
+      data-authors: w.authors,
+      data-year: if w.year == none { "" } else { str(w.year) },
+      data-venue: w.venue,
+      data-doi: w.doi,
+      data-url: w.url,
+    ),
+    body,
+  )
+}
+
 // ───────────────────────── widgets ─────────────────────────
 //
 // Things to try out in a lesson (or any other text). The author configures them,

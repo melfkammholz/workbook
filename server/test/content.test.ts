@@ -291,3 +291,28 @@ items:
     expect(outline.tags.some((t) => t.id === 'deep-dive')).toBe(true);
   });
 });
+
+describe('references', () => {
+  it('reads references.bib and references.yml side by side', () => {
+    const { works } = loadContent(EXAMPLE_CONTENT);
+    expect(works.map((w) => w.key).sort()).toEqual(['hutton2016', 'wadler1989']);
+    expect(works.find((w) => w.key === 'wadler1989')).toMatchObject({ year: 1989, doi: '10.1145/99370.99404', file: 'references.yml' });
+  });
+
+  it('lints unknown and duplicate keys, missing title or year, unused and repeated works', () => {
+    const dir = tmpContent({
+      'chapters/01-x/chapter.yml': 'title: X\nitems:\n  - id: a\n',
+      'chapters/01-x/a.typ': 'A #cite-work("nope")[x] #cite-work("one")[y]',
+      'references.bib': '@book{one, title={T}, year={2000}, doi={10.1/x}}\n@book{one, title={U}, year={2001}}\n@book{two, title={T}, year={2000}, doi={10.1/x}}\n@book{three, author={A}}\n',
+      'references.yml': 'one:\n  type: book\n  title: V\n  date: 1999\n',
+    });
+    const msgs = loadContent(dir).outline.problems.map((p) => `${p.severity}: ${p.message}`);
+    const has = (s: string) => expect(msgs.some((m) => m.includes(s)), s + '\n' + msgs.join('\n')).toBe(true);
+    has('error: cite-work: unknown key "nope"');
+    has('duplicate key "one"');
+    has('"three" has no title');
+    has('"three" has no year');
+    has('"two" is the same work as "one"');
+    has('"two" is not cited anywhere');
+  });
+});

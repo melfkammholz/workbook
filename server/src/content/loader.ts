@@ -28,6 +28,7 @@ import type {
 import { preprocess, PreprocessError, solutionBlocks, usesTemplateConditionals, type SolutionBlock } from './cpp.js';
 import { deriveTitle, emojiFor, slugify } from './ids.js';
 import { plainText } from './search.js';
+import { citedKeys, loadReferences, type CourseWork } from './references.js';
 import {
   chapterSchema,
   checklistSchema,
@@ -113,6 +114,8 @@ export class Content {
     readonly outline: Outline,
     private readonly items: Map<string, ServerItem>,
     private readonly docs: Map<string, ServerDoc> = new Map(),
+    /** The workbook's own literature (`references.bib`, `references.yml`). */
+    readonly works: CourseWork[] = [],
   ) {}
 
   /** The words of every item, worked out once for this version of the course. */
@@ -596,6 +599,20 @@ export function loadContent(dir: string): Content {
         warn(items.get(item.id)!.typstRel, `"${item.id}" belongs to "${own.map((t) => t.title).join('" and "')}", so it should be in a section with that name`, item.id);
     }
 
+
+  // references.bib / references.yml: problems of the files, and which keys the texts name.
+  const refs = loadReferences(dir);
+  for (const p of refs.problems) (p.severity === 'error' ? err : warn)(p.file, p.message);
+  const knownWorks = new Map(refs.works.map((w) => [w.key, w]));
+  const cited = new Set<string>();
+  for (const t of [...items.values(), ...docs.values()]) {
+    for (const key of citedKeys(t.typst)) {
+      cited.add(key);
+      if (!knownWorks.has(key)) err(t.typstRel, `cite-work: unknown key "${key}" (not in references.bib or references.yml)`, 'meta' in t ? (t as ServerItem).meta.id : undefined);
+    }
+  }
+  for (const w of refs.works) if (!cited.has(w.key)) warn(w.file, `"${w.key}" is not cited anywhere`);
+
   const outline: Outline = {
     title: wb.title,
     id: wb.id ?? slugify(wb.title),
@@ -610,7 +627,7 @@ export function loadContent(dir: string): Content {
     problems,
     version: contentSignature(dir),
   };
-  return new Content(dir, outline, items, docs);
+  return new Content(dir, outline, items, docs, refs.works);
 }
 
 function readText(file: string): string | null {

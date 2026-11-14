@@ -6,6 +6,8 @@ import type { WorkFields } from '@wb/shared';
 export interface ImportedWork extends WorkFields {
   /** The reference as one line of text, in the shape the PDF parser would have read. */
   raw: string;
+  /** The BibTeX key or Hayagriva entry key (empty when a pasted text has none). */
+  key: string;
 }
 
 export const MAX_IMPORT = 2000;
@@ -176,13 +178,14 @@ const yearOf = (s: string): number | null => {
   return m ? Number(m[1]) : null;
 };
 
-export function fromBibtex(text: string): ImportedWork[] {
+/** `keepUntitled`: entries without a title are kept (a workbook's lint reports them). */
+export function fromBibtex(text: string, keepUntitled = false): ImportedWork[] {
   const works: ImportedWork[] = [];
   for (const e of parseBibtexEntries(text)) {
     const f = e.fields;
     const get = (k: string) => unLatex(f.get(k) ?? '');
     const title = get('title');
-    if (!title) continue;
+    if (!title && !keepUntitled) continue;
     const venue = get('journal') || get('journaltitle') || get('booktitle') || get('series') || get('publisher') || get('school') || get('institution') || get('howpublished');
     const w: WorkFields = {
       title: title.slice(0, 300),
@@ -192,7 +195,7 @@ export function fromBibtex(text: string): ImportedWork[] {
       doi: cleanDoi(f.get('doi') ?? ''),
       url: /^https?:/i.test(get('url')) ? get('url').split(/\s/)[0]! : '',
     };
-    works.push({ ...w, raw: rawLine(w) });
+    works.push({ ...w, raw: rawLine(w), key: e.key });
   }
   return works;
 }
@@ -218,7 +221,7 @@ function hayaPerson(v: unknown): string {
 
 const hayaPeople = (v: unknown): string => (Array.isArray(v) ? v : v === undefined || v === null ? [] : [v]).map(hayaPerson).filter(Boolean).join(', ');
 
-export function fromHayagriva(text: string): ImportedWork[] {
+export function fromHayagriva(text: string, keepUntitled = false): ImportedWork[] {
   let doc: unknown;
   try {
     doc = YAML.parse(text, { maxAliasCount: 20 });
@@ -227,11 +230,11 @@ export function fromHayagriva(text: string): ImportedWork[] {
   }
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return [];
   const works: ImportedWork[] = [];
-  for (const entry of Object.values(doc as Record<string, unknown>)) {
+  for (const [key, entry] of Object.entries(doc as Record<string, unknown>)) {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
     const e = entry as Record<string, unknown>;
     const title = str(e['title']);
-    if (!title) continue;
+    if (!title && !keepUntitled) continue;
     const parents = (Array.isArray(e['parent']) ? e['parent'] : e['parent'] ? [e['parent']] : []).filter((p): p is Record<string, unknown> => !!p && typeof p === 'object');
     const parentTitle = parents.map((p) => str(p['title'])).find(Boolean) ?? '';
     const publisher = str(e['publisher'] && typeof e['publisher'] === 'object' ? (e['publisher'] as Record<string, unknown>)['name'] : e['publisher']);
@@ -245,7 +248,7 @@ export function fromHayagriva(text: string): ImportedWork[] {
       doi: cleanDoi(str(serial['doi']) || str(e['doi'])),
       url: str(e['url']).split(/\s/)[0]!,
     };
-    works.push({ ...w, raw: rawLine(w) });
+    works.push({ ...w, raw: rawLine(w), key });
     if (works.length >= MAX_IMPORT) break;
   }
   return works;

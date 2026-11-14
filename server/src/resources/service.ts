@@ -723,7 +723,7 @@ export class Resources {
     let merged = 0;
     this.sql.tx(() => {
       for (const c of choices.slice(0, 2000)) {
-        const w: ImportedWork = { title: c.title.slice(0, 300), authors: c.authors.slice(0, 400), year: c.year, venue: c.venue.slice(0, 300), doi: c.doi.slice(0, 200), url: c.url.slice(0, 500), raw: c.raw.slice(0, MAX_ENTRY_TEXT) };
+        const w: ImportedWork = { title: c.title.slice(0, 300), authors: c.authors.slice(0, 400), year: c.year, venue: c.venue.slice(0, 300), doi: c.doi.slice(0, 200), url: c.url.slice(0, 500), raw: c.raw.slice(0, MAX_ENTRY_TEXT), key: '' };
         const into = c.into ? (this.sql.get('SELECT * FROM works WHERE id = ?', c.into) as Row | undefined) : undefined;
         if (into) {
           const keep = (field: string, v: string) => (into[field] as string) || v;

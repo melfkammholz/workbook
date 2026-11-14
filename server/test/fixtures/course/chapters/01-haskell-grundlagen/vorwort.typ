@@ -8,3 +8,5 @@ Willkommen in diesem Arbeitsheft! Die Fragen und Programmieraufgaben hier ergän
 - Notiere dir, was dir auffällt: Zu jeder Aufgabe gibt es einen eigenen Notizbereich.
 
 Viel Erfolg und viel Spaß!
+
+Zum Nachlesen: #cite-work("hutton2016")[Kapitel 1] und #cite-work("wadler1989")[der Abschnitt über Parametrizität].

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { scanCards, type RenderedItem, type TypstDiagnostic } from '@wb/shared';
 import { dedent } from '../flashcards/source.js';
 import type { ServerItem } from './loader.js';
+import { loadReferences, worksTypst } from './references.js';
 import { bodyOf, splitDocument } from './html.js';
 
 export interface TypstOptions {
@@ -27,7 +28,7 @@ export interface RenderedNote {
 }
 
 /** Bump when the processing of Typst's output changes, so cached renders are made again. */
-const RENDER_VERSION = '4';
+const RENDER_VERSION = '5';
 
 /** Typst's warning when HTML export drops something, e.g. what a package lays out. */
 const LOST_IN_HTML = /was ignored during HTML export/;
@@ -138,9 +139,27 @@ export class TypstRenderer {
     return (await this.version()) !== 'unavailable';
   }
 
+  private refsCache: { sig: string; refs: ReturnType<typeof loadReferences> } | undefined;
+  /** The workbook's references, read again when their files change. */
+  private references() {
+    const sig = ['references.bib', 'references.yml']
+      .map((f) => {
+        try {
+          const st = fs.statSync(path.join(this.o.contentDir, f));
+          return `${st.size}:${st.mtimeMs}`;
+        } catch {
+          return '-';
+        }
+      })
+      .join('|');
+    if (this.refsCache?.sig !== sig) this.refsCache = { sig, refs: loadReferences(this.o.contentDir) };
+    return this.refsCache.refs;
+  }
+
   private header(chapterRel?: string, codeLanguage?: string | null): string[] {
     const lines = ['#import "/_workbook/prelude.typ": *'];
     if (fs.existsSync(path.join(this.o.contentDir, 'prelude.typ'))) lines.push('#import "/content/prelude.typ": *');
+    lines.push(worksTypst(this.references().works), '#let cite-work(key, body) = _cite-work(_works, key, body)');
     lines.push('#show: workbook', `#set text(lang: "${this.language}")`);
     // Code that names no language is in the language of what it is part of. A language written on the code wins.
     if (codeLanguage) lines.push(`#set raw(lang: "${codeLanguage}")`);

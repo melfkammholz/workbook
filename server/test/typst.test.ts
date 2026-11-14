@@ -25,6 +25,15 @@ describe.skipIf(!have)('TypstRenderer', () => {
     r.titles = (id) => content.get(id)?.meta.title;
   });
 
+  it('cite-work shows the author\'s words and names the work; an unknown key is an error naming it', async () => {
+    const ok = await r.renderNote('#cite-work("hutton2016")[Kapitel 1]');
+    expect(ok.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    expect(ok.html).toContain('data-work="hutton2016"');
+    expect(ok.html).toContain('Kapitel 1');
+    const bad = await r.renderNote('#cite-work("nope")[x]');
+    expect(bad.diagnostics.some((d) => d.severity === 'error' && d.message.includes('nope'))).toBe(true);
+  });
+
   it('renders a question to semantic HTML', async () => {
     const out = await r.renderItem(content.get('mutual-recursion')!);
     expect(out.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);

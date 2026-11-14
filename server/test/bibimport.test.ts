@@ -93,7 +93,7 @@ describe('BibTeX', () => {
     expect(w[0]).toMatchObject({ title: 'König’s lemma and Prolog — a note'.replace('’', "'"), authors: 'Dénes König, Anna Müller et al.', year: 2020, venue: 'Journal of the ACM', doi: '10.1000/abc.123', url: 'https://example.org/paper' });
   });
   it('does not throw on broken text', () => {
-    expect(fromBibtex('@article{x, title = {open')).toEqual([{ title: 'open', authors: '', year: null, venue: '', doi: '', url: '', raw: 'open.' }]);
+    expect(fromBibtex('@article{x, title = {open')).toEqual([{ title: 'open', authors: '', year: null, venue: '', doi: '', url: '', raw: 'open.', key: 'x' }]);
     expect(fromBibtex('@ @{ , = ')).toEqual([]);
   });
   it('unLatex', () => {

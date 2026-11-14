@@ -1,0 +1,9 @@
+wadler1989:
+  type: article
+  title: Theorems for free!
+  author: Wadler, Philip
+  date: 1989
+  doi: 10.1145/99370.99404
+  parent:
+    type: proceedings
+    title: Functional programming languages and computer architecture
