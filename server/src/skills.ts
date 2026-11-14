@@ -4,7 +4,7 @@
  */
 
 /** Bumped when a tool or a skill changes in a way an installed skill must follow; also the MCP server version. */
-export const SKILLS_VERSION = '2';
+export const SKILLS_VERSION = '3';
 
 export interface Skill {
   name: string;
@@ -18,6 +18,7 @@ const COMMON = `Rules for every workbook skill:
 - Every read of a question (\`list_questions\`, \`get_context\`) needs \`purpose\`: use this skill's name. The student sees it next to the question.
 - \`list_questions\` shows at most 20 questions and \`remaining\` counts the rest. Do the 20, then say that more are left; do not loop through all of them unless asked.
 - Each question has \`rejected\`: what the student turned down for it, in their words. Never propose the same thing again.
+- If you were given a request number (a helper started you for something the student asked for in the app), call \`get_request\` first with that number and the purpose you were given, and use exactly that purpose for every read of questions. Read the questions it names with \`list_questions\` (\`ids\`, at most 20 per call; do them in batches). The \`studentNote\` in it is the student's wish to you: follow it as far as it fits these rules.
 - Write in the language of the question (usually German). Never reveal exercise solutions unless the question asks for one; hint instead.`;
 
 export const SKILLS: Skill[] = [
@@ -54,6 +55,23 @@ ${COMMON}
 6. Finish with a short list of what you proposed and what you left out.`,
   },
   {
+    name: 'workbook-assess',
+    description: "Assess where the student stands from their questions, ratings, notes and progress, and say what could come next, as a digest plus proposals they decide on. Use when asked to assess their state or suggest what to do next.",
+    body: `# Assess where the student stands
+
+${COMMON}
+- No scores, grades, rankings, "behind" or counts of what is left. Name where questions pile up and what looks worth a second look, kindly and concretely.
+- You never write lesson text or exercises. You point at what exists in their workbook and materials.
+
+## Steps
+
+1. If you have a request number, call \`get_request\`. Read the questions it names (or, with none named, the active ones of the workbook) with \`list_questions\`.
+2. Call \`get_progress\` (it may be switched off by the student; then go without), \`list_digests\` for your earlier notes, and \`search\` or \`read_page\` for the places the questions pile up.
+3. Call \`write_digest\` once with a short, friendly summary in the student's language: where their questions cluster, what they seem to have under control, and two or three concrete next steps that point at existing sections or exercises.
+4. Where a question shows a gap that one flashcard would close, call \`propose_card\` (grounded in the text, at most five).
+5. Finish with a short list of what you wrote and proposed.`,
+  },
+  {
     name: 'workbook-exercise-help',
     description: "Help with one exercise from the student's saved work: run their tests, explain where code and tests disagree, hint instead of revealing the solution. Use when asked for help with an exercise.",
     body: `# Help with an exercise
@@ -63,7 +81,7 @@ ${COMMON}
 
 ## Steps
 
-1. Get the exercise id from the student. If they only name a topic, use \`search\`.
+1. Get the exercise id from \`get_request\` (\`exercise\`) or from the student. If they only name a topic, use \`search\`.
 2. Call \`get_exercise_work\` for the task and their saved code, then \`run_tests\` (it runs their saved code, never yours).
 3. If they asked a question about the exercise, find it with \`list_questions\` (\`item\` set to the exercise id, purpose \`"workbook-exercise-help"\`) and read \`get_context\`.
 4. Say what works, find where the code and the tests disagree, and explain why. Give hints, not the fix. Offer a stronger hint only if they ask.

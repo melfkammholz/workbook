@@ -1,7 +1,7 @@
 import { Check, Copy, ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import { DEFAULT_PROMPT_TEMPLATE, PROMPT_PLACEHOLDERS } from '@wb/shared';
-import { fetchAiPrompt, useSaveSettings, useSettings, type PromptRequest } from '@/lib/api';
+import { fetchAiPrompt, sendAssistantRequest, useAssistant, useSaveSettings, useSettings, type PromptRequest } from '@/lib/api';
 import { useLang, useT } from '@/lib/i18n';
 import { Button } from './ui';
 
@@ -25,6 +25,8 @@ export function AiPanel({ id, title, answer, tests }: { id: string; title: strin
   const [prompt, setPrompt] = useState<string | null>(null);
   const [copied, setCopied] = useState<'yes' | 'failed' | null>(null);
   const [lineCopied, setLineCopied] = useState(false);
+  const helper = useAssistant(!!settings?.assistantBridge).data;
+  const [helpSent, setHelpSent] = useState(false);
 
   if (!settings) return null;
   const standard = DEFAULT_PROMPT_TEMPLATE[lang];
@@ -111,6 +113,14 @@ export function AiPanel({ id, title, answer, tests }: { id: string; title: strin
                 {lineCopied ? <Check size={15} /> : <Copy size={15} />} {t.aiBridgeCopy}
               </Button>
             </div>
+            {helper?.allowed ? (
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <Button variant="primary" disabled={helpSent} onClick={() => void sendAssistantRequest({ kind: 'exercise-help', item: id }).then(() => setHelpSent(true))}>
+                  {t.reqHelp}
+                </Button>
+                {helpSent ? <span className="text-[13px] text-ink-3">{t.reqHelpSent}</span> : helper.connected ? null : <span className="text-[13px] text-ink-3">{t.reqWaitingNoHelper}</span>}
+              </div>
+            ) : null}
           </div>
         ) : null}
 

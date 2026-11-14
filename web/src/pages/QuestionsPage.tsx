@@ -2,6 +2,7 @@ import { ChevronDown, Search } from 'lucide-react';
 import { QuestionDetail } from '@/components/QuestionDetail';
 import { ProposalDetail } from '@/components/ProposalDetail';
 import { useChangeText } from '@/components/Proposals';
+import { AssistantStrip } from '@/components/AssistantStrip';
 import { AskDialog, BulkBar, itemOf } from '@/components/QuestionsBulk';
 import { clsx } from 'clsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -10,7 +11,7 @@ import { Link } from 'wouter';
 import { QUESTION_KINDS, RESOURCE_TYPES, type Change, type Question, type QuestionKind, type ResourceType } from '@wb/shared';
 import { Empty, Spinner } from '@/components/ui';
 import { useTags } from '@/lib/tags';
-import { acceptChanges, isStandalone, updateQuestion, useChanges, useCourses, useOutline, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
+import { acceptChanges, isStandalone, updateQuestion, useChanges, useCourses, useOutline, useAssistant, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { useResources } from '@/lib/resources';
@@ -82,6 +83,13 @@ export function QuestionsPage() {
   const [asking, setAsking] = useState<Question[] | null>(null);
   const lastPicked = useRef<string | null>(null);
   const proposals = usePendingProposals();
+  const helper = useAssistant(bridgeOn).data;
+  /** Questions a queued or running request is about: the row says wartet or liest. */
+  const asked = useMemo(() => {
+    const m = new Map<string, 'queued' | 'running'>();
+    for (const r of helper?.requests ?? []) if (r.status === 'queued' || r.status === 'running') for (const id of r.params.questions) if (m.get(id) !== 'running') m.set(id, r.status);
+    return m;
+  }, [helper]);
   const changes = useChanges(bridgeOn).data;
   const { show, fieldName } = useChangeText();
   const set = (patch: Partial<Filters>) => setF((x) => ({ ...x, ...patch }));
@@ -272,6 +280,7 @@ export function QuestionsPage() {
               {l}
             </span>
           ))}
+          {asked.get(q.id) ? <span className="text-[11.5px] italic text-ink-3">{asked.get(q.id) === 'running' ? t.reqReading : t.reqWaiting}</span> : null}
           {waiting ? <span className="rounded-full bg-accent-soft px-2 text-[11.5px] text-accent">{t.questionsProposals(waiting)}</span> : null}
           <span className="min-w-[5.2rem] text-right tabular-nums" title={new Date(q.createdAt).toLocaleString()}>
             {t.questionAge(days)}
@@ -425,6 +434,8 @@ export function QuestionsPage() {
             </div>
           ) : null}
         </div>
+
+        <AssistantStrip enabled={bridgeOn} />
 
         {nothing ? (
           <Empty title={active ? t.questionsNoMatch : t.noQuestions}>{active ? t.questionsNoMatchHint : t.questionsNoneAnywhere}</Empty>

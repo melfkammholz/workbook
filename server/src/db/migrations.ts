@@ -913,6 +913,33 @@ export const MIGRATIONS: Migration[] = [
   );
   CREATE INDEX question_fetches_q ON question_fetches (question_id, id);
   `,
+  /*
+   * 41: the host helper. `assistant_requests` is the queue (ids only in params_json, never question text); `helper_key`
+   * holds the hash of the one key the helper uses, which works on /api/helper/* and nowhere else.
+   */ `
+  CREATE TABLE assistant_requests (
+    id          TEXT PRIMARY KEY,
+    kind        TEXT NOT NULL,
+    skill       TEXT NOT NULL,
+    params_json TEXT NOT NULL,
+    workbook    TEXT NOT NULL,
+    status      TEXT NOT NULL CHECK (status IN ('queued','running','done','failed','cancelled')),
+    created_at  INTEGER NOT NULL,
+    claimed_at  INTEGER,
+    finished_at INTEGER,
+    exit_code   INTEGER,
+    log_tail    TEXT NOT NULL DEFAULT '',
+    summary_json TEXT,
+    cancel      INTEGER NOT NULL DEFAULT 0,
+    dismissed   INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX assistant_requests_status ON assistant_requests (status, created_at);
+  CREATE TABLE helper_key (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    hash       TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

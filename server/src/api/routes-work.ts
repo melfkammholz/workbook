@@ -49,6 +49,7 @@ const bodies = {
       lookupReferences: z.boolean(),
       showAi: z.boolean(),
       assistantBridge: z.boolean(),
+      assistantRequests: z.boolean(),
       bridgeIncludeSolutions: z.boolean(),
       bridgeIncludeProgress: z.boolean(),
       safeColors: z.boolean(),

@@ -2,7 +2,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { Check } from 'lucide-react';
 import { useState } from 'react';
 import type { Question } from '@wb/shared';
-import { setQuestionTags, updateQuestion } from '@/lib/api';
+import { sendAssistantRequest, setQuestionTags, updateQuestion, useAssistant } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useTags } from '@/lib/tags';
 import { Button, Dialog, clsx } from './ui';
@@ -22,6 +22,15 @@ export function AskDialog({ questions, onClose }: { questions: Question[]; onClo
   const [kind, setKind] = useState<Ask>('answer');
   const [note, setNote] = useState('');
   const [copied, setCopied] = useState(false);
+  const [sent, setSent] = useState(false);
+  const helper = useAssistant().data;
+  const canSend = !!helper?.allowed;
+  const send = () => {
+    void sendAssistantRequest({ kind, questions: questions.map((q) => q.id), ...(note.trim() ? { note: note.trim() } : {}) }).then(() => {
+      setSent(true);
+      setTimeout(onClose, 700);
+    });
+  };
   const copy = () => {
     const lines = questions.map((q) => `- [${q.id}] ${q.text.replace(/\s+/g, ' ').trim() || '…'}`);
     void navigator.clipboard?.writeText(t.askPrompt(kind, lines, note.trim())).then(() => {
@@ -46,12 +55,17 @@ export function AskDialog({ questions, onClose }: { questions: Question[]; onClo
       <p className="mt-3 border-t border-line pt-2 text-[12.5px] text-ink-3">
         {t.askReads} <b className="font-semibold text-ink-2">{t.askChanges}</b>
       </p>
-      <p className="mt-1 text-[12.5px] text-ink-3">{t.askCopyHint}</p>
+      <p className="mt-1 text-[12.5px] text-ink-3">{canSend ? (helper?.connected ? t.askHelperOn : t.askHelperOff) : t.askCopyHint}</p>
       <div className="mt-3 flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>
           {t.cancel}
         </Button>
-        <Button variant="primary" onClick={copy}>
+        {canSend ? (
+          <Button variant={helper?.connected ? 'primary' : 'secondary'} onClick={send} disabled={sent}>
+            {sent ? t.askSent : t.askSend}
+          </Button>
+        ) : null}
+        <Button variant={canSend && helper?.connected ? 'secondary' : 'primary'} onClick={copy}>
           {copied ? t.askCopied : t.askCopy}
         </Button>
       </div>

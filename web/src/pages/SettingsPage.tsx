@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { ANNOTATION_COLORS, DUSK_COLORS, isCustomColor, normalizeColor, type AnnotationColor, type Settings, type SnapshotInfo, type UiLanguage } from '@wb/shared';
 import { Plus, X } from 'lucide-react';
-import { api, keys, useSaveSettings, useSettings } from '@/lib/api';
+import { api, keys, useAssistant, useSaveSettings, useSettings } from '@/lib/api';
 import { useTagActions, useTags } from '@/lib/tags';
 import { useAllPdfPages } from '@/lib/pdfPages';
 import { swatchProps } from '@/lib/annotations';
@@ -57,6 +57,11 @@ function AssistantBridge({ settings, set }: { settings: Settings; set: (p: Parti
   }, [settings.assistantBridge, settings.bridgeToken]);
   const skillsCommand = `curl -fsS ${window.location.origin}/skills/install.sh | sh`;
   const [skillsCopied, setSkillsCopied] = useState(false);
+  const helper = useAssistant(settings.assistantBridge && settings.assistantRequests).data;
+  /** The helper key is shown once, right after it was made. */
+  const [helperKey, setHelperKey] = useState<string | null>(null);
+  const [helperCopied, setHelperCopied] = useState(false);
+  const helperCommand = `curl -fsS ${window.location.origin}/helper/workbook-helper.mjs -o workbook-helper.mjs && WORKBOOK_HELPER_KEY=${helperKey ?? '…'} node workbook-helper.mjs`;
   const command = `claude mcp add --transport http workbook ${window.location.origin}/mcp --header "Authorization: Bearer ${settings.bridgeToken}"`;
   return (
     <div className="space-y-3">
@@ -100,6 +105,35 @@ function AssistantBridge({ settings, set }: { settings: Settings; set: (p: Parti
               </Button>
             </div>
           </div>
+          <Toggle checked={settings.assistantRequests} onChange={(v) => set({ assistantRequests: v })} title={t.helperTitle} body={t.helperBody} />
+          {settings.assistantRequests ? (
+            <div className="space-y-2">
+              <p className="text-[13px] text-ink-2">
+                <span aria-hidden className={clsx('mr-1.5 inline-block size-2 rounded-full', helper?.connected ? 'bg-done' : 'border border-ink-3')} />
+                {helper?.connected ? t.helperConnected : t.helperNotConnected}
+              </p>
+              {helperKey ? (
+                <>
+                  <p className="text-[13px] text-ink-2">{t.helperRun}</p>
+                  <pre className="overflow-x-auto wb-field px-3 py-2 text-xs">{helperCommand}</pre>
+                  <Button
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(helperCommand).then(() => {
+                        setHelperCopied(true);
+                        setTimeout(() => setHelperCopied(false), 1500);
+                      });
+                    }}
+                  >
+                    {helperCopied ? t.bridgeCopied : t.skillsCopy}
+                  </Button>
+                </>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-3">
+                <Button onClick={() => void api.post<{ key: string }>('/api/assistant/key', {}).then((r) => setHelperKey(r.key))}>{helper?.hasKey || helperKey ? t.helperKeyNewer : t.helperKeyNew}</Button>
+                <span className="text-xs text-ink-3">{t.helperKeyBody}</span>
+              </div>
+            </div>
+          ) : null}
           <div>
             <p className="mb-1 text-sm font-medium">{t.bridgeDigestsTitle}</p>
             {digests.data?.length ? (

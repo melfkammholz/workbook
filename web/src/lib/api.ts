@@ -4,6 +4,9 @@ import { afterPaint } from './afterPaint';
 import { queryClient } from './queryClient';
 import { reportSaveFailed } from './saveNotice';
 import type {
+  AssistantRequest,
+  AssistantStatus,
+  RequestKind,
   AchievementsResponse,
   AnswerVersion,
   CheckRun,
@@ -478,6 +481,30 @@ export const usePendingProposals = () => {
     return out;
   }, [data]);
 };
+/** The queue of requests to the assistant and whether a helper is connected; looked at often while something is waiting. */
+export const assistantKey = ['assistant'] as const;
+export const useAssistant = (enabled = true) =>
+  useQuery({
+    queryKey: assistantKey,
+    queryFn: () => api.get<AssistantStatus>('/api/assistant'),
+    enabled,
+    staleTime: 10_000,
+    refetchInterval: (q) => (q.state.data?.requests.some((r) => r.status === 'queued' || r.status === 'running') ? 4_000 : 30_000),
+  });
+export const sendAssistantRequest = async (body: { kind: RequestKind; questions?: string[]; item?: string; note?: string }) => {
+  try {
+    return await api.post<AssistantRequest>('/api/assistant/requests', body);
+  } finally {
+    void queryClient.invalidateQueries({ queryKey: assistantKey });
+  }
+};
+export const assistantAction = async (id: string, action: 'cancel' | 'dismiss' | 'retry') => {
+  try {
+    await api.post(`/api/assistant/requests/${encodeURIComponent(id)}/${action}`, {});
+  } finally {
+    void queryClient.invalidateQueries({ queryKey: assistantKey });
+  }
+};
 /** One stream per tab: the server says when the inbox changed (the assistant proposed, another tab decided). */
 export const useChangesStream = (enabled: boolean) => {
   useEffect(() => {
@@ -486,6 +513,7 @@ export const useChangesStream = (enabled: boolean) => {
     es.onmessage = () => {
       void queryClient.invalidateQueries({ queryKey: changesKey });
       void queryClient.invalidateQueries({ queryKey: questionsKey });
+      void queryClient.invalidateQueries({ queryKey: assistantKey });
     };
     return () => es.close();
   }, [enabled]);

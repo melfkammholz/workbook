@@ -350,6 +350,8 @@ export interface Settings {
   showAi: boolean;
   /** Opt-in, under `showAi`. While false, `/mcp` answers 404. */
   assistantBridge: boolean;
+  /** Opt-in, under the bridge. While false, nothing is queued for a helper and "ask the assistant" copies a prompt. */
+  assistantRequests: boolean;
   /** Whether the bridge may read solutions and author notes. */
   bridgeIncludeSolutions: boolean;
   /** Whether the bridge may read done items, self-ratings and card reviews (`get_progress`). */
@@ -401,6 +403,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lookupReferences: false,
   showAi: false,
   assistantBridge: false,
+  assistantRequests: false,
   bridgeIncludeSolutions: true,
   bridgeIncludeProgress: true,
   bridgeToken: '',
@@ -959,6 +962,7 @@ export * from './pdfPages';
 export * from './pdfToc';
 export * from './pdfReanchor';
 export * from './questions';
+export * from './assistant';
 export * from './bibliography';
 export * from './citations';
 export * from './tags';

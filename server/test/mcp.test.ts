@@ -66,7 +66,7 @@ describe('assistant bridge', () => {
     expect(init.capabilities.tools).toBeDefined();
     expect((await rpc('notifications/initialized', undefined, {}, null)).statusCode).toBe(202);
     const names = (await rpc('tools/list')).json().result.tools.map((x: { name: string }) => x.name);
-    expect([...names].sort()).toEqual(['get_context', 'get_exercise_work', 'get_progress', 'list_decks', 'list_digests', 'list_flagged_references', 'list_labels', 'list_proposals', 'list_questions', 'propose', 'propose_card', 'propose_highlight', 'propose_merge', 'propose_question', 'propose_reference', 'read_page', 'run_tests', 'search', 'write_digest']);
+    expect([...names].sort()).toEqual(['get_context', 'get_exercise_work', 'get_progress', 'get_request', 'list_decks', 'list_digests', 'list_flagged_references', 'list_labels', 'list_proposals', 'list_questions', 'propose', 'propose_card', 'propose_highlight', 'propose_merge', 'propose_question', 'propose_reference', 'read_page', 'run_tests', 'search', 'write_digest']);
     expect((await rpc('nope')).json().error.code).toBe(-32601);
   });
 
