@@ -1,5 +1,5 @@
 import { ArrowRight, BookOpen, Compass, RotateCcw } from 'lucide-react';
-import { useMemo } from 'react';
+import { Fragment, useMemo } from 'react';
 import { Link } from 'wouter';
 import type { ChapterMeta, ExerciseMeta, Status, StudentState } from '@wb/shared';
 import { ProgressLine } from '@/components/ItemRows';
@@ -151,7 +151,7 @@ export function Dashboard() {
                   <li key={a.id}>
                     <Link href={`/adventure/${a.id}`} className="flex h-full flex-col rounded-lg border border-accent/40 bg-accent-soft/40 px-4 py-3.5 hover:border-accent">
                       <span className="flex items-center gap-2 font-semibold">
-                        <Compass size={16} className="shrink-0 text-accent" /> {a.title}
+                        <Compass size={16} className="shrink-0 text-accent" /> <Title text={a.title} />
                       </span>
                       {a.description ? <span className="mt-1 text-[13.5px] text-ink-2">{a.description}</span> : null}
                       <span className="mt-auto pt-3">
@@ -181,7 +181,7 @@ export function Dashboard() {
                       <span className="flex items-center gap-2 font-semibold">
                         <Icon size={16} className="shrink-0 text-ink-2" /> {t.threadKind[k]}
                       </span>
-                      <span className="mt-1 text-[13.5px] text-ink-2">{groups.map((g) => g.title).join(' · ')}</span>
+                      <span className="mt-1 text-[13.5px] text-ink-2">{groups.map((g, i) => <Fragment key={g.id}>{i ? ' · ' : ''}<Title text={g.title} /></Fragment>)}</span>
                       <span className="mt-auto pt-3">
                         <span className="mb-1 block text-xs tabular-nums text-ink-2">{t.nDoneOfM(done, total)}</span>
                         <ProgressLine done={done} total={total} />
@@ -198,7 +198,7 @@ export function Dashboard() {
           <>
             {outline.parts.map((part) => (
               <section key={part.id} className="mt-10">
-                <h2 className="text-[15px] font-semibold">{part.title}</h2>
+                <h2 className="text-[15px] font-semibold"><Title text={part.title} /></h2>
                 {part.summary ? <p className="mt-0.5 text-[13.5px] text-ink-2">{part.summary}</p> : null}
                 <ChapterList chapters={outline.chapters.filter((c) => c.partId === part.id)} state={state} />
               </section>
@@ -224,7 +224,7 @@ export function Dashboard() {
             <ul className="space-y-3">
               {paths.map((t) => (
                 <li key={t.id} className="rounded-lg border border-line bg-sheet px-4 py-3">
-                  <p className="font-medium">{t.title}</p>
+                  <p className="font-medium"><Title text={t.title} /></p>
                   {t.description ? <p className="mt-0.5 text-[13.5px] text-ink-2">{t.description}</p> : null}
                   <ol className="mt-3 flex flex-wrap items-center gap-y-2">
                     {t.steps.map((step, i) => (
@@ -267,7 +267,7 @@ function ChapterList({ chapters, state }: { chapters: ChapterMeta[]; state: Stud
               <div className="flex items-baseline justify-between gap-3">
                 <span className="font-medium">
                   {c.number !== null ? <span className="mr-2 font-mono text-xs text-ink-3">{c.number}</span> : null}
-                  {c.title}
+                  <Title text={c.title} />
                 </span>
                 <span className="flex shrink-0 items-center gap-2 text-xs tabular-nums text-ink-3">
                   <Plant chapterId={c.id} className="text-[15px] leading-none" />

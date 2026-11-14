@@ -1,3 +1,4 @@
+import { Title } from '@/components/Title';
 import type { Anchor } from '@wb/shared';
 import { targetHref } from '@wb/shared';
 import { useOutline } from '@/lib/api';
@@ -31,9 +32,9 @@ export function CardAnchorLink({ anchor, className = '' }: { anchor: Anchor | nu
   if (!link) return null;
   return link.href ? (
     <a href={link.href} className={`text-accent hover:underline ${className}`}>
-      {link.label}
+      <Title text={link.label} />
     </a>
   ) : (
-    <span className={className}>{link.label}</span>
+    <span className={className}><Title text={link.label} /></span>
   );
 }

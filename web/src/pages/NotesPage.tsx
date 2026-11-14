@@ -50,7 +50,7 @@ export function NotesPage() {
               {items.map((item) => (
                 <article key={item.id}>
                   <Link href={`/item/${item.id}`} className="mb-1.5 block text-sm font-medium text-accent hover:underline">
-                    {item.title}
+                    <Title text={item.title} />
                   </Link>
                   <RenderedText source={notes[item.id]!.content} full />
                 </article>

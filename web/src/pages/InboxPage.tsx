@@ -4,6 +4,7 @@ import type { Anchor, CardPayload, Change, HighlightPayload, Question, QuestionP
 import { Link } from 'wouter';
 import { CardProposalDialog, ChangeEditor, ChangeValue, isCardProposal, useChangeText, type Value } from '@/components/Proposals';
 import { useAnchorLink } from '@/lib/cardAnchor';
+import { Title } from '@/components/Title';
 import { Button, Empty, Spinner, clsx } from '@/components/ui';
 import { acceptChanges, decideChange, undoBatch, useChanges, useQuestions } from '@/lib/api';
 import { useWorks } from '@/lib/bibliography';
@@ -240,9 +241,9 @@ function GroupWhere({ anchor }: { anchor: Anchor | null }) {
   if (!link?.label) return null;
   return link.href ? (
     <Link href={link.href} className="mt-0.5 inline-block text-[12.5px] text-accent hover:underline">
-      {link.label}
+      <Title text={link.label} />
     </Link>
   ) : (
-    <p className="mt-0.5 text-[12.5px] text-ink-3">{link.label}</p>
+    <p className="mt-0.5 text-[12.5px] text-ink-3"><Title text={link.label} /></p>
   );
 }

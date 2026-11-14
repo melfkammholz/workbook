@@ -6,6 +6,7 @@ import { Empty, clsx } from '@/components/ui';
 import { indexItems, isExercise, statusOf, useOutline, useState_ } from '@/lib/api';
 import { focusOf, itemInFocus, staysInSight } from '@/lib/focus';
 import { useT } from '@/lib/i18n';
+import { Title, plainTitle } from '@/components/Title';
 
 /**
  * The course's sessions, homework sheets or old exams: each group a section with what belongs to it, like the
@@ -16,7 +17,7 @@ export function KindPage({ kind }: { kind: ThreadKind }) {
   const outline = useOutline().data;
   const state = useState_().data?.state;
   useEffect(() => {
-    if (outline) document.title = `${t.threadKind[kind]} · ${outline.title}`;
+    if (outline) document.title = `${t.threadKind[kind]} · ${plainTitle(outline.title)}`;
   }, [outline, kind, t]);
   if (!outline) return null;
   const { map } = indexItems(outline);
@@ -42,7 +43,7 @@ export function KindPage({ kind }: { kind: ThreadKind }) {
           const hidden = items.filter((i) => !staysInSight(i, state));
           return (
             <section key={g.id} id={`group-${g.id}`} className="mt-10 scroll-mt-6">
-              <h2 className="text-[1.25rem] font-semibold tracking-[-0.015em]">{g.title}</h2>
+              <h2 className="text-[1.25rem] font-semibold tracking-[-0.015em]"><Title text={g.title} /></h2>
               {g.description ? <p className="mt-1 text-[14.5px] text-ink-2">{g.description}</p> : null}
               <div className="mt-3">
                 <p className="mb-1.5 text-[13px] tabular-nums text-ink-2">{t.nDoneOfM(done, counted.length)}</p>

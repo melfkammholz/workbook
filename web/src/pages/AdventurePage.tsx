@@ -8,6 +8,7 @@ import { Empty } from '@/components/ui';
 import { indexItems, statusOf, threadProgress, useOutline, useState_ } from '@/lib/api';
 import { READING_COLUMN } from '@/components/TaskColumn';
 import { useT } from '@/lib/i18n';
+import { Title } from '@/components/Title';
 
 /** An adventure: the author's introduction, the path through it, and where the student is on it. */
 export function AdventurePage({ id }: { id: string }) {
@@ -32,7 +33,7 @@ export function AdventurePage({ id }: { id: string }) {
         <p className="mb-1.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-accent">
           <Compass size={14} /> {t.adventure}
         </p>
-        <h1 className="text-balance text-[2rem] font-semibold leading-tight tracking-[-0.025em]">{thread.title}</h1>
+        <h1 className="text-balance text-[2rem] font-semibold leading-tight tracking-[-0.025em]"><Title text={thread.title} /></h1>
         {thread.description ? <p className="mt-2 text-ink-2">{thread.description}</p> : null}
         <div className="mt-6">
           <p className="mb-1.5 text-[13px] tabular-nums text-ink-2">{t.stepsDone(done, total)}</p>

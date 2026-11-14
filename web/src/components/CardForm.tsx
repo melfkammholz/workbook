@@ -3,6 +3,7 @@ import { Columns2, PanelBottom, X } from 'lucide-react';
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { ApiError } from '@/lib/api';
 import { useAnchorLink } from '@/lib/cardAnchor';
+import { plainTitle } from '@/components/Title';
 import { cardText, previewDeck, type CardFields } from '@/lib/flashcards';
 import { QuizCardFields } from './QuizCardFields';
 import { useT } from '@/lib/i18n';
@@ -292,7 +293,7 @@ function References({ origin, from, mark, highlight, onDropFrom, onDropHighlight
         {highlight
           ? chip('highlight', mark ? `${t.cardHighlight} “${mark.quote.trim().slice(0, 60)}”` : `${t.cardHighlight}: ${t.cardReferenceGone}`, onDropHighlight, t.cardDropReference)
           : null}
-        {anchor ? chip('anchor', `${t.cardAnchor}: ${anchorLink?.label ?? ''}`, onDropAnchor, t.cardDropReference) : null}
+        {anchor ? chip('anchor', `${t.cardAnchor}: ${plainTitle(anchorLink?.label ?? '')}`, onDropAnchor, t.cardDropReference) : null}
       </ul>
       <p className="mt-1 text-[12px] text-ink-3">{t.cardReferencesHint}</p>
     </div>

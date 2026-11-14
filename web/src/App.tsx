@@ -54,6 +54,7 @@ import { PdfRefPicker } from '@/components/PdfRefPicker';
 import { WorkPicker } from '@/components/WorkPicker';
 import { useRewards } from '@/lib/rewards';
 import { THREAD_KINDS, type ThreadKind } from '@wb/shared';
+import { Title, plainTitle } from '@/components/Title';
 
 export function App() {
   useEffect(() => {
@@ -300,7 +301,7 @@ function CourseShell() {
   });
 
   useEffect(() => {
-    if (outline.data) document.title = outline.data.title;
+    if (outline.data) document.title = plainTitle(outline.data.title);
   }, [outline.data]);
 
   // What the Typst editors offer: this course's exercises and tags.
@@ -354,7 +355,7 @@ function CourseShell() {
           </IconButton>
         )}
         <Link href="/" className="ml-1 truncate rounded-md px-2 py-1 text-[15px] font-semibold tracking-tight hover:bg-sunk">
-          {o.title}
+          <Title text={o.title} />
         </Link>
         <CourseMenu onCourses={() => setSwitching(true)} />
         {updates ? (

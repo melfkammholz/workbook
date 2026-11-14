@@ -110,7 +110,7 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
     document.title = `${plainTitle(meta.title)} · ${outline.title}`;
     return () => {
       cancel();
-      document.title = outline.title;
+      document.title = plainTitle(outline.title);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);

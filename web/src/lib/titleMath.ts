@@ -15,18 +15,49 @@ const SYMBOLS: Record<string, string> = {
   minus: '−', not: '¬', and: '∧', or: '∨', dots: '…', 'dots.h': '…', arrow: '→', 'arrow.r': '→', 'arrow.l': '←',
   'arrow.l.r': '↔', 'arrow.r.double': '⇒', 'arrow.l.r.double': '⇔', approx: '≈', equiv: '≡', prime: '′', angle: '∠',
   sum: '∑', product: '∏', integral: '∫', 'plus.minus': '±', ell: 'ℓ', NN: 'ℕ', ZZ: 'ℤ', QQ: 'ℚ', RR: 'ℝ', CC: 'ℂ',
+  without: '∖', 'subset.neq': '⊊', 'supset.eq': '⊇', 'supset.neq': '⊋', 'in.rev': '∋', complement: '∁', star: '⋆', 'times.circle': '⊗', 'plus.circle': '⊕', divides: '∣', lt: '<', gt: '>', eq: '=', ast: '∗', 
   top: '⊤', bot: '⊥', compose: '∘', 'dot.c': '⋅', 'lt.eq': '≤', 'gt.eq': '≥', 'eq.not': '≠',
 };
 const OPS: Record<string, string> = {
   '->': '→', '<-': '←', '<->': '↔', '=>': '⇒', '<=>': '⇔', '|->': '↦', '<=': '≤', '>=': '≥', '!=': '≠', '==': '=', '...': '…',
-  '*': '⋅', '-': '−', '<<': '≪', '>>': '≫', '~': '∼', '|': '|',
+  '*': '∗', '-': '−', '<<': '≪', '>>': '≫', '~': '∼', '|': '|',
 };
 const OPERATOR_NAMES = new Set(['sin', 'cos', 'tan', 'log', 'ln', 'exp', 'max', 'min', 'lim', 'det', 'gcd', 'lcm', 'mod', 'arg', 'sup', 'inf', 'dim', 'ker', 'deg']);
 const BIG = new Set(['∑', '∏', '∫', '∪', '∩']);
 
+/** Typst's letter styles (`cal(A)`, `bb(R)`, …) are the letters of Unicode's math block; a few are in older places. */
+const STYLE_BASES: Record<string, [number, number]> = {
+  cal: [0x1d49c, 0x1d4b6], bb: [0x1d538, 0x1d552], frak: [0x1d504, 0x1d51e], bold: [0x1d400, 0x1d41a], sans: [0x1d5a0, 0x1d5ba], mono: [0x1d670, 0x1d68a],
+};
+const STYLE_EXCEPTIONS: Record<string, Record<string, string>> = {
+  cal: { B: 'ℬ', E: 'ℰ', F: 'ℱ', H: 'ℋ', I: 'ℐ', L: 'ℒ', M: 'ℳ', R: 'ℛ', e: 'ℯ', g: 'ℊ', o: 'ℴ' },
+  bb: { C: 'ℂ', H: 'ℍ', N: 'ℕ', P: 'ℙ', Q: 'ℚ', R: 'ℝ', Z: 'ℤ' },
+  frak: { C: 'ℭ', H: 'ℌ', I: 'ℑ', R: 'ℜ', Z: 'ℨ' },
+};
+
+function styleChar(style: string, ch: string): string {
+  const ex = STYLE_EXCEPTIONS[style]?.[ch];
+  if (ex) return ex;
+  const base = STYLE_BASES[style]!;
+  if (ch >= 'A' && ch <= 'Z') return String.fromCodePoint(base[0] + ch.charCodeAt(0) - 65);
+  if (ch >= 'a' && ch <= 'z') return String.fromCodePoint(base[1] + ch.charCodeAt(0) - 97);
+  return ch;
+}
+
+/** Styled letter → its style and plain letter, for reading a heading's MathML back as Typst. */
+const UNSTYLE = new Map<string, [string, string]>();
+for (const style of Object.keys(STYLE_BASES)) {
+  for (const ch of 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') UNSTYLE.set(styleChar(style, ch), [style, ch]);
+}
+
+function styled(style: string, n: MathNode): MathNode {
+  if (n.tag === 'mi' && n.text) return { ...n, text: [...n.text].map((c) => styleChar(style, c)).join(''), attrs: {} };
+  return n.kids ? { ...n, kids: n.kids.map((k) => styled(style, k)) } : n;
+}
+
 class Fail extends Error {}
 
-const TOKEN = /\s*(?:(\d+(?:\.\d+)?)|([A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z]+)*)|"([^"]*)"|(<->|<=>|\|->|\.\.\.|->|<-|=>|<=|>=|!=|==|<<|>>)|(.))/y;
+const TOKEN = /\s*(?:(\d+(?:\.\d+)?)|([A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z]+)*)|"([^"]*)"|(<->|<=>|\|->|\.\.\.|->|<-|=>|<=|>=|!=|==|<<|>>)|(.))/yu;
 type Tok = { k: 'num' | 'id' | 'str' | 'op'; v: string };
 
 function tokenize(src: string): Tok[] {
@@ -118,6 +149,13 @@ class Reader {
       const [open = '', close = ''] = ({ abs: ['|', '|'], norm: ['‖', '‖'], floor: ['⌊', '⌋'], ceil: ['⌈', '⌉'], cancel: ['', ''] } as Record<string, string[]>)[name]!;
       return { tag: 'mrow', kids: [leaf('mo', open), body, leaf('mo', close)] };
     }
+    if (STYLE_BASES[name] && this.isOp('(')) {
+      this.i++;
+      const inner = this.seq();
+      if (!this.isOp(')')) throw new Fail();
+      this.i++;
+      return styled(name, row(inner));
+    }
     if (OPERATOR_NAMES.has(name)) return leaf('mi', name, { mathvariant: 'normal' });
     const sym = SYMBOLS[name];
     if (sym) return BIG.has(sym) ? leaf('mo', sym) : /^[A-Za-zΑ-ωℓ]$/.test(sym) ? leaf('mi', sym) : leaf('mo', sym);
@@ -192,9 +230,23 @@ export function mathElementToSource(el: Element): string {
       case 'mfrac': return `${wrap(walk(kids[0]!))}/${wrap(walk(kids[1]!))}`;
       case 'msqrt': return `sqrt(${inner()})`;
       case 'mtext': return `"${n.textContent ?? ''}"`;
-      case 'mi': case 'mn': case 'mo': return n.textContent ?? '';
+      case 'mi': case 'mn': case 'mo': return plainLetters(n.textContent ?? '');
       default: return kids.length ? inner() : (n.textContent ?? '');
     }
   };
   return walk(el);
+}
+
+/** Typst's MathML uses the italic letters of Unicode's math block (𝐴, 𝑎); a title is written with plain ones. */
+function plainLetters(s: string): string {
+  return [...s]
+    .map((ch) => {
+      const c = ch.codePointAt(0)!;
+      const st = UNSTYLE.get(ch);
+      if (st) return `${st[0]}(${st[1]})`;
+      if (c === 0x210e) return 'h';
+      if (c >= 0x1d434 && c <= 0x1d467) return String.fromCharCode(((c - 0x1d434) % 26) + (c - 0x1d434 < 26 ? 65 : 97));
+      return ch;
+    })
+    .join('');
 }

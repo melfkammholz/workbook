@@ -1,6 +1,7 @@
 import { ChevronDown, Search } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useEffect, useMemo, useState } from 'react';
+import { Title } from '@/components/Title';
 import { Link } from 'wouter';
 import { QUESTION_KINDS, RESOURCE_TYPES, type Question, type QuestionKind, type ResourceType } from '@wb/shared';
 import { QuestionRow } from '@/components/Questions';
@@ -273,7 +274,7 @@ export function QuestionsPage() {
               <section key={g.key} className="mt-3">
                 <button type="button" aria-expanded={!shut} onClick={() => setClosed((c) => { const n = new Set(c); if (!n.delete(g.key)) n.add(g.key); return n; })} className="flex w-full items-baseline gap-1.5 border-b border-line-strong py-1 text-left text-[14px] font-semibold">
                   <ChevronDown size={16} aria-hidden className={clsx('shrink-0 self-center text-ink-3 transition-transform', shut && '-rotate-90')} />
-                  {g.title}
+                  <Title text={g.title} />
                   {g.mtype ? <span className="rounded-[3px] bg-sunk px-1.5 text-[12px] font-normal text-ink-2">{t.resourceTypes[g.mtype]}</span> : null}
                   <span className="text-[12px] font-normal text-ink-3">{[...g.parts.values()].reduce((n, p) => n + p.items.length, 0)}</span>
                 </button>
@@ -287,11 +288,11 @@ export function QuestionsPage() {
                             <span />
                           ) : p.href ? (
                             <Link href={p.href} className="inline-flex h-fit w-fit items-center gap-1 pt-1.5 text-[12.5px] font-medium text-accent hover:underline">
-                              {p.title}
+                              <Title text={p.title} />
                             </Link>
                           ) : (
                             <span className="pt-1.5 text-[12.5px] text-ink-3" title={t.questionsOtherWorkbook}>
-                              {p.title}
+                              <Title text={p.title} />
                             </span>
                           )}
                           <ul className="min-w-0 divide-y divide-dotted divide-line">{p.items.map((q) => rowOf(q))}</ul>

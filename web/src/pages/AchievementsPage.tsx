@@ -8,6 +8,7 @@ import { useAchievements, useOutline, useSettings, useState_ } from "@/lib/api";
 import { BackLink } from "@/lib/history";
 import { useLang, useT } from "@/lib/i18n";
 import { useRewards } from "@/lib/rewards";
+import { Title } from '@/components/Title';
 
 /** Everything earned in this course. It only ever grows. */
 export function AchievementsPage() {
@@ -76,7 +77,7 @@ export function AchievementsPage() {
                     )}
                     <span className="min-w-0">
                       <span className="block text-[14.5px] font-semibold">
-                        {text.title}
+                        <Title text={text.title} />
                       </span>
                       <span className="block text-[13.5px] text-ink-2">
                         {text.body}
@@ -188,7 +189,7 @@ function Garden({ outline, earned }: { outline: Outline; earned: EarnedEvent[] }
         g.chapters.length ? (
           <div key={g.id}>
             {g.title ? (
-              <div className="mb-2 mt-4 flex items-baseline gap-2.5 text-[13px] font-semibold text-ink-2 after:h-px after:flex-1 after:bg-line">{g.title}</div>
+              <div className="mb-2 mt-4 flex items-baseline gap-2.5 text-[13px] font-semibold text-ink-2 after:h-px after:flex-1 after:bg-line"><Title text={g.title} /></div>
             ) : null}
             <ul className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-2.5">
               {g.chapters.map((c) => {
@@ -206,7 +207,7 @@ function Garden({ outline, earned }: { outline: Outline; earned: EarnedEvent[] }
                       {visitor ? <Visitor emoji={visitor} seed={i * 2.3} nth={blooming} /> : null}
                     </div>
                     <div className="grid gap-px px-2.5 pb-2.5 pt-2">
-                      <span className="hyphens-auto text-[13px] font-semibold leading-snug [overflow-wrap:anywhere]">{c.title}</span>
+                      <span className="hyphens-auto text-[13px] font-semibold leading-snug [overflow-wrap:anywhere]"><Title text={c.title} /></span>
                       <span className="text-xs text-ink-3">{stage ? t.plantStage[stage] : t.plantSeedling}</span>
                     </div>
                   </li>
