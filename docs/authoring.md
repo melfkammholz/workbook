@@ -203,7 +203,7 @@ Siehe auch #xref("symbolic-differentiation").
 | `#xref("id")` | Link to another exercise; its title is filled in (and stays current if renamed). Also counts as "builds on". |
 | `#sample[…]` | A sample answer to a text question. Optional. Students open it from the menu above their answer, and it only reaches their browser then. Search leaves it out. |
 | `#draft-note[…]` | A note to yourself. Never reaches students. |
-| `#check[…]`, `#refs[…]` | Highlighted boxes inline in the text. |
+| `#check[…]`, `#refs[…]` | Highlighted boxes inline in the text. `#refs` is deprecated: cite works with `#cite-work` (see References); `lint` warns. |
 | `#diagram[…]` | Draws anything (shapes, `cetz`) as a picture. |
 | `#note[…]` | A note or a source. The text shows a small number with the note in a card on hover; all notes gather at the end under “Sources and notes”. |
 | `#remark(quote(block: true, attribution: […])[…])` | A quote: a remark that starts with a quote is shown as one, the source quietly beneath. |

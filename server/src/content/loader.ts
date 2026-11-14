@@ -606,6 +606,7 @@ export function loadContent(dir: string): Content {
   const knownWorks = new Map(refs.works.map((w) => [w.key, w]));
   const cited = new Set<string>();
   for (const t of [...items.values(), ...docs.values()]) {
+    if (/#refs\s*\[/.test(t.typst)) warn(t.typstRel, '#refs[…] is replaced by #cite-work: put the works in references.bib and cite them by key', 'meta' in t ? (t as ServerItem).meta.id : undefined);
     for (const key of citedKeys(t.typst)) {
       cited.add(key);
       if (!knownWorks.has(key)) err(t.typstRel, `cite-work: unknown key "${key}" (not in references.bib or references.yml)`, 'meta' in t ? (t as ServerItem).meta.id : undefined);
