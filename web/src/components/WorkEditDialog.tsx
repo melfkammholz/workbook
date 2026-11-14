@@ -1,7 +1,7 @@
 import type { Work, WorkEdit } from '@wb/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { editWork } from '@/lib/bibliography';
+import { editWork, removeWork } from '@/lib/bibliography';
 import { useT } from '@/lib/i18n';
 import { Button, Dialog } from './ui';
 
@@ -11,6 +11,7 @@ export function WorkEditDialog({ work, onClose }: { work: Work; onClose: () => v
   const qc = useQueryClient();
   const [f, setF] = useState<WorkEdit>({ title: work.title, authors: work.authors, year: work.year, venue: work.venue, doi: work.doi, url: work.url, volume: work.volume, pages: work.pages, arxiv: work.arxiv });
   const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState(false);
   const set = (k: keyof WorkEdit) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
   const yearOk = f.year === null || (Number.isInteger(f.year) && f.year >= 0 && f.year <= 3000);
   const save = () => {
@@ -78,13 +79,40 @@ export function WorkEditDialog({ work, onClose }: { work: Work; onClose: () => v
             <p className="mt-1 whitespace-pre-wrap break-words rounded-md bg-sunk p-2 text-[12px] text-ink-2">{work.raw}</p>
           </details>
         ) : null}
-        <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="ghost" onClick={onClose}>
-            {t.cancel}
-          </Button>
-          <Button type="submit" variant="primary" disabled={busy || !yearOk}>
-            {t.save}
-          </Button>
+        <div className="flex items-center justify-end gap-2 pt-1">
+          {confirm ? (
+            <>
+              <span className="mr-auto text-[13px] text-ink-2">{t.workRemoveAsk}</span>
+              <Button type="button" variant="ghost" onClick={() => setConfirm(false)}>
+                {t.cancel}
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                disabled={busy}
+                onClick={() => {
+                  setBusy(true);
+                  void removeWork(qc, work.id).then(onClose, () => setBusy(false));
+                }}
+              >
+                {t.workRemove}
+              </Button>
+            </>
+          ) : (
+            <Button type="button" variant="ghost" className="mr-auto" onClick={() => setConfirm(true)}>
+              {t.workRemove}
+            </Button>
+          )}
+          {confirm ? null : (
+            <>
+              <Button type="button" variant="ghost" onClick={onClose}>
+                {t.cancel}
+              </Button>
+              <Button type="submit" variant="primary" disabled={busy || !yearOk}>
+                {t.save}
+              </Button>
+            </>
+          )}
         </div>
       </form>
     </Dialog>

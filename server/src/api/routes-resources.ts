@@ -283,6 +283,14 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
       return fail(e, reply);
     }
   });
+  app.delete<{ Params: { wid: string } }>('/api/works/:wid', async (req, reply) => {
+    try {
+      r().removeWork(req.params.wid);
+      return { ok: true };
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
   app.patch<{ Params: { wid: string } }>('/api/works/:wid', async (req, reply) => {
     const b = parse(z.object({ title: z.string().max(300), authors: z.string().max(400), year: z.number().int().min(0).max(3000).nullable(), venue: z.string().max(300), doi: z.string().max(200), url: z.string().max(500), volume: z.string().max(50), pages: z.string().max(50), arxiv: z.string().max(50) }), req.body, reply);
     if (!b) return;

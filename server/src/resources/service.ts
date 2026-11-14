@@ -538,8 +538,10 @@ export class Resources {
     this.sql.tx(() => {
       this.sql.run('DELETE FROM work_citations WHERE resource = ?', resource);
       const used = new Set<string>();
+      const removed = this.removedKeys();
       entries.forEach((e, position) => {
         const text = e.text.trim().slice(0, MAX_ENTRY_TEXT);
+        if (removed.has(`text:${normalizeTitle(text)}`)) return;
         let work = e.id ? byId.get(e.id)?.work : undefined;
         if (!work) work = byText.get(normalizeTitle(text))?.shift();
         const f = workFields(text);
@@ -763,9 +765,11 @@ export class Resources {
       const rows = this.sql.all('SELECT id, title, year, doi FROM works') as Row[];
       const byKey = new Map<string, string>();
       for (const r of rows) for (const k of workKeys({ title: r.title as string, year: r.year === null ? null : Number(r.year), doi: r.doi as string })) if (!byKey.has(k)) byKey.set(k, r.id as string);
+      const removed = this.removedKeys();
       for (const w of works.slice(0, 500)) {
         const f = { title: w.title.slice(0, 300), authors: w.authors.slice(0, 400), year: w.year, venue: w.venue.slice(0, 300), doi: w.doi.slice(0, 200), url: w.url.slice(0, 500) };
         const keys = workKeys(f);
+        if (keys.some((k) => removed.has(k))) continue;
         let id = keys.map((k) => byKey.get(k)).find(Boolean);
         const existing = id ? (this.sql.get('SELECT * FROM works WHERE id = ?', id) as Row | undefined) : undefined;
         if (id && existing) {
@@ -787,6 +791,27 @@ export class Resources {
       }
     });
     return out;
+  }
+
+  private removedKeys(): Set<string> {
+    return new Set((this.sql.all('SELECT key FROM work_removed') as { key: string }[]).map((r) => r.key));
+  }
+
+  /**
+   * The student removes a work (a wrong entry they cannot trace): it goes with its citations and tags, and what
+   * identifies it is remembered so reading the PDF again, or opening a page that cites it, does not bring it back.
+   */
+  removeWork(work: string): void {
+    const row = this.sql.get('SELECT * FROM works WHERE id = ?', work) as Row | undefined;
+    if (!row) throw new ResourceError('unknown-item');
+    this.sql.tx(() => {
+      const keys = new Set(workKeys({ title: row.title as string, year: row.year === null ? null : Number(row.year), doi: row.doi as string }));
+      const texts = [row.raw as string, ...(this.sql.all('SELECT entry_text FROM work_citations WHERE work = ?', work) as { entry_text: string }[]).map((c) => c.entry_text)];
+      for (const x of texts) if (normalizeTitle(x)) keys.add(`text:${normalizeTitle(x)}`);
+      for (const k of keys) this.sql.run('INSERT OR IGNORE INTO work_removed (key) VALUES (?)', k);
+      this.sql.run("DELETE FROM tag_links WHERE kind = 'work' AND ref = ?", work);
+      this.sql.run('DELETE FROM works WHERE id = ?', work);
+    });
   }
 
   /** "Not the same": the pair is not suggested again. */

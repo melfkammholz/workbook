@@ -163,6 +163,11 @@ describe('stored bibliography', () => {
       const wanted = (await app.inject({ method: 'PUT', url: `/api/works/${first[0]!.work.id}/state`, payload: { state: null } })).statusCode;
       expect(wanted).toBe(200);
       expect((await app.inject({ method: 'PUT', url: '/api/works/nope/state', payload: { state: 'later' } })).statusCode).toBe(404);
+      // A removed work (and its entry) stays away when the PDF is read again.
+      const junk = await put([e('Hutton, G. (2016). Programming in Haskell. CUP.', 0), e('Bratko, I. (2012). Prolog Programming. Pearson.', 1), e('Junk, X. (1999). Garbage entry nobody knows. Nowhere.', 2)]);
+      expect((await app.inject({ method: 'DELETE', url: `/api/works/${junk[2]!.work.id}` })).statusCode).toBe(200);
+      expect((await app.inject({ method: 'DELETE', url: `/api/works/${junk[2]!.work.id}` })).statusCode).toBe(404);
+      expect((await put([e('Hutton, G. (2016). Programming in Haskell. CUP.', 0), e('Bratko, I. (2012). Prolog Programming. Pearson.', 1), e('Junk, X. (1999). Garbage entry nobody knows. Nowhere.', 2)])).map((x) => x.work.title)).toEqual(['Programming in Haskell', 'Prolog Programming']);
     } finally {
       await app.close();
       courses.close();

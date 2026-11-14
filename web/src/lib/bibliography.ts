@@ -172,6 +172,12 @@ export function setWorkState(qc: QueryClient, work: string, state: WorkState | n
   });
 }
 
+/** Removes a work for good (it is not brought back by re-reading a PDF). */
+export const removeWork = (qc: QueryClient, work: string) => api.delete(`/api/works/${encodeURIComponent(work)}`).then(done(qc), (e: unknown) => {
+  failed(qc)();
+  throw e;
+});
+
 /** The student's edit of a work's fields (the work is locked from then on). */
 export function editWork(qc: QueryClient, work: string, fields: WorkEdit): Promise<Work> {
   return api.patch<Work>(`/api/works/${encodeURIComponent(work)}`, fields).then(

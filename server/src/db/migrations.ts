@@ -888,6 +888,8 @@ export const MIGRATIONS: Migration[] = [
       if (!has.get(name)) insert.run(id, name, '', sort++, t, t);
     }
   },
+  /* 38: works the student removed: their keys (DOI, title and year, normalized entry text) so a re-read or a page citing them does not bring them back. */
+  `CREATE TABLE work_removed (key TEXT PRIMARY KEY) WITHOUT ROWID;`,
 ];
 
 /** The course a mounted `/content` folder is. */
