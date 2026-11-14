@@ -14,7 +14,7 @@ import { useBibImport } from './BibImport';
 import { MenuItem, MenuRule, MoreMenu } from './Menu';
 import { RowTags } from './RowTags';
 import { TagDot } from './TagPicker';
-import { SimilarWorks, WorkEntry, WorkLinkPicker, WorkStateButtons, WorkStateMenu, WorkEditButton } from './WorkBits';
+import { SimilarWorks, WorkEntry, WorkLinkPicker, WorkSortStrip, WorkStateMenu, WorkEditButton, sure } from './WorkBits';
 import { WorkEditDialog } from './WorkEditDialog';
 
 type StateFilter = 'library' | 'later' | 'read' | 'know' | 'skip';
@@ -211,25 +211,41 @@ function UnsortedTray({ works }: { works: LibraryWork[] }) {
     if (open) list.current?.querySelector('[data-cursor=true]')?.scrollIntoView({ block: 'nearest' });
   }, [open, cursor, cur?.id]);
   return (
-    <section className="mt-6 rounded-lg border border-line">
-      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-[14px] font-medium hover:bg-sunk">
-        {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-        {t.workUnsorted}
-        <span className="tabular-nums text-ink-2">· {works.length}</span>
+    <section className="mt-6 border-t border-line-strong" aria-label={t.workUnsorted}>
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="mt-1 flex w-full items-center gap-2.5 rounded-lg px-1.5 py-2 text-left text-[14px] font-semibold hover:bg-sunk">
+        <span className="grid w-7 place-items-center text-ink-2">{open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
+        <span>
+          {t.workUnsorted} <span className="font-normal tabular-nums text-ink-2">{works.length}</span>
+        </span>
       </button>
       {open ? (
         <>
-          <p className="px-3 pb-2 pt-0.5 text-[12px] text-ink-3">{t.workUnsortedHint}</p>
-          <ul ref={list} className="divide-y divide-line border-t border-line">
-            {works.map((w, i) => (
-              <li key={w.id} data-cursor={i === cursor} onClick={() => setAt(i)} className={clsx('flex items-start gap-2 px-3 py-1.5', i === cursor && 'bg-accent-soft')}>
-                <div className="min-w-0 flex-1">
-                  <WorkEntry work={w} size="sm" fallback={w.raw} />
-                </div>
-                <WorkStateButtons work={w} labels />
-                <WorkEditButton work={w} />
-              </li>
-            ))}
+          <p className="pb-2 pl-[2.9rem] pr-1.5 text-[13px] text-ink-2">{t.workUnsortedHint}</p>
+          <ul ref={list} className="divide-y divide-line">
+            {works.map((w, i) => {
+              const here = i === cursor;
+              const ok = sure(w);
+              const cited = t.workCitedSummary(w.citedBy.length, 0);
+              return (
+                <li key={w.id} data-cursor={here} onClick={() => setAt(i)} className={clsx('group/row grid grid-cols-[1.75rem_minmax(0,1fr)_1.75rem] items-start gap-x-2.5 px-1.5 py-2.5', here && 'rounded-lg border-transparent bg-accent-soft')}>
+                  <div className="grid h-7 place-items-center">
+                    {here ? <span aria-hidden className="size-7 rounded-lg border-[1.5px] border-dashed border-accent bg-sheet" /> : <WorkStateMenu work={w} />}
+                  </div>
+                  <div className="min-w-0">
+                    {ok ? (
+                      <WorkEntry work={w} fallback={w.raw} extra={[cited]} />
+                    ) : (
+                      <>
+                        <span className="line-clamp-2 block break-words pt-0.5 text-[14px] italic leading-snug text-ink-2">{w.raw}</span>
+                        <span className="block text-[13px] text-ink-2">{cited}</span>
+                      </>
+                    )}
+                    {here ? <WorkSortStrip work={w} /> : null}
+                  </div>
+                  <WorkEditButton work={w} className={clsx('size-7', !here && 'opacity-0 focus-visible:opacity-100 group-hover/row:opacity-100')} />
+                </li>
+              );
+            })}
           </ul>
         </>
       ) : null}

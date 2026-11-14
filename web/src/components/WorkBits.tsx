@@ -159,6 +159,27 @@ export function WorkStateButtons({ work, labels = false, size = 'md' }: { work: 
   );
 }
 
+/** The four states as labeled buttons with their keys, for the highlighted work in the Unsorted tray. */
+export function WorkSortStrip({ work }: { work: Pick<Work, 'id' | 'state'> }) {
+  const t = useT();
+  const qc = useQueryClient();
+  const names: Record<WorkState, string> = { later: t.workStateLater, read: t.workStateRead, know: t.workStateKnow, skip: t.workStateSkip };
+  return (
+    <span className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label={t.workStateLater}>
+      {WORK_STATES.map((st) => {
+        const Icon = STATE_ICON[st];
+        return (
+          <button key={st} type="button" data-tip={t.workStateTip[st]} onClick={() => setWorkState(qc, work.id, st)} className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong bg-sheet py-[3px] pl-2 pr-1.5 text-[13px] hover:bg-sunk">
+            <Icon size={13} className="text-ink-2" />
+            {names[st]}
+            <kbd className="rounded border border-line bg-sunk px-1 text-[11.5px] leading-[1.35] text-ink-2">{STATE_KEY[st]}</kbd>
+          </button>
+        );
+      })}
+    </span>
+  );
+}
+
 const STATE_LOOK: Record<WorkState | 'none', string> = {
   later: 'bg-accent-soft text-accent',
   read: 'bg-done-soft text-done',
@@ -242,19 +263,22 @@ export function WorkEditButton({ work, className }: { work: Work; className?: st
   );
 }
 
-/** The line under a cited work in a text: "Open" when the student has it as a material, and the sorting buttons. */
+/**
+ * The parts of a cited work's row in a text: the state glyph (first column) and "Open" (last), placed by the grid of
+ * `.wb-cite-work` in styles.css.
+ */
 export function CiteWorkActions({ work }: { work: Work }) {
   const t = useT();
   const resources = useResources(null).data?.resources;
   const linked = work.resource ? resources?.find((r) => r.id === work.resource) : undefined;
   return (
-    <span className="mt-1 inline-flex items-center gap-2 text-[12px]">
+    <>
+      <WorkStateMenu work={work} />
       {linked ? (
-        <Link href={`/resources/${encodeURIComponent(linked.id)}`} data-tip={t.workOpenTip(linked.title)} className="rounded-md border border-line px-2 py-0.5 font-medium text-accent hover:bg-sunk">
+        <Link href={`/resources/${encodeURIComponent(linked.id)}`} data-tip={t.workOpenTip(linked.title)} className="rounded-md border border-line px-2 py-0.5 text-[12px] font-medium text-accent hover:bg-sunk">
           {t.workOpen}
         </Link>
       ) : null}
-      <WorkStateButtons work={work} size="sm" />
-    </span>
+    </>
   );
 }
