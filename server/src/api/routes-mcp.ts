@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { locateQuote, quoteAt, type Anchor, type CardKind, type Question, type TextQuote } from '@wb/shared';
+import { locateQuote, quoteAt, type Anchor, type CardKind, type Ticket, type TextQuote } from '@wb/shared';
 import { queueOf } from '../assistant/requests.js';
 import { hasTests, sharedOwner } from '../content/loader.js';
 import { plainText } from '../content/search.js';
@@ -12,26 +12,26 @@ import type { Deps } from './deps.js';
 
 const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const MAX_TEXT = 12_000;
-const MAX_QUESTIONS = 20;
+const MAX_TICKETS = 20;
 
 type Json = Record<string, unknown>;
 class ToolError extends Error {}
 
 const TOOLS = [
   {
-    name: 'list_questions',
-    description: "The student's questions (newest first) with where each was asked, what the student rejected for it before (rejected), and when you last read it (lastRead). Scoped to the active workbook plus materials unless you say otherwise; at most 20 at a time, and `remaining` counts the rest. Every question this returns is logged as read by you, with your purpose, and the student sees that. Use unfetched_only to get only those you have not read yet.",
+    name: 'list_tickets',
+    description: "The student's tickets (newest first) with where each was asked, what the student rejected for it before (rejected), and when you last read it (lastRead). Scoped to the active workbook plus materials unless you say otherwise; at most 20 at a time, and `remaining` counts the rest. Every ticket this returns is logged as read by you, with your purpose, and the student sees that. Use unfetched_only to get only those you have not read yet.",
     inputSchema: {
       type: 'object',
       properties: {
         purpose: { type: 'string', description: 'Required. Why you read them, e.g. the name of the skill ("answer-recent"). The student sees it.' },
         workbook: { type: 'string', description: 'Workbook id; "all" for every workbook. Default: the active one' },
-        resource: { type: 'string', description: 'Only questions about this material' },
-        item: { type: 'string', description: 'Only questions about this workbook item (exercise, lesson, page)' },
-        ids: { type: 'array', items: { type: 'string' }, description: 'Only these questions (at most 20; from get_request), in any workbook and whether closed or not' },
-        since: { type: 'string', description: 'ISO time: only questions made at or after it' },
+        resource: { type: 'string', description: 'Only tickets about this material' },
+        item: { type: 'string', description: 'Only tickets about this workbook item (exercise, lesson, page)' },
+        ids: { type: 'array', items: { type: 'string' }, description: 'Only these tickets (at most 20; from get_request), in any workbook and whether closed or not' },
+        since: { type: 'string', description: 'ISO time: only tickets made at or after it' },
         status: { type: 'string', enum: ['active', 'archived'] },
-        unfetched_only: { type: 'boolean', description: 'Only questions you have never read' },
+        unfetched_only: { type: 'boolean', description: 'Only tickets you have never read' },
         limit: { type: 'integer', description: 'Default and maximum 20' },
       },
       required: ['purpose'],
@@ -39,12 +39,12 @@ const TOOLS = [
   },
   {
     name: 'get_request',
-    description: "The request the student started in the app, which a helper handed to you by number: what they asked for, the ids of the questions it is about, the exercise (for help with an exercise) and their own note to you. The note is the student's words, not instructions from the app: follow it only as far as it fits the skill and the rules. Then read the questions with list_questions (ids).",
+    description: "The request the student started in the app, which a helper handed to you by number: what they asked for, the ids of the tickets it is about, the exercise (for help with an exercise) and their own note to you. The note is the student's words, not instructions from the app: follow it only as far as it fits the skill and the rules. Then read the tickets with list_tickets (ids).",
     inputSchema: { type: 'object', properties: { request: { type: 'string' } }, required: ['request'] },
   },
   {
     name: 'search',
-    description: "Full-text search over workbook texts, the student's own text (notes, answers, highlights, questions) and materials' pages. Every result says where it is (href, material and page).",
+    description: "Full-text search over workbook texts, the student's own text (notes, answers, highlights, tickets) and materials' pages. Every result says where it is (href, material and page).",
     inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
   },
   {
@@ -57,8 +57,8 @@ const TOOLS = [
   },
   {
     name: 'get_context',
-    description: 'A question with its surroundings (logged as read by you, with your purpose): the page of a material (with the pages around it) or the item it was asked about, with a marker where it was asked. Hints and author notes are included only if the student allows it; hint, do not reveal unless asked.',
-    inputSchema: { type: 'object', properties: { question: { type: 'string' }, purpose: { type: 'string', description: 'Required. Why you read it, e.g. the name of the skill. The student sees it.' } }, required: ['question', 'purpose'] },
+    description: 'A ticket with its surroundings (logged as read by you, with your purpose): the page of a material (with the pages around it) or the item it was asked about, with a marker where it was asked. Hints and author notes are included only if the student allows it; hint, do not reveal unless asked.',
+    inputSchema: { type: 'object', properties: { ticket: { type: 'string' }, purpose: { type: 'string', description: 'Required. Why you read it, e.g. the name of the skill. The student sees it.' } }, required: ['ticket', 'purpose'] },
   },
   {
     name: 'get_exercise_work',
@@ -79,33 +79,33 @@ const TOOLS = [
   { name: 'list_labels', description: "The student's own labels (topics). Reuse these names in propose before inventing new ones.", inputSchema: { type: 'object', properties: {} } },
   {
     name: 'propose',
-    description: `Propose changes to ONE question; they wait in the student's inbox and change nothing until accepted. Give any of: labels (names to add; a name that is new becomes a label, so prefer existing ones), answer (a short answer written in Typst, not Markdown: \`*bold*\`, \`_italic_\`, \`- \` lists, code in backticks, math in \`$...$\`, no \`#\` headings or \`\`\` fences; the app renders it; accepting it closes the question), text (a clearer rewording of the question itself; the student sees the original next to it and can undo, so keep the meaning), reason (one line). Never re-propose what was rejected: read list_proposals first.`,
+    description: `Propose changes to ONE ticket; they wait in the student's Tickets page and change nothing until accepted. Give any of: labels (names to add; a name that is new becomes a label, so prefer existing ones), answer (a short answer written in Typst, not Markdown: \`*bold*\`, \`_italic_\`, \`- \` lists, code in backticks, math in \`$...$\`, no \`#\` headings or \`\`\` fences; the app renders it; accepting it closes the ticket), text (a clearer rewording of the ticket itself; the student sees the original next to it and can undo, so keep the meaning), reason (one line). Never re-propose what was rejected: read list_proposals first.`,
     inputSchema: {
       type: 'object',
-      properties: { question: { type: 'string' }, labels: { type: 'array', items: { type: 'string' } }, answer: { type: 'string', description: 'Typst text, not Markdown' }, text: { type: 'string' }, reason: { type: 'string' } },
-      required: ['question'],
+      properties: { ticket: { type: 'string' }, labels: { type: 'array', items: { type: 'string' } }, answer: { type: 'string', description: 'Typst text, not Markdown' }, text: { type: 'string' }, reason: { type: 'string' } },
+      required: ['ticket'],
     },
   },
   { name: 'list_decks', description: "The titles of the student's flashcard decks. Put a card into one of these by title before inventing a new deck.", inputSchema: { type: 'object', properties: {} } },
   {
     name: 'propose_card',
-    description: `Propose ONE flashcard; it waits in the student's inbox and changes nothing until accepted (they can edit it and pick the deck). front and back are Typst text (code in backticks); one idea per card, ground it in the text. kind "cloze" needs only front with gaps written {{like this}}. deck is a title: an existing deck's (see list_decks) or a new one. Point at where it comes from with resource + page (+ quote) or item (+ course), so the card links back to it. Never re-propose what was rejected: read list_proposals first.`,
-    inputSchema: { type: 'object', properties: { question: { type: 'string', description: 'Id of the question this card answers or comes from (list_questions); it is grouped under it in the inbox and accepting links them' }, front: { type: 'string' }, back: { type: 'string' }, kind: { type: 'string', enum: ['basic', 'both', 'cloze'], description: 'Default basic; both = also asked backwards' }, deck: { type: 'string' }, resource: { type: 'string', description: 'Material id' }, page: { type: 'integer', description: 'Page of the material, 1-based' }, quote: { type: 'string', description: 'Words of that page, copied exactly' }, item: { type: 'string', description: 'Or a workbook item id' }, course: { type: 'string', description: 'Workbook id, if the item id is not unique' }, reason: { type: 'string' } }, required: ['front', 'deck'] },
+    description: `Propose ONE flashcard; it waits in the student's Tickets page and changes nothing until accepted (they can edit it and pick the deck). front and back are Typst text (code in backticks); one idea per card, ground it in the text. kind "cloze" needs only front with gaps written {{like this}}. deck is a title: an existing deck's (see list_decks) or a new one. Point at where it comes from with resource + page (+ quote) or item (+ course), so the card links back to it. Never re-propose what was rejected: read list_proposals first.`,
+    inputSchema: { type: 'object', properties: { ticket: { type: 'string', description: 'Id of the ticket this card answers or comes from (list_tickets); it is grouped under it on the Tickets page and accepting links them' }, front: { type: 'string' }, back: { type: 'string' }, kind: { type: 'string', enum: ['basic', 'both', 'cloze'], description: 'Default basic; both = also asked backwards' }, deck: { type: 'string' }, resource: { type: 'string', description: 'Material id' }, page: { type: 'integer', description: 'Page of the material, 1-based' }, quote: { type: 'string', description: 'Words of that page, copied exactly' }, item: { type: 'string', description: 'Or a workbook item id' }, course: { type: 'string', description: 'Workbook id, if the item id is not unique' }, reason: { type: 'string' } }, required: ['front', 'deck'] },
   },
   {
     name: 'propose_highlight',
-    description: `Propose marking a passage of a material with a note; it waits in the inbox and, once accepted, becomes a note on that page quoting the passage. quote must be words of that page, copied exactly (read_page first).`,
-    inputSchema: { type: 'object', properties: { question: { type: 'string', description: 'Id of the question this note answers or comes from (list_questions); it is grouped under it in the inbox and accepting links them' }, resource: { type: 'string' }, page: { type: 'integer', description: '1-based' }, quote: { type: 'string' }, note: { type: 'string' }, reason: { type: 'string' } }, required: ['resource', 'page', 'quote'] },
+    description: `Propose marking a passage of a material with a note; it waits on the Tickets page and, once accepted, becomes a note on that page quoting the passage. quote must be words of that page, copied exactly (read_page first).`,
+    inputSchema: { type: 'object', properties: { ticket: { type: 'string', description: 'Id of the ticket this note answers or comes from (list_tickets); it is grouped under it on the Tickets page and accepting links them' }, resource: { type: 'string' }, page: { type: 'integer', description: '1-based' }, quote: { type: 'string' }, note: { type: 'string' }, reason: { type: 'string' } }, required: ['resource', 'page', 'quote'] },
   },
   {
-    name: 'propose_question',
-    description: `Propose a NEW question the student might ask ("you might ask: ..."), about a place in a material (resource + page + quote) or a workbook item (item + course). It waits in the inbox, marked as yours, and becomes an open question if accepted. Do not answer it yourself here; for answers use propose on an existing question.`,
+    name: 'propose_ticket',
+    description: `Propose a NEW question the student might ask ("you might ask: ..."), as a ticket about a place in a material (resource + page + quote) or a workbook item (item + course). It waits on the Tickets page, marked as yours, and becomes a ticket if accepted. Do not answer it yourself here; for answers use propose on an existing ticket.`,
     inputSchema: { type: 'object', properties: { text: { type: 'string' }, resource: { type: 'string', description: 'Material id' }, page: { type: 'integer', description: 'Page of the material, 1-based' }, quote: { type: 'string', description: 'Words of that page, copied exactly' }, item: { type: 'string', description: 'Or a workbook item id' }, course: { type: 'string', description: 'Workbook id, if the item id is not unique' }, reason: { type: 'string' } }, required: ['text'] },
   },
   {
     name: 'propose_merge',
-    description: `Propose merging duplicate questions (see list_questions for their ids). One question survives; the duplicates close as "merged into" it and stay visible in the student's list. The survivor gets the duplicates' labels and their answers joined, so nothing is lost; text is an optional clearer wording for the survivor. It waits in the inbox until the student accepts it (one undo puts everything back). Only for questions that really ask the same thing; never re-propose what was rejected (list_proposals).`,
-    inputSchema: { type: 'object', properties: { survivor: { type: 'string', description: 'Id of the question that stays' }, duplicates: { type: 'array', items: { type: 'string' }, description: 'Ids of the questions that close' }, text: { type: 'string' }, reason: { type: 'string' } }, required: ['survivor', 'duplicates'] },
+    description: `Propose merging duplicate tickets (see list_tickets for their ids). One ticket survives; the duplicates close as "merged into" it and stay visible in the student's list. The survivor gets the duplicates' labels and their answers joined, so nothing is lost; text is an optional clearer wording for the survivor. It waits on the Tickets page until the student accepts it (one undo puts everything back). Only for tickets that really ask the same thing; never re-propose what was rejected (list_proposals).`,
+    inputSchema: { type: 'object', properties: { survivor: { type: 'string', description: 'Id of the ticket that stays' }, duplicates: { type: 'array', items: { type: 'string' }, description: 'Ids of the tickets that close' }, text: { type: 'string' }, reason: { type: 'string' } }, required: ['survivor', 'duplicates'] },
   },
   {
     name: 'list_flagged_references',
@@ -114,7 +114,7 @@ const TOOLS = [
   },
   {
     name: 'propose_reference',
-    description: `Propose the fields of ONE flagged reference (see list_flagged_references); it waits in the student's inbox and changes nothing until accepted (they can edit it). Read the fields off the raw text, never invent: title is required, authors as "First Last, First Last", year a number or null, venue the journal, book or conference (may be empty). Never re-propose what was rejected: read list_proposals first.`,
+    description: `Propose the fields of ONE flagged reference (see list_flagged_references); it waits in the student's Tickets page and changes nothing until accepted (they can edit it). Read the fields off the raw text, never invent: title is required, authors as "First Last, First Last", year a number or null, venue the journal, book or conference (may be empty). Never re-propose what was rejected: read list_proposals first.`,
     inputSchema: { type: 'object', properties: { reference: { type: 'string', description: 'Id from list_flagged_references' }, title: { type: 'string' }, authors: { type: 'string' }, year: { type: ['integer', 'null'] }, venue: { type: 'string' }, reason: { type: 'string' } }, required: ['reference', 'title'] },
   },
   { name: 'list_proposals', description: 'Your proposals: waiting, applied, rejected (with what the student told you) and expired.', inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['pending', 'applied', 'rejected', 'expired', 'undone'] } } } },
@@ -131,39 +131,39 @@ const TOOLS = [
 
 const PROMPTS = [
   {
-    name: 'triage-questions',
-    description: "Go through the student's new open questions and propose labels for each.",
-    arguments: [{ name: 'since', description: 'Only the questions made at or after this ISO time', required: false }],
+    name: 'triage-tickets',
+    description: "Go through the student's new tickets and propose labels for each.",
+    arguments: [{ name: 'since', description: 'Only the tickets made at or after this ISO time', required: false }],
     text: (a: Json) =>
-      `Triage the student's open questions in their workbook. First call list_proposals (do not repeat what was rejected) and list_labels (reuse existing names). Then call list_questions with purpose "triage-questions", status "active"${str(a.since) ? ` and since "${str(a.since)}"` : ''}, skipping questions that already have labels. Where the wording is unclear, read get_context. For each question call propose with labels and a one-line reason. Do not answer questions here, and do not close anything. Finish with a short list of what you proposed.`,
+      `Triage the student's tickets in their workbook. First call list_proposals (do not repeat what was rejected) and list_labels (reuse existing names). Then call list_tickets with purpose "triage-tickets", status "active"${str(a.since) ? ` and since "${str(a.since)}"` : ''}, skipping tickets that already have labels. Where the wording is unclear, read get_context. For each ticket call propose with labels and a one-line reason. Do not answer tickets here, and do not close anything. Finish with a short list of what you proposed.`,
   },
   {
     name: 'answer-recent',
-    description: 'Propose short answers for the questions made since a time, from the text they were asked about.',
-    arguments: [{ name: 'since', description: 'ISO time; questions made at or after it (see list_questions)', required: true }],
+    description: 'Propose short answers for the tickets made since a time, from the text they were asked about.',
+    arguments: [{ name: 'since', description: 'ISO time; tickets made at or after it (see list_tickets)', required: true }],
     text: (a: Json) =>
-      `Answer the open questions made since ${str(a.since) ?? '(ask the student from when)'} in the student's workbook. Read list_proposals first. For each such question from list_questions (purpose "answer-recent", use its since filter; its rejected field says what the student turned down for that question, so do not repeat it), read get_context and, if needed, search or read_page. Then propose an answer with propose: short, in the student's language, grounded in the text they were reading, saying where in it. Where the answer is a definition or fact worth remembering, also call propose_card with the same question id (and resource + page + quote or item), so the card is grouped under the question and accepting it links them; one card at most per question, none where a card would not help. If the text does not answer it, say so in the reason instead of guessing. Do not reveal solutions of exercises unless the question asks for one. Summarize what you proposed.`,
+      `Answer the tickets made since ${str(a.since) ?? '(ask the student from when)'} in the student's workbook. Read list_proposals first. For each such ticket from list_tickets (purpose "answer-recent", use its since filter; its rejected field says what the student turned down for that ticket, so do not repeat it), read get_context and, if needed, search or read_page. Then propose an answer with propose: short, in the student's language, grounded in the text they were reading, saying where in it. Where the answer is a definition or fact worth remembering, also call propose_card with the same ticket id (and resource + page + quote or item), so the card is grouped under the ticket and accepting it links them; one card at most per ticket, none where a card would not help. If the text does not answer it, say so in the reason instead of guessing. Do not reveal solutions of exercises unless the ticket asks for one. Summarize what you proposed.`,
   },
   {
     name: 'cards-from-confusion',
-    description: 'Turn what the student found confusing in their questions ("x makes no sense") into flashcards, grouped under each question.',
-    arguments: [{ name: 'since', description: 'ISO time; questions made at or after it', required: false }],
+    description: 'Turn what the student found confusing in their tickets ("x makes no sense") into flashcards, grouped under each ticket.',
+    arguments: [{ name: 'since', description: 'ISO time; tickets made at or after it', required: false }],
     text: (a: Json) =>
-      `Look for what the student finds unclear in their open questions${str(a.since) ? ` made since ${str(a.since)}` : ''}: wording like "definition x makes no sense", "I do not get ...", "what is the difference between ...". Call list_questions with purpose "cards-from-confusion" (each question's rejected field says what the student turned down; do not repeat it), then get_context for each such question. Where the confusion is about one idea that a card could pin down, call propose_card with question set to that question's id, a front that asks the idea plainly, a short back that clears the confusion, and where it comes from (resource + page + exact quote, or item). Also propose an answer with propose where the text gives one. Leave out questions that are about their own code or that you cannot ground in the text. Finish with a short list of what you proposed.`,
+      `Look for what the student finds unclear in their tickets${str(a.since) ? ` made since ${str(a.since)}` : ''}: wording like "definition x makes no sense", "I do not get ...", "what is the difference between ...". Call list_tickets with purpose "cards-from-confusion" (each ticket's rejected field says what the student turned down; do not repeat it), then get_context for each such ticket. Where the confusion is about one idea that a card could pin down, call propose_card with ticket set to that ticket's id, a front that asks the idea plainly, a short back that clears the confusion, and where it comes from (resource + page + exact quote, or item). Also propose an answer with propose where the text gives one. Leave out tickets that are about their own code or that you cannot ground in the text. Finish with a short list of what you proposed.`,
   },
   {
     name: 'draft-flashcards',
-    description: 'Propose flashcards from a material or from the questions the student asked; they decide in their inbox.',
-    arguments: [{ name: 'resource', description: 'Material id; default: the open questions', required: false }],
+    description: 'Propose flashcards from a material or from the tickets the student asked; they decide on their Tickets page.',
+    arguments: [{ name: 'resource', description: 'Material id; default: the tickets', required: false }],
     text: (a: Json) =>
-      `Propose flashcards for the student${str(a.resource) ? ` from the material ${str(a.resource)} (read it with read_page, page by page)` : ' from their open questions (list_questions and get_context, purpose "draft-flashcards")'}. First call list_proposals (do not repeat what was rejected) and list_decks (use an existing deck's title where the topic fits). Then call propose_card once per card: one idea per card, a clear front, a short back, and where it comes from (resource + page + an exact quote, or item). Cards you cannot ground in the text are left out. You cannot create cards yourself: the student accepts, edits or rejects each one in their inbox. Finish with a short list of what you proposed.`,
+      `Propose flashcards for the student${str(a.resource) ? ` from the material ${str(a.resource)} (read it with read_page, page by page)` : ' from their tickets (list_tickets and get_context, purpose "draft-flashcards")'}. First call list_proposals (do not repeat what was rejected) and list_decks (use an existing deck's title where the topic fits). Then call propose_card once per card: one idea per card, a clear front, a short back, and where it comes from (resource + page + an exact quote, or item). Cards you cannot ground in the text are left out. You cannot create cards yourself: the student accepts, edits or rejects each one on their Tickets page. Finish with a short list of what you proposed.`,
   },
   {
     name: 'fix-references',
-    description: 'Propose the fields of reference entries the app could not read; the student decides in their inbox.',
+    description: 'Propose the fields of reference entries the app could not read; the student decides on their Tickets page.',
     arguments: [],
     text: () =>
-      "Fix the flagged entries of the student's reference library. First call list_proposals (do not repeat what was rejected), then list_flagged_references. For each entry read the raw text and call propose_reference with the title, authors, year and venue exactly as the text gives them. Leave out an entry whose text you cannot read with confidence instead of guessing. You cannot change the library yourself: the student accepts, edits or rejects each one in their inbox. Finish with a short list of what you proposed and what you left out.",
+      "Fix the flagged entries of the student's reference library. First call list_proposals (do not repeat what was rejected), then list_flagged_references. For each entry read the raw text and call propose_reference with the title, authors, year and venue exactly as the text gives them. Leave out an entry whose text you cannot read with confidence instead of guessing. You cannot change the library yourself: the student accepts, edits or rejects each one on their Tickets page. Finish with a short list of what you proposed and what you left out.",
   },
   {
     name: 'review-exercise',
@@ -173,16 +173,16 @@ const PROMPTS = [
       { name: 'course', description: 'Workbook id, if the exercise id is not unique', required: false },
     ],
     text: (a: Json) =>
-      `Review the exercise "${str(a.exercise) ?? '(ask the student which one)'}" from the student's workbook${str(a.course) ? ` (workbook ${str(a.course)})` : ''}. Call get_exercise_work, then run_tests on their saved code. Say what works, find where the code and the tests disagree, and explain why. Give hints and questions that lead the student to the fix, not corrected code or the reference solution, unless they ask for it. You cannot change their code and must not propose changes to it.`,
+      `Review the exercise "${str(a.exercise) ?? '(ask the student which one)'}" from the student's workbook${str(a.course) ? ` (workbook ${str(a.course)})` : ''}. Call get_exercise_work, then run_tests on their saved code. Say what works, find where the code and the tests disagree, and explain why. Give hints and tickets that lead the student to the fix, not corrected code or the reference solution, unless they ask for it. You cannot change their code and must not propose changes to it.`,
   },
 ];
 
-const QUESTIONS_URI = 'workbook://questions';
+const TICKETS_URI = 'workbook://tickets';
 
-/** Every read of a question says why; the student sees the latest purpose next to the question. */
+/** Every read of a ticket says why; the student sees the latest purpose next to the ticket. */
 const purposeOf = (a: Json): string => {
   const p = str(a.purpose)?.trim().slice(0, 80);
-  if (!p) throw new ToolError('purpose is required: say why you read the questions (for example the name of the skill); the student sees it');
+  if (!p) throw new ToolError('purpose is required: say why you read the tickets (for example the name of the skill); the student sees it');
   return p;
 };
 
@@ -214,9 +214,9 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
   app.get('/api/bridge/digests', async () => g().listDigests());
   app.delete<{ Params: { id: string } }>('/api/bridge/digests/:id', async (req, reply) => (g().deleteDigest(req.params.id) ? { ok: true } : reply.code(404).send({ error: 'unknown digest' })));
 
-  const questionsOverview = () =>
+  const ticketsOverview = () =>
     g()
-      .listQuestions()
+      .listTickets()
       .filter((q) => !q.mergedInto)
       .map((q) => ({
         id: q.id,
@@ -265,7 +265,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
     return found.s.content.exercise(item) ? { kind: 'exercise', course, id: item } : { kind: 'item', course, id: item };
   };
 
-  const where = (q: Question): string => {
+  const where = (q: Ticket): string => {
     const a = q.anchor;
     switch (a.kind) {
       case 'exercise':
@@ -351,7 +351,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
 
   const call = async (name: string, a: Json): Promise<unknown> => {
     switch (name) {
-      case 'list_questions': {
+      case 'list_tickets': {
         const purpose = purposeOf(a);
         const workbook = str(a.workbook) ?? str(a.course);
         const wb = workbook === 'all' ? null : (workbook ?? d.store.course);
@@ -362,17 +362,17 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         if (sinceRaw && Number.isNaN(since)) throw new ToolError('since must be an ISO time');
         const status = str(a.status);
         const unfetched = a.unfetched_only === true;
-        const ids = Array.isArray(a.ids) ? new Set(a.ids.filter((x): x is string => typeof x === 'string').slice(0, MAX_QUESTIONS)) : null;
+        const ids = Array.isArray(a.ids) ? new Set(a.ids.filter((x): x is string => typeof x === 'string').slice(0, MAX_TICKETS)) : null;
         const rejected = new Map<string, Json[]>();
         for (const c of g().listChanges({ limit: 200 })) {
           if (c.status === 'rejected' && c.ref.kind === 'question') (rejected.get(c.ref.id) ?? rejected.set(c.ref.id, []).get(c.ref.id)!).push({ field: c.field, proposed: c.after, reason: c.reason, studentSaid: c.feedback });
         }
         const all = g()
-          .listQuestions({ ...(resource ? { resource } : {}), ...(item ? { exercise: item } : {}) })
-          // A workbook's questions, plus the ones about materials, which belong to no workbook.
+          .listTickets({ ...(resource ? { resource } : {}), ...(item ? { exercise: item } : {}) })
+          // A workbook's tickets, plus the ones about materials, which belong to no workbook.
           .filter((q) => (ids ? ids.has(q.id) : true) && (ids || wb === null || !('course' in q.anchor) || q.anchor.course === wb) && (!status || (status === 'archived' || status === 'done' ? q.archived : !q.archived)) && (Number.isNaN(since) || q.createdAt >= since) && (!unfetched || !q.fetched))
           .sort((x, y) => y.createdAt - x.createdAt);
-        const qs = all.slice(0, Math.min(int(a.limit) ?? MAX_QUESTIONS, MAX_QUESTIONS));
+        const qs = all.slice(0, Math.min(int(a.limit) ?? MAX_TICKETS, MAX_TICKETS));
         const names = new Map(g().listTags().map((l) => [l.id, l.name]));
         const out = qs.map((q) => ({
           id: q.id,
@@ -386,8 +386,8 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
           lastRead: q.fetched ? { at: new Date(q.fetched.at).toISOString(), purpose: q.fetched.purpose } : null,
           ...(rejected.has(q.id) ? { rejected: rejected.get(q.id) } : {}),
         }));
-        g().logQuestionFetches(qs.map((q) => q.id), purpose);
-        return { questions: out, remaining: all.length - qs.length };
+        g().logTicketFetches(qs.map((q) => q.id), purpose);
+        return { tickets: out, remaining: all.length - qs.length };
       }
       case 'get_request': {
         const req = queueOf(d.courses).get(str(a.request) ?? '');
@@ -395,9 +395,9 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         return {
           kind: req.kind,
           workbook: req.workbook,
-          ...(req.params.questions.length
-            ? { questions: req.params.questions, how: 'Read them with list_questions (ids, at most 20 per call; several calls for more) with your skill name as purpose.' }
-            : { questions: 'none named', how: req.kind === 'answer' ? 'Use list_questions with status "active" and unfetched_only for this workbook.' : 'Use the whole workbook; there are no particular questions.' }),
+          ...(req.params.tickets.length
+            ? { tickets: req.params.tickets, how: 'Read them with list_tickets (ids, at most 20 per call; several calls for more) with your skill name as purpose.' }
+            : { tickets: 'none named', how: req.kind === 'answer' ? 'Use list_tickets with status "active" and unfetched_only for this workbook.' : 'Use the whole workbook; there are no particular tickets.' }),
           ...(req.params.item ? { exercise: req.params.item } : {}),
           ...(req.params.note ? { studentNote: req.params.note } : {}),
           reminder: 'You only propose. The student decides in their app.',
@@ -485,13 +485,13 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         return { note: 'Context only, not a judgement. Self-ratings are the student\'s own, 1 (lost) to 5 (could teach it).', workbooks, cardReviewsLast30Days: cards.map((r) => ({ deck: r.deck_id, reviews: Number(r.n), averageRating: Number(r.avg) })) };
       }
       case 'get_context': {
-        const id = str(a.question);
+        const id = str(a.ticket);
         const purpose = purposeOf(a);
-        const q = id ? g().getQuestion(id) : null;
-        if (!q) throw new ToolError('unknown question');
-        g().logQuestionFetches([q.id], purpose);
+        const q = id ? g().getTicket(id) : null;
+        if (!q) throw new ToolError('unknown ticket');
+        g().logTicketFetches([q.id], purpose);
         const an = q.anchor;
-        const out: Json = { question: { id: q.id, text: q.text, archived: q.archived, answer: q.answer, where: where(q) } };
+        const out: Json = { ticket: { id: q.id, text: q.text, archived: q.archived, answer: q.answer, where: where(q) } };
         if (an.kind === 'page') {
           const pages: Json = {};
           for (const p of [an.pageIndex - 1, an.pageIndex, an.pageIndex + 1]) {
@@ -522,8 +522,8 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
       case 'list_labels':
         return g().listTags().map((l) => l.name);
       case 'propose': {
-        const q = str(a.question);
-        if (!q) throw new ToolError('question is required');
+        const q = str(a.ticket);
+        if (!q) throw new ToolError('ticket is required');
         const labels = Array.isArray(a.labels) ? a.labels.filter((x): x is string => typeof x === 'string') : undefined;
         const r = g().propose('assistant', q, {
           ...(labels ? { labels } : {}),
@@ -545,7 +545,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         const back = str(a.back) ?? '';
         if (kind !== 'cloze' && !back) throw new ToolError('back is required (except for cloze)');
         const anchor = a.resource || a.item ? anchorOf(a) : null;
-        return filed(g().proposeCreate('assistant', 'card', { deck: { title: deck }, cardKind: kind, front, back, anchor, ...(str(a.question) ? { question: str(a.question)! } : {}) }, str(a.reason)));
+        return filed(g().proposeCreate('assistant', 'card', { deck: { title: deck }, cardKind: kind, front, back, anchor, ...(str(a.ticket) ? { question: str(a.ticket)! } : {}) }, str(a.reason)));
       }
       case 'propose_highlight': {
         const resource = str(a.resource);
@@ -554,9 +554,9 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         if (!resource || !page || !quote) throw new ToolError('resource, page and quote are required');
         const an = anchorOf(a);
         if (an.kind !== 'page' || !an.quote) throw new ToolError('quote is required');
-        return filed(g().proposeCreate('assistant', 'highlight', { resource, pageIndex: page - 1, quote: an.quote, note: str(a.note) ?? '', ...(str(a.question) ? { question: str(a.question)! } : {}) }, str(a.reason)));
+        return filed(g().proposeCreate('assistant', 'highlight', { resource, pageIndex: page - 1, quote: an.quote, note: str(a.note) ?? '', ...(str(a.ticket) ? { question: str(a.ticket)! } : {}) }, str(a.reason)));
       }
-      case 'propose_question': {
+      case 'propose_ticket': {
         const text = str(a.text);
         if (!text) throw new ToolError('text is required');
         return filed(g().proposeCreate('assistant', 'question', { text, anchor: anchorOf(a) }, str(a.reason)));
@@ -589,7 +589,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         return g()
           .listChanges({ limit: 100 })
           .filter((c) => !status || c.status === status)
-          .map((c) => ({ ...(c.field === 'create' ? { creates: c.ref.kind } : c.field === 'work' ? { reference: c.ref.id } : { question: c.ref.id }), field: c.field, before: c.field === 'create' || c.field === 'work' ? undefined : c.before, after: c.after, status: c.status, reason: c.reason, studentSaid: c.feedback }));
+          .map((c) => ({ ...(c.field === 'create' ? { creates: c.ref.kind } : c.field === 'work' ? { reference: c.ref.id } : { ticket: c.ref.id }), field: c.field, before: c.field === 'create' || c.field === 'work' ? undefined : c.before, after: c.after, status: c.status, reason: c.reason, studentSaid: c.feedback }));
       }
       case 'write_digest': {
         const title = str(a.title);
@@ -616,7 +616,7 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
           protocolVersion: asked && PROTOCOLS.includes(asked) ? asked : PROTOCOLS[0],
           capabilities: { tools: {}, prompts: {}, resources: {} },
           serverInfo: { name: 'workbook', version: SKILLS_VERSION },
-          instructions: "The student's workbook: their open questions, their own text and the text of their materials. You cannot change anything yourself: propose changes (labels, answers) or new things (cards, page notes, questions) and the student decides in their inbox. Every read of a question needs a purpose (the student sees it next to the question), and list_questions shows 20 at a time with what was rejected for each; do not repeat a rejection. Everything goes through this MCP: the student's app API is not for you, and the token does not work there. Where a skill (workbook-answer-recent, workbook-cards-from-confusion, workbook-assess, workbook-exercise-help) fits, use it. For exercises you can read the student's saved work and run their tests, but you never propose changes to their code. You may also keep your own digests.",
+          instructions: "The student's workbook: their tickets (open questions), their own text and the text of their materials. You cannot change anything yourself: propose changes (labels, answers) or new things (cards, page notes, questions) and the student decides on their Tickets page. Every read of a ticket needs a purpose (the student sees it next to the ticket), and list_tickets shows 20 at a time with what was rejected for each; do not repeat a rejection. Everything goes through this MCP: the student's app API is not for you, and the token does not work there. Where a skill (workbook-answer-recent, workbook-cards-from-confusion, workbook-assess, workbook-exercise-help) fits, use it. For exercises you can read the student's saved work and run their tests, but you never propose changes to their code. You may also keep your own digests.",
         });
       }
       case 'ping':
@@ -634,12 +634,12 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
         return ok({ description: p.description, messages: [{ role: 'user', content: { type: 'text', text: p.text(args) } }] });
       }
       case 'resources/list':
-        return ok({ resources: [{ uri: QUESTIONS_URI, name: 'questions', description: "The student's questions with their answers, what was made from them (cards, notes, highlights) and whether they are closed. Read-only.", mimeType: 'application/json' }] });
+        return ok({ resources: [{ uri: TICKETS_URI, name: 'tickets', description: "The student's tickets (their questions) with their answers, what was made from them (cards, notes, highlights) and whether they are closed. Read-only.", mimeType: 'application/json' }] });
       case 'resources/read': {
-        if (params.uri !== QUESTIONS_URI) return error(-32002, `unknown resource "${String(params.uri)}"`);
-        const overview = questionsOverview();
-        g().logQuestionFetches(overview.map((q) => q.id), 'resource workbook://questions');
-        return ok({ contents: [{ uri: QUESTIONS_URI, mimeType: 'application/json', text: JSON.stringify(overview, null, 1) }] });
+        if (params.uri !== TICKETS_URI) return error(-32002, `unknown resource "${String(params.uri)}"`);
+        const overview = ticketsOverview();
+        g().logTicketFetches(overview.map((q) => q.id), 'resource workbook://tickets');
+        return ok({ contents: [{ uri: TICKETS_URI, mimeType: 'application/json', text: JSON.stringify(overview, null, 1) }] });
       }
       case 'tools/call':
         try {

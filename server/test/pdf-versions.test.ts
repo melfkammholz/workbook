@@ -145,13 +145,13 @@ describe('new versions of a file', () => {
 
     // Questions on pages: one with a selection that stays, one on a page that moves, one on a page that changes.
     const ask = (pageIndex: number, text: string, q?: ReturnType<typeof quote>) =>
-      app.inject({ method: 'POST', url: '/api/questions', payload: { text, page: { resource: id, pageIndex, fingerprint: pageFingerprint(old[pageIndex]!.text, pageIndex), ...q } } });
+      app.inject({ method: 'POST', url: '/api/tickets', payload: { text, page: { resource: id, pageIndex, fingerprint: pageFingerprint(old[pageIndex]!.text, pageIndex), ...q } } });
     const qSel = (await ask(1, 'Warum korrekt?', quote(1, 'Sie ist korrekt'))).json() as { id: string; anchor: { version: string } };
     const qPage = (await ask(0, 'Was ist Logik?')).json() as { id: string };
     const qLost = (await ask(2, 'Was heißt eindeutig?')).json() as { id: string };
     expect(qSel.anchor.version).toBe(sha(a));
     // A question about the whole material has no page: a new file leaves it alone.
-    const qWhole = (await app.inject({ method: 'POST', url: '/api/questions', payload: { text: 'Worum geht es?', material: id } })).json() as { id: string; anchor: { kind: string } };
+    const qWhole = (await app.inject({ method: 'POST', url: '/api/tickets', payload: { text: 'Worum geht es?', material: id } })).json() as { id: string; anchor: { kind: string } };
     expect(qWhole.anchor).toMatchObject({ kind: 'material', resource: id });
     expect(((await app.inject({ url: '/api/resources' })).json() as { resources: { stale: number; versions: number }[] }).resources[0]).toMatchObject({ stale: 0, versions: 1 });
     expect((await post(`/api/resources/${id}/version?filename=Skript.pdf`, a)).statusCode).toBe(409);
@@ -167,7 +167,7 @@ describe('new versions of a file', () => {
     expect(left.highlights.map((h) => h.id)).toEqual([goes.id]);
     expect(left.pages.map((p) => p.note)).toEqual(['Unifikation']);
     expect(left.questions.map((q) => q.id)).toEqual([qLost.id]);
-    const placed = (await app.inject({ url: `/api/questions?resource=${id}` })).json() as { id: string; unplaced: boolean; anchor: { version: string; pageIndex: number } }[];
+    const placed = (await app.inject({ url: `/api/tickets?resource=${id}` })).json() as { id: string; unplaced: boolean; anchor: { version: string; pageIndex: number } }[];
     expect(placed.filter((q) => q.id !== qWhole.id).map((q) => [q.id, q.anchor.pageIndex, q.anchor.version === sha(b), q.unplaced])).toEqual([
       [qSel.id, 2, true, false],
       [qPage.id, 1, true, false],

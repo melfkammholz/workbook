@@ -1,6 +1,6 @@
 import { X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
-import { SNIPPET_LENGTH, normalizeQuote, type PageRect, type Question, type Resource, type TextQuote } from '@wb/shared';
+import { SNIPPET_LENGTH, normalizeQuote, type PageRect, type Ticket, type Resource, type TextQuote } from '@wb/shared';
 import { askQuestion, useQuestions } from '@/lib/api';
 import { setAsked } from '@/lib/pdfAsked';
 import { useT } from '@/lib/i18n';
@@ -12,7 +12,7 @@ import { CaptureField, QuestionCard, QuestionRow } from './Questions';
 export type PageInfo = (n: number) => Promise<{ fingerprint: string; text: string }>;
 
 /** The questions asked on this file's pages, in reading order. Those the file could not place wait in the fix list. */
-export function usePdfQuestions(resource: Resource): Question[] {
+export function usePdfQuestions(resource: Resource): Ticket[] {
   const all = useQuestions().data;
   return useMemo(
     () =>
@@ -24,7 +24,7 @@ export function usePdfQuestions(resource: Resource): Question[] {
 }
 
 /** -1: about the whole material, before the pages. */
-const pageOf = (q: Question) => (q.anchor.kind === 'page' ? q.anchor.pageIndex : -1);
+const pageOf = (q: Ticket) => (q.anchor.kind === 'page' ? q.anchor.pageIndex : -1);
 
 /** About 200 characters of the page around the quote, or its start when there is no quote. */
 export function snippetOf(text: string, quote: string | null): string {
@@ -171,12 +171,12 @@ export function PdfQuestionTie({ current }: { current: number }) {
 }
 
 /** The paper's questions in the notes card, grouped by page in reading order; a click on the text goes to the page. */
-export function PdfQuestionList({ resource, questions, current, labelOf, onGo }: { resource: Resource; questions: Question[]; current: number; labelOf: (n: number) => string; onGo: (n: number) => void }) {
+export function PdfQuestionList({ resource, questions, current, labelOf, onGo }: { resource: Resource; questions: Ticket[]; current: number; labelOf: (n: number) => string; onGo: (n: number) => void }) {
   const t = useT();
   const [showDone, setShowDone] = useState(false);
   const shown = questions.filter((q) => showDone || !q.archived);
   const groups = useMemo(() => {
-    const out: { page: number; items: Question[] }[] = [];
+    const out: { page: number; items: Ticket[] }[] = [];
     for (const q of shown) {
       const n = pageOf(q) + 1;
       const last = out[out.length - 1];
@@ -217,7 +217,7 @@ export function PdfQuestionList({ resource, questions, current, labelOf, onGo }:
 }
 
 /** One line: the question (or, without text, its passage), truncated; a click opens the full row, a click on its text closes it. */
-function CompactQuestion({ q }: { q: Question }) {
+function CompactQuestion({ q }: { q: Ticket }) {
   const [open, setOpen] = useState(false);
   const t = useT();
   if (open) {
@@ -242,7 +242,7 @@ function CompactQuestion({ q }: { q: Question }) {
 }
 
 /** What the question was about: the selection, or else the start of the page's text. */
-export function Quote({ q }: { q: Question }) {
+export function Quote({ q }: { q: Ticket }) {
   if (q.anchor.kind !== 'page') return null;
   const text = q.anchor.quote?.trim() || q.anchor.snippet?.trim();
   return text ? <p className="mt-0.5 line-clamp-2 break-words text-[12px] italic text-ink-3">{text}</p> : null;

@@ -17,7 +17,7 @@ import type {
   NoteFormat,
   Change,
   ChangeValue,
-  Question,
+  Ticket,
   Outline,
   RenderedItem,
   ProgressEntry,
@@ -82,7 +82,7 @@ export interface Work {
   stats: Stats;
   reflections: Reflection[];
   /** The open questions on this exercise, done ones too, oldest first. */
-  questions: Question[];
+  questions: Ticket[];
 }
 export interface NotePreview {
   html: string;
@@ -386,8 +386,8 @@ export const postReflection = (id: string, confidence: number, how: HowSolved[],
   api.post<Reflection>(`/api/work/${encodeURIComponent(id)}/reflection`, { confidence, how, comment });
 /** Every question of the student, in every workbook and on every material (one query; pages filter it). */
 export const questionsKey = ['questions'] as const;
-export const useQuestions = () => useQuery({ queryKey: questionsKey, queryFn: () => api.get<Question[]>('/api/questions'), staleTime: 30_000 });
-const patchQuestions = (fn: (qs: Question[]) => Question[]) => queryClient.setQueryData<Question[]>(questionsKey, (qs) => qs && fn(qs));
+export const useQuestions = () => useQuery({ queryKey: questionsKey, queryFn: () => api.get<Ticket[]>('/api/tickets'), staleTime: 30_000 });
+const patchQuestions = (fn: (qs: Ticket[]) => Ticket[]) => queryClient.setQueryData<Ticket[]>(questionsKey, (qs) => qs && fn(qs));
 
 /** What a change to a question touches: the item's cached work, the list of all, the review page, the dashboard. */
 export const questionsChanged = (item: string | null) => {
@@ -422,41 +422,41 @@ export interface PageQuestion {
 export const askQuestion = (where: QuestionPlace, text: string) => {
   const t = Date.now();
   const id = crypto.randomUUID();
-  const anchor: Question['anchor'] = where.item
+  const anchor: Ticket['anchor'] = where.item
     ? { kind: 'exercise', course: '', id: where.item }
     : where.page
       ? { kind: 'page', ...where.page }
       : where.material
         ? { kind: 'material', resource: where.material }
         : { kind: 'none' };
-  const q: Question = { id, text, anchor, course: '', highlightId: null, unplaced: false, read: true, archived: false, answer: null, answerBy: null, links: [], who: null, mergedInto: null, labels: [], fetched: null, createdAt: t, updatedAt: t, archivedAt: null };
+  const q: Ticket = { id, text, anchor, course: '', highlightId: null, unplaced: false, read: true, archived: false, answer: null, answerBy: null, links: [], who: null, mergedInto: null, labels: [], fetched: null, createdAt: t, updatedAt: t, archivedAt: null };
   const item = where.item ?? null;
   if (item) patchWork(item, (w) => ({ ...w, questions: [...w.questions, q] }));
   patchQuestions((qs) => [...qs, q]);
   const page = where.page && (({ version: _v, ...rest }) => rest)(where.page);
-  return saved(item, api.post('/api/questions', { id, text, ...(item ? { item } : {}), ...(page ? { page } : {}), ...(where.material ? { material: where.material } : {}) }));
+  return saved(item, api.post('/api/tickets', { id, text, ...(item ? { item } : {}), ...(page ? { page } : {}), ...(where.material ? { material: where.material } : {}) }));
 };
-export const addQuestion = (item: string, text: string) => askQuestion({ item }, text);
-export const updateQuestion = (item: string | null, id: string, patch: { text?: string; archived?: boolean; read?: boolean; answer?: string | null }) => {
+export const addTicket = (item: string, text: string) => askQuestion({ item }, text);
+export const updateTicket = (item: string | null, id: string, patch: { text?: string; archived?: boolean; read?: boolean; answer?: string | null }) => {
   const t = Date.now();
-  const apply = (qs: Question[]) => qs.map((q) => (q.id !== id ? q : { ...q, ...patch, ...(patch.answer !== undefined ? { answer: patch.answer?.trim() ? patch.answer : null, answerBy: patch.answer?.trim() ? ('you' as const) : null } : {}), ...(patch.archived === false ? { mergedInto: null } : {}), ...(patch.text !== undefined || patch.answer !== undefined ? { updatedAt: t } : {}), archivedAt: patch.archived === undefined ? q.archivedAt : patch.archived ? t : null }));
+  const apply = (qs: Ticket[]) => qs.map((q) => (q.id !== id ? q : { ...q, ...patch, ...(patch.answer !== undefined ? { answer: patch.answer?.trim() ? patch.answer : null, answerBy: patch.answer?.trim() ? ('you' as const) : null } : {}), ...(patch.archived === false ? { mergedInto: null } : {}), ...(patch.text !== undefined || patch.answer !== undefined ? { updatedAt: t } : {}), archivedAt: patch.archived === undefined ? q.archivedAt : patch.archived ? t : null }));
   if (item) patchWork(item, (w) => ({ ...w, questions: apply(w.questions) }));
   patchQuestions(apply);
-  return saved(item, api.patch(`/api/questions/${encodeURIComponent(id)}`, patch));
+  return saved(item, api.patch(`/api/tickets/${encodeURIComponent(id)}`, patch));
 };
 /** Records that something was made from a question (the target must already be saved); the row shows its icon. */
-export const linkQuestion = (item: string | null, id: string, kind: 'card' | 'note' | 'highlight', ref: string) => saved(item, api.post(`/api/questions/${encodeURIComponent(id)}/links`, { kind, ref }));
+export const linkQuestion = (item: string | null, id: string, kind: 'card' | 'note' | 'highlight', ref: string) => saved(item, api.post(`/api/tickets/${encodeURIComponent(id)}/links`, { kind, ref }));
 /** The student's tags on a question, shown at once. */
 export const setQuestionTags = (item: string | null, id: string, labels: string[]) => {
-  const apply = (qs: Question[]) => qs.map((q) => (q.id === id ? { ...q, labels } : q));
+  const apply = (qs: Ticket[]) => qs.map((q) => (q.id === id ? { ...q, labels } : q));
   if (item) patchWork(item, (w) => ({ ...w, questions: apply(w.questions) }));
   patchQuestions(apply);
   return saved(item, api.put(`/api/tags/on/question/${encodeURIComponent(id)}`, { ids: labels }));
 };
-export const deleteQuestion = (item: string | null, id: string) => {
+export const deleteTicket = (item: string | null, id: string) => {
   if (item) patchWork(item, (w) => ({ ...w, questions: w.questions.filter((q) => q.id !== id) }));
   patchQuestions((qs) => qs.filter((q) => q.id !== id));
-  return saved(item, api.delete(`/api/questions/${encodeURIComponent(id)}`));
+  return saved(item, api.delete(`/api/tickets/${encodeURIComponent(id)}`));
 };
 /** The assistant inbox: proposals waiting, and what was decided lately. Only asked for while the bridge is on. */
 export const changesKey = ['changes'] as const;
@@ -491,7 +491,7 @@ export const useAssistant = (enabled = true) =>
     staleTime: 10_000,
     refetchInterval: (q) => (q.state.data?.requests.some((r) => r.status === 'queued' || r.status === 'running') ? 4_000 : 30_000),
   });
-export const sendAssistantRequest = async (body: { kind: RequestKind; questions?: string[]; item?: string; note?: string }) => {
+export const sendAssistantRequest = async (body: { kind: RequestKind; tickets?: string[]; item?: string; note?: string }) => {
   try {
     return await api.post<AssistantRequest>('/api/assistant/requests', body);
   } finally {

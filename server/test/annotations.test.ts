@@ -65,20 +65,20 @@ describe('"come back to" is a question', () => {
     const s = new Store(':memory:');
     const a = s.addAnnotation({ target: 'x', part: 'task', quote: 'Typklasse', prefix: 'die ', suffix: ' ist', color: 'pink' });
     expect(a.review).toBeNull();
-    expect(s.listQuestions()).toEqual([]);
+    expect(s.listTickets()).toEqual([]);
     expect(s.updateAnnotation(a.id, { review: 'open' })!.review).toBe('open');
-    expect(s.listQuestions()).toEqual([expect.objectContaining({ text: '', archived: false, highlightId: a.id, anchor: expect.objectContaining({ kind: 'text', target: 'x', quote: 'Typklasse' }) })]);
+    expect(s.listTickets()).toEqual([expect.objectContaining({ text: '', archived: false, highlightId: a.id, anchor: expect.objectContaining({ kind: 'text', target: 'x', quote: 'Typklasse' }) })]);
     expect(s.updateAnnotation(a.id, { review: 'resolved' })!.review).toBe('resolved');
-    expect(s.listQuestions()[0]).toMatchObject({ archived: true });
+    expect(s.listTickets()[0]).toMatchObject({ archived: true });
     expect(s.resolvedMarkCount()).toBe(1);
     // Resolving it as a question shows on the highlight.
-    s.updateQuestion(s.listQuestions()[0]!.id, { archived: false });
+    s.updateTicket(s.listTickets()[0]!.id, { archived: false });
     expect(s.getAnnotation(a.id)!.review).toBe('open');
     expect(s.updateAnnotation(a.id, { review: null })!.review).toBeNull();
-    expect(s.listQuestions()).toEqual([]);
+    expect(s.listTickets()).toEqual([]);
     s.updateAnnotation(a.id, { review: 'open' });
     s.deleteAnnotation(a.id);
-    expect(s.listQuestions()).toHaveLength(1);
+    expect(s.listTickets()).toHaveLength(1);
     s.close();
   });
 });
@@ -95,7 +95,7 @@ describe('migration 19', () => {
       INSERT INTO pdf_pages (id, resource, version, page_index, fingerprint, review, created_at, updated_at) VALUES ('p1','r1','v',3,'fp','resolved',1,2);`.replace("'a3','x','task','s','','','pink','','',1,2", "'a3','x','task','s','','','pink','',NULL,1,2"));
     db.close();
     const s = new Store(file);
-    const qs = s.listQuestions();
+    const qs = s.listTickets();
     expect(qs).toHaveLength(4);
     expect(qs.every((q) => q.text === '')).toBe(true);
     const by = (id: string) => qs.find((q) => q.highlightId === id);

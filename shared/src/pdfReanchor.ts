@@ -178,7 +178,7 @@ export interface UnplacedItems {
   highlights: import('./pdfAnnotations').PdfAnnotation[];
   pages: import('./pdfPages').PdfPageItem[];
   toc: import('./pdfToc').TocEdit[];
-  questions: import('./questions').Question[];
+  questions: import('./tickets').Ticket[];
 }
 
 /** The viewport of a page as pdf.js has it (only what is used here). */

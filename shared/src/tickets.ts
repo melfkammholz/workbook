@@ -3,7 +3,7 @@ import type { Anchor } from './anchors';
 import type { CardKind } from './index';
 
 /** A question may have no text (a "come back to" mark), so its anchor is what says what it is about. */
-export interface Question {
+export interface Ticket {
   id: string;
   text: string;
   anchor: Anchor;
@@ -22,7 +22,7 @@ export interface Question {
   /** Who wrote `answer`; null without one. */
   answerBy: AnswerBy | null;
   /** What was made from the question; links to things that are gone are left out. */
-  links: QuestionLink[];
+  links: TicketLink[];
   /** Who asked it when it was not the student, e.g. 'assistant' (an accepted proposal). */
   who: string | null;
   /** Set when it was a duplicate: the question that took its place. It stays in the list, closed, with this link. */
@@ -39,21 +39,21 @@ export interface Question {
 export type AnswerBy = 'you' | 'assistant';
 
 /** What a question can lead to. */
-export const QUESTION_LINK_KINDS = ['card', 'note', 'highlight'] as const;
-export type QuestionLinkKind = (typeof QUESTION_LINK_KINDS)[number];
+export const TICKET_LINK_KINDS = ['card', 'note', 'highlight'] as const;
+export type TicketLinkKind = (typeof TICKET_LINK_KINDS)[number];
 /**
  * Something made from a question. `ref` is the stable id of a card (its Typst `id:`), of a page note (the page's id) or
  * of a highlight (text or PDF). A `card` link also says which deck the card is in now.
  */
-export interface QuestionLink {
-  kind: QuestionLinkKind;
+export interface TicketLink {
+  kind: TicketLinkKind;
   ref: string;
   /** Cards only. */
   deck?: string;
   createdAt: number;
 }
 
-export const MAX_QUESTION = 2000;
+export const MAX_TICKET = 2000;
 /** Characters of a page kept with a question about it. */
 export const SNIPPET_LENGTH = 200;
 
@@ -117,7 +117,7 @@ export interface MergeUndo {
   survivor: { text: string; answer: string | null; answerBy?: AnswerBy | null; archived: boolean; archivedAt: number | null; updatedAt: number; labels: string[] };
   duplicates: { id: string; archived: boolean; archivedAt: number | null; answer: string | null; answerBy?: AnswerBy | null; labels: string[] }[];
   /** Links that moved from a duplicate to the survivor; `kept`: the survivor had it already. */
-  links?: { from: string; kind: QuestionLinkKind; ref: string; createdAt: number; kept: boolean }[];
+  links?: { from: string; kind: TicketLinkKind; ref: string; createdAt: number; kept: boolean }[];
 }
 /**
  * A `work` proposal is about one entry of the reference library whose fields the parser was unsure about (`ref.id` is

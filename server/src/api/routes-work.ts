@@ -92,7 +92,7 @@ export function workRoutes(app: FastifyInstance, d: Deps): void {
       progress: d.store.getProgress(id),
       stats: d.store.getStats(id),
       reflections: d.store.listReflections(id),
-      questions: d.store.listQuestions({ course: d.store.course, exercise: id }),
+      questions: d.store.listTickets({ course: d.store.course, exercise: id }),
     };
   });
 

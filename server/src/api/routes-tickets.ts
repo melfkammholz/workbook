@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { MAX_QUESTION, MAX_QUOTE, QUESTION_LINK_KINDS, SNIPPET_LENGTH, type Anchor, type ChangeValue } from '@wb/shared';
+import { MAX_TICKET, MAX_QUOTE, TICKET_LINK_KINDS, SNIPPET_LENGTH, type Anchor, type ChangeValue } from '@wb/shared';
 import { changesBus } from '../db/changes-bus.js';
 import type { Deps } from './deps.js';
 
@@ -24,26 +24,26 @@ const bodies = {
       .optional(),
     /** A whole material, not tied to a page. */
     material: z.string().min(1).max(200).optional(),
-    text: z.string().max(MAX_QUESTION),
+    text: z.string().max(MAX_TICKET),
   }),
-  update: z.object({ text: z.string().max(MAX_QUESTION), archived: z.boolean(), read: z.boolean(), answer: z.string().max(MAX_QUESTION).nullable() }).partial(),
+  update: z.object({ text: z.string().max(MAX_TICKET), archived: z.boolean(), read: z.boolean(), answer: z.string().max(MAX_TICKET).nullable() }).partial(),
 };
 
 /** Open questions: the student's own list, kept across workbooks and across a reset of one. */
-export function questionRoutes(app: FastifyInstance, d: Deps): void {
+export function ticketRoutes(app: FastifyInstance, d: Deps): void {
   const fail = (reply: { code: (n: number) => { send: (b: unknown) => unknown } }, error: { issues: { path: PropertyKey[]; message: string }[] }) =>
     reply.code(400).send({ error: error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') });
 
   /** Without a filter, every question of every workbook. */
-  app.get<{ Querystring: { course?: string; exercise?: string; resource?: string } }>('/api/questions', async (req) => {
+  app.get<{ Querystring: { course?: string; exercise?: string; resource?: string } }>('/api/tickets', async (req) => {
     const { course, exercise, resource } = req.query;
-    return d.store.listQuestions({ ...(course !== undefined ? { course } : {}), ...(exercise !== undefined ? { exercise } : {}), ...(resource !== undefined ? { resource } : {}) });
+    return d.store.listTickets({ ...(course !== undefined ? { course } : {}), ...(exercise !== undefined ? { exercise } : {}), ...(resource !== undefined ? { resource } : {}) });
   });
 
-  app.post('/api/questions', async (req, reply) => {
+  app.post('/api/tickets', async (req, reply) => {
     const r = bodies.add.safeParse(req.body);
     if (!r.success) return fail(reply, r.error);
-    if (r.data.id && d.store.getQuestion(r.data.id)) return reply.code(409).send({ error: 'question exists' });
+    if (r.data.id && d.store.getTicket(r.data.id)) return reply.code(409).send({ error: 'question exists' });
     let anchor: Anchor = { kind: 'none' };
     if (r.data.item !== undefined) {
       const item = d.content.current.get(r.data.item);
@@ -67,32 +67,32 @@ export function questionRoutes(app: FastifyInstance, d: Deps): void {
         ...(p.snippet ? { snippet: p.snippet } : {}),
       };
     }
-    return d.store.addQuestion({ id: r.data.id, text: r.data.text, anchor });
+    return d.store.addTicket({ id: r.data.id, text: r.data.text, anchor });
   });
 
-  app.patch<{ Params: { id: string } }>('/api/questions/:id', async (req, reply) => {
+  app.patch<{ Params: { id: string } }>('/api/tickets/:id', async (req, reply) => {
     const r = bodies.update.safeParse(req.body);
     if (!r.success) return fail(reply, r.error);
-    return d.store.updateQuestion(req.params.id, r.data) ?? reply.code(404).send({ error: 'unknown question' });
+    return d.store.updateTicket(req.params.id, r.data) ?? reply.code(404).send({ error: 'unknown question' });
   });
 
   // What was made from a question. The target must exist; a link whose target goes later disappears on its own.
-  app.post<{ Params: { id: string } }>('/api/questions/:id/links', async (req, reply) => {
-    const r = z.object({ kind: z.enum(QUESTION_LINK_KINDS), ref: z.string().min(1).max(300) }).safeParse(req.body);
+  app.post<{ Params: { id: string } }>('/api/tickets/:id/links', async (req, reply) => {
+    const r = z.object({ kind: z.enum(TICKET_LINK_KINDS), ref: z.string().min(1).max(300) }).safeParse(req.body);
     if (!r.success) return fail(reply, r.error);
-    if (!d.store.getQuestion(req.params.id)) return reply.code(404).send({ error: 'unknown question' });
-    if (!d.store.addQuestionLink(req.params.id, r.data.kind, r.data.ref)) return reply.code(404).send({ error: 'unknown target' });
-    return d.store.getQuestion(req.params.id);
+    if (!d.store.getTicket(req.params.id)) return reply.code(404).send({ error: 'unknown question' });
+    if (!d.store.addTicketLink(req.params.id, r.data.kind, r.data.ref)) return reply.code(404).send({ error: 'unknown target' });
+    return d.store.getTicket(req.params.id);
   });
-  app.delete<{ Params: { id: string }; Querystring: { kind?: string; ref?: string } }>('/api/questions/:id/links', async (req, reply) => {
+  app.delete<{ Params: { id: string }; Querystring: { kind?: string; ref?: string } }>('/api/tickets/:id/links', async (req, reply) => {
     const { kind, ref } = req.query;
     if (!kind || !ref) return reply.code(400).send({ error: 'kind and ref are needed' });
-    if (!d.store.removeQuestionLink(req.params.id, kind, ref)) return reply.code(404).send({ error: 'unknown link' });
-    return d.store.getQuestion(req.params.id);
+    if (!d.store.removeTicketLink(req.params.id, kind, ref)) return reply.code(404).send({ error: 'unknown link' });
+    return d.store.getTicket(req.params.id);
   });
 
-  app.delete<{ Params: { id: string } }>('/api/questions/:id', async (req, reply) =>
-    d.store.deleteQuestion(req.params.id) ? { ok: true } : reply.code(404).send({ error: 'unknown question' }),
+  app.delete<{ Params: { id: string } }>('/api/tickets/:id', async (req, reply) =>
+    d.store.deleteTicket(req.params.id) ? { ok: true } : reply.code(404).send({ error: 'unknown question' }),
   );
 
   // The assistant inbox: what the assistant proposed, and what was decided.

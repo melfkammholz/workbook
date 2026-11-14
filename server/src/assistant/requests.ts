@@ -101,7 +101,7 @@ export class AssistantQueue {
     if (r.status !== 'done' && r.status !== 'failed') return null;
     const from = Number(r.claimed_at ?? r.created_at);
     const to = Number(r.finished_at ?? Date.now());
-    const read = this.sql.get('SELECT COUNT(DISTINCT question_id) AS n FROM question_fetches WHERE purpose LIKE ?', `%#${r.id as string}`);
+    const read = this.sql.get('SELECT COUNT(DISTINCT ticket_id) AS n FROM ticket_fetches WHERE purpose LIKE ?', `%#${r.id as string}`);
     const proposed = this.sql.get("SELECT COUNT(*) AS n FROM changes WHERE who = 'assistant' AND created_at >= ? AND created_at <= ?", from, to);
     return { read: Number(read?.n ?? 0), proposed: Number(proposed?.n ?? 0) };
   }

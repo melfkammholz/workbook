@@ -13,7 +13,7 @@ import { TaskColumn } from '@/components/TaskColumn';
 import { Button, Empty, IconButton, Spinner, clsx } from '@/components/ui';
 import { ResizeHandle } from '@/components/ResizeHandle';
 import { afterPaint } from '@/lib/afterPaint';
-import { api, indexItems, itemHref, keys, neighbours, patchWork, postReflection, recordHints, recordOpen, resetTimer, addQuestion, statusOf, useItem, useOutline, useSetStatus, useSettings, useState_, useWork, whatsNext, type Work } from '@/lib/api';
+import { api, indexItems, itemHref, keys, neighbours, patchWork, postReflection, recordHints, recordOpen, resetTimer, addTicket, statusOf, useItem, useOutline, useSetStatus, useSettings, useState_, useWork, whatsNext, type Work } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { reportSaveFailed } from '@/lib/saveNotice';
 import { useActiveTime, useMediaQuery } from '@/lib/useActiveTime';
@@ -264,7 +264,7 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
       writes.push(postReflection(id, confidence, reflectionHow, review ? '' : comment));
     }
     // What is unclear stays open until the student says otherwise, whichever way it was asked.
-    if (comment) writes.push(addQuestion(id, comment));
+    if (comment) writes.push(addTicket(id, comment));
     if (flashcardsOn && !invited.current && confidence !== null && (confidence <= 2 || !review)) {
       invited.current = true;
       setInvite(confidence <= 2 ? 'low' : 'done');

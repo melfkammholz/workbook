@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { MAX_REQUEST_NOTE, MAX_REQUEST_QUESTIONS, REQUEST_KINDS, type AssistantStatus, type RequestParams } from '@wb/shared';
+import { MAX_REQUEST_NOTE, MAX_REQUEST_TICKETS, REQUEST_KINDS, type AssistantStatus, type RequestParams } from '@wb/shared';
 import { helperScript } from '../assistant/helper-script.js';
 import { queueOf } from '../assistant/requests.js';
 import type { Deps } from './deps.js';
@@ -24,7 +24,7 @@ export function helperRoutes(app: FastifyInstance, d: Deps): void {
 
   const body = z.object({
     kind: z.enum(REQUEST_KINDS),
-    questions: z.array(z.string().max(100)).max(MAX_REQUEST_QUESTIONS).default([]),
+    tickets: z.array(z.string().max(100)).max(MAX_REQUEST_TICKETS).default([]),
     item: z.string().max(300).optional(),
     note: z.string().max(MAX_REQUEST_NOTE).optional(),
   });
@@ -32,12 +32,12 @@ export function helperRoutes(app: FastifyInstance, d: Deps): void {
     if (!allowed()) return reply.code(409).send({ error: 'requests to the assistant are off' });
     const r = body.safeParse(req.body);
     if (!r.success) return reply.code(400).send({ error: r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') });
-    const { kind, questions, item, note } = r.data;
+    const { kind, tickets, item, note } = r.data;
     if (kind === 'exercise-help') {
       if (!item || !d.content.current.exercise(item)?.code) return reply.code(400).send({ error: 'exercise-help needs a programming exercise' });
-    } else if (kind !== 'answer' && !questions.length) return reply.code(400).send({ error: 'questions are needed' });
-    const known = questions.filter((id) => g().getQuestion(id));
-    const params: RequestParams = { questions: known, ...(item ? { item } : {}), ...(note?.trim() ? { note: note.trim() } : {}) };
+    } else if (kind !== 'answer' && !tickets.length) return reply.code(400).send({ error: "tickets are needed" });
+    const known = tickets.filter((id) => g().getTicket(id));
+    const params: RequestParams = { tickets: known, ...(item ? { item } : {}), ...(note?.trim() ? { note: note.trim() } : {}) };
     return queue().create(kind, params, d.store.course);
   });
   app.post<{ Params: { id: string; action: string } }>('/api/assistant/requests/:id/:action', async (req, reply) => {

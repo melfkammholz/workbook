@@ -10,19 +10,19 @@ import { clsx } from 'clsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Title } from '@/components/Title';
 import { Link } from 'wouter';
-import { RESOURCE_TYPES, type Change, type Question, type ResourceType } from '@wb/shared';
+import { RESOURCE_TYPES, type Change, type Ticket, type ResourceType } from '@wb/shared';
 import { Empty, Spinner } from '@/components/ui';
 import { useTags } from '@/lib/tags';
-import { acceptChanges, isStandalone, updateQuestion, useChanges, useCourses, useOutline, useAssistant, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
+import { acceptChanges, isStandalone, updateTicket, useChanges, useCourses, useOutline, useAssistant, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { useResources } from '@/lib/resources';
 
 
-const placeOf = (a: Exclude<Question['anchor'], { kind: 'page' | 'none' | 'material' }>) => (a.kind === 'text' ? a.target : a.id);
+const placeOf = (a: Exclude<Ticket['anchor'], { kind: 'page' | 'none' | 'material' }>) => (a.kind === 'text' ? a.target : a.id);
 
 interface Entry {
-  q: Question;
+  q: Ticket;
   /** `m:<resource id>`, `c:<course id>` or '' for questions tied to nothing. */
   gKey: string;
   gTitle: string;
@@ -80,7 +80,7 @@ export function QuestionsPage() {
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const [openId, setOpenId] = useState<string | null>(null);
-  const [asking, setAsking] = useState<Question[] | null>(null);
+  const [asking, setAsking] = useState<Ticket[] | null>(null);
   const [connecting, setConnecting] = useState(false);
   const lastPicked = useRef<string | null>(null);
   const proposals = usePendingProposals();
@@ -88,7 +88,7 @@ export function QuestionsPage() {
   /** Questions a queued or running request is about: the row says wartet or liest. */
   const asked = useMemo(() => {
     const m = new Map<string, 'queued' | 'running'>();
-    for (const r of helper?.requests ?? []) if (r.status === 'queued' || r.status === 'running') for (const id of r.params.questions) if (m.get(id) !== 'running') m.set(id, r.status);
+    for (const r of helper?.requests ?? []) if (r.status === 'queued' || r.status === 'running') for (const id of r.params.tickets) if (m.get(id) !== 'running') m.set(id, r.status);
     return m;
   }, [helper]);
   const changes = useChanges(bridgeOn).data;
@@ -189,7 +189,7 @@ export function QuestionsPage() {
   const openChange = openId ? standalone.find((c) => c.id === openId) : undefined;
 
   const groups = useMemo(() => {
-    const gs = new Map<string, { key: string; title: string; mtype: ResourceType | null; parts: Map<string, { title: string; href: string | null; order: number; items: Question[] }> }>();
+    const gs = new Map<string, { key: string; title: string; mtype: ResourceType | null; parts: Map<string, { title: string; href: string | null; order: number; items: Ticket[] }> }>();
     for (const e of filtered) {
       const g = gs.get(e.gKey) ?? gs.set(e.gKey, { key: e.gKey, title: e.gTitle, mtype: e.mtype, parts: new Map() }).get(e.gKey)!;
       (g.parts.get(e.pKey) ?? g.parts.set(e.pKey, { title: e.pTitle, href: e.pHref, order: e.pOrder, items: [] }).get(e.pKey)!).items.push(e.q);
@@ -225,9 +225,9 @@ export function QuestionsPage() {
       for (const i of ids) all ? next.delete(i) : next.add(i);
       return next;
     });
-  const openQuestion = (q: Question) => {
+  const openQuestion = (q: Ticket) => {
     setOpenId(q.id);
-    if (!q.read) void updateQuestion(itemOf(q), q.id, { read: true });
+    if (!q.read) void updateTicket(itemOf(q), q.id, { read: true });
   };
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
@@ -259,7 +259,7 @@ export function QuestionsPage() {
   const allClosed = names.length > 0 && names.every((n) => closed.has(n));
   const searching = !!f.text.trim();
   const anyPicked = picked.size > 0;
-  const rowOf = (q: Question) => {
+  const rowOf = (q: Ticket) => {
     const days = Math.floor((Date.now() - q.createdAt) / DAY);
     const waiting = proposals.get(q.id)?.length ?? 0;
     const raw = q.anchor.kind === 'text' ? q.anchor.quote : q.anchor.kind === 'page' ? q.anchor.quote?.trim() || q.anchor.snippet : '';

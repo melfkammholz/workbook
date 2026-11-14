@@ -2,7 +2,7 @@ import { ArrowRight, Bookmark, Check, ChevronLeft, ChevronRight, Layers, LifeBuo
 import { Link } from 'wouter';
 import { useState } from 'react';
 import { useWorkLayout } from '@/lib/workLayout';
-import type { ItemMeta, Question, Status } from '@wb/shared';
+import type { ItemMeta, Ticket, Status } from '@wb/shared';
 import { itemHref } from '@/lib/api';
 import { formatClock } from '@/lib/attention';
 import { useT } from '@/lib/i18n';
@@ -59,7 +59,7 @@ export function ExerciseBar({
   /** A lesson: its own options (highlights, sections in the outline) sit beside the card. */
   lessonOptions?: boolean;
   /** An exercise: the questions asked on it, with a line to add one. */
-  questions?: { item: string; list: Question[] } | undefined;
+  questions?: { item: string; list: Ticket[] } | undefined;
 }) {
   const t = useT();
   const label = finished ? t.timerFinished : paused ? t.timerPaused : t.timeOnExercise;

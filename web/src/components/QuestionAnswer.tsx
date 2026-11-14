@@ -2,8 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Highlighter, Layers, MessageSquareText, StickyNote } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'wouter';
-import { targetHref, type Question, type QuestionLink } from '@wb/shared';
-import { previewNote, updateQuestion } from '@/lib/api';
+import { targetHref, type Ticket, type TicketLink } from '@wb/shared';
+import { previewNote, updateTicket } from '@/lib/api';
 import { useAnnotations } from '@/lib/annotations';
 import { useT } from '@/lib/i18n';
 import { useAllPdfAnnotations } from '@/lib/pdfAnnotations';
@@ -14,7 +14,7 @@ import { TypstEditor } from './TypstEditor';
 import { Button, IconButton, clsx } from './ui';
 
 /** The answer button of a row: always there when there is an answer, among the hover actions otherwise. */
-export function AnswerToggle({ q, open, onToggle, size = 'sm' }: { q: Question; open: boolean; onToggle: () => void; size?: 'sm' | 'md' }) {
+export function AnswerToggle({ q, open, onToggle, size = 'sm' }: { q: Ticket; open: boolean; onToggle: () => void; size?: 'sm' | 'md' }) {
   const t = useT();
   const has = !!q.answer;
   return (
@@ -46,13 +46,13 @@ export function AnswerEditor({ value, onChange, status = '', height = 'h-60' }: 
 }
 
 /** Under a row: the answer with who wrote it, and a Typst editor for the student's own text (saved as they type). */
-export function AnswerPanel({ item, q }: { item: string | null; q: Question }) {
+export function AnswerPanel({ item, q }: { item: string | null; q: Ticket }) {
   const t = useT();
   const [editing, setEditing] = useState(!q.answer);
   const [text, setText] = useState(q.answer ?? '');
   const [saved, setSaved] = useState(false);
   const persist = useDebouncedCallback((v: string) => {
-    void updateQuestion(item, q.id, { answer: v }).then(() => setSaved(true));
+    void updateTicket(item, q.id, { answer: v }).then(() => setSaved(true));
   }, 600);
   if (editing)
     return (
@@ -88,7 +88,7 @@ export function AnswerPanel({ item, q }: { item: string | null; q: Question }) {
 }
 
 /** Small icons for what was made from a question; each opens its target. No counts. */
-export function OutcomeIcons({ links }: { links: QuestionLink[] }) {
+export function OutcomeIcons({ links }: { links: TicketLink[] }) {
   const t = useT();
   const pages = useAllPdfPages().data;
   const texts = useAnnotations().data;

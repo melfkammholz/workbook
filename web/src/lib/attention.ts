@@ -1,4 +1,4 @@
-import type { ProgressEntry, Question, Reflection, ReviewData, Stats } from '@wb/shared';
+import type { ProgressEntry, Ticket, Reflection, ReviewData, Stats } from '@wb/shared';
 
 export type Flag = 'low-confidence' | 'question' | 'review' | 'solution' | 'many-attempts' | 'stuck';
 
@@ -10,15 +10,15 @@ export interface Cell {
   reflection: Reflection | undefined;
   stats: Stats | undefined;
   /** Questions on this exercise that are still open. */
-  questions: Question[];
+  questions: Ticket[];
   flags: Flag[];
 }
 
 /** The questions asked on an item, in the order they were asked. */
-export const questionsOn = (questions: Question[], itemId: string): Question[] =>
+export const questionsOn = (questions: Ticket[], itemId: string): Ticket[] =>
   questions.filter((q) => (q.anchor.kind === 'exercise' || q.anchor.kind === 'item') && q.anchor.id === itemId);
 
-export const openQuestionsOn = (questions: Question[], itemId: string): Question[] => questionsOn(questions, itemId).filter((q) => !q.archived);
+export const openQuestionsOn = (questions: Ticket[], itemId: string): Ticket[] => questionsOn(questions, itemId).filter((q) => !q.archived);
 
 /** Why the student might want to look at this exercise again. */
 export function cellFor(data: ReviewData, exerciseId: string): Cell {

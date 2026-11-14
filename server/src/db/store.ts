@@ -16,11 +16,11 @@ import {
   type HowSolved,
   type NoteDoc,
   type NoteFormat,
-  type Question,
-  type QuestionLink,
-  type QuestionLinkKind,
+  type Ticket,
+  type TicketLink,
+  type TicketLinkKind,
   type AnswerBy,
-  QUESTION_LINK_KINDS,
+  TICKET_LINK_KINDS,
   type Anchor,
   type Change,
   type ChangeField,
@@ -41,7 +41,7 @@ import {
   MAX_PENDING_CHANGES,
   type Tag,
   type TagKind,
-  MAX_QUESTION,
+  MAX_TICKET,
   type ProgressEntry,
   type Reflection,
   type ReviewData,
@@ -267,7 +267,7 @@ export class Store {
       checklists,
       landingSeen: this.getSettingRaw<boolean>('landingSeen', false),
       focus: this.getSettingRaw<Focus | null>('focus', null),
-      questions: this.listQuestions({ course: this.course }),
+      questions: this.listTickets({ course: this.course }),
       reflections,
       stats,
       lastOpenedId: this.getSettingRaw<string | null>('lastOpenedId', null),
@@ -431,7 +431,7 @@ export class Store {
   // ───────────────────────── questions ─────────────────────────
 
   /** Questions are the student's, in every course: a reset of a course's work keeps them. */
-  listQuestions(filter: { course?: string; exercise?: string; resource?: string } = {}): Question[] {
+  listTickets(filter: { course?: string; exercise?: string; resource?: string } = {}): Ticket[] {
     const where: string[] = [];
     const params: SQLInputValue[] = [];
     if (filter.course !== undefined) {
@@ -446,52 +446,52 @@ export class Store {
       where.push("json_extract(anchor, '$.resource') = ?");
       params.push(filter.resource);
     }
-    const rows = this.all(`SELECT * FROM questions ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at, rowid`, ...params);
+    const rows = this.all(`SELECT * FROM tickets ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at, rowid`, ...params);
     const labels = this.tagLinks('question');
-    const links = this.questionLinks(rows.map((r) => r.id as string), filter.course === undefined && filter.exercise === undefined && filter.resource === undefined);
-    const fetched = this.questionFetches();
-    return rows.map((r) => rowToQuestion(r, labels.get(r.id as string) ?? [], links.get(r.id as string) ?? [], fetched.get(r.id as string) ?? null));
+    const links = this.ticketLinks(rows.map((r) => r.id as string), filter.course === undefined && filter.exercise === undefined && filter.resource === undefined);
+    const fetched = this.ticketFetches();
+    return rows.map((r) => rowToTicket(r, labels.get(r.id as string) ?? [], links.get(r.id as string) ?? [], fetched.get(r.id as string) ?? null));
   }
 
   /** The assistant read these questions through the MCP; `purpose` says why (the skill or prompt that asked). */
-  logQuestionFetches(ids: string[], purpose: string): void {
+  logTicketFetches(ids: string[], purpose: string): void {
     const t = this.now();
-    for (const id of ids) this.run('INSERT INTO question_fetches (question_id, at, purpose) SELECT id, ?, ? FROM questions WHERE id = ?', t, purpose, id);
+    for (const id of ids) this.run('INSERT INTO ticket_fetches (ticket_id, at, purpose) SELECT id, ?, ? FROM tickets WHERE id = ?', t, purpose, id);
   }
 
   /** The latest read of each question that was read. */
-  private questionFetches(): Map<string, { at: number; purpose: string }> {
-    const rows = this.all('SELECT question_id, at, purpose FROM question_fetches WHERE id IN (SELECT MAX(id) FROM question_fetches GROUP BY question_id)');
-    return new Map(rows.map((r) => [r.question_id as string, { at: Number(r.at), purpose: r.purpose as string }]));
+  private ticketFetches(): Map<string, { at: number; purpose: string }> {
+    const rows = this.all('SELECT ticket_id, at, purpose FROM ticket_fetches WHERE id IN (SELECT MAX(id) FROM ticket_fetches GROUP BY ticket_id)');
+    return new Map(rows.map((r) => [r.ticket_id as string, { at: Number(r.at), purpose: r.purpose as string }]));
   }
 
-  getQuestion(id: string): Question | null {
-    const r = this.get('SELECT * FROM questions WHERE id = ?', id);
+  getTicket(id: string): Ticket | null {
+    const r = this.get('SELECT * FROM tickets WHERE id = ?', id);
     if (!r) return null;
-    const f = this.get('SELECT at, purpose FROM question_fetches WHERE question_id = ? ORDER BY id DESC LIMIT 1', id);
-    return rowToQuestion(r, this.tagsOf('question', id), this.questionLinks([id], false).get(id) ?? [], f ? { at: Number(f.at), purpose: f.purpose as string } : null);
+    const f = this.get('SELECT at, purpose FROM ticket_fetches WHERE ticket_id = ? ORDER BY id DESC LIMIT 1', id);
+    return rowToTicket(r, this.tagsOf('question', id), this.ticketLinks([id], false).get(id) ?? [], f ? { at: Number(f.at), purpose: f.purpose as string } : null);
   }
 
   /** The links of these questions (`all`: of every question, in one query), without those whose target is gone. */
-  private questionLinks(ids: string[], all: boolean): Map<string, QuestionLink[]> {
+  private ticketLinks(ids: string[], all: boolean): Map<string, TicketLink[]> {
     const rows = all
-      ? this.all('SELECT question_id, kind, ref, created_at FROM question_links ORDER BY created_at, ref')
+      ? this.all('SELECT ticket_id, kind, ref, created_at FROM ticket_links ORDER BY created_at, ref')
       : ids.length > 50
-        ? this.all('SELECT question_id, kind, ref, created_at FROM question_links ORDER BY created_at, ref').filter((r) => ids.includes(r.question_id as string))
-        : ids.flatMap((id) => this.all('SELECT question_id, kind, ref, created_at FROM question_links WHERE question_id = ? ORDER BY created_at, ref', id));
-    const out = new Map<string, QuestionLink[]>();
+        ? this.all('SELECT ticket_id, kind, ref, created_at FROM ticket_links ORDER BY created_at, ref').filter((r) => ids.includes(r.ticket_id as string))
+        : ids.flatMap((id) => this.all('SELECT ticket_id, kind, ref, created_at FROM ticket_links WHERE ticket_id = ? ORDER BY created_at, ref', id));
+    const out = new Map<string, TicketLink[]>();
     if (!rows.length) return out;
     const decks = this.db.creators?.cardDecks(rows.filter((r) => r.kind === 'card').map((r) => r.ref as string)) ?? new Map<string, string>();
     for (const r of rows) {
-      const kind = r.kind as QuestionLinkKind;
+      const kind = r.kind as TicketLinkKind;
       const ref = r.ref as string;
-      const link: QuestionLink = { kind, ref, createdAt: Number(r.created_at) };
+      const link: TicketLink = { kind, ref, createdAt: Number(r.created_at) };
       if (kind === 'card') {
         const deck = decks.get(ref);
         if (!deck) continue;
         link.deck = deck;
       } else if (!this.targetExists(kind, ref)) continue;
-      const q = r.question_id as string;
+      const q = r.ticket_id as string;
       (out.get(q) ?? out.set(q, []).get(q)!).push(link);
     }
     return out;
@@ -503,50 +503,50 @@ export class Store {
   }
 
   /** Records that something was made from a question. False if the question or the target does not exist (nothing is stored). */
-  addQuestionLink(id: string, kind: QuestionLinkKind, ref: string): boolean {
-    if (!(QUESTION_LINK_KINDS as readonly string[]).includes(kind) || !ref || !this.get('SELECT 1 FROM questions WHERE id = ?', id)) return false;
+  addTicketLink(id: string, kind: TicketLinkKind, ref: string): boolean {
+    if (!(TICKET_LINK_KINDS as readonly string[]).includes(kind) || !ref || !this.get('SELECT 1 FROM tickets WHERE id = ?', id)) return false;
     const exists = kind === 'card' ? (this.db.creators?.cardDecks([ref]).has(ref) ?? false) : this.targetExists(kind, ref);
     if (!exists) return false;
-    this.run('INSERT OR IGNORE INTO question_links (question_id, kind, ref, created_at) VALUES (?,?,?,?)', id, kind, ref, this.now());
+    this.run('INSERT OR IGNORE INTO ticket_links (ticket_id, kind, ref, created_at) VALUES (?,?,?,?)', id, kind, ref, this.now());
     return true;
   }
 
-  removeQuestionLink(id: string, kind: string, ref: string): boolean {
-    if (this.get('SELECT 1 FROM question_links WHERE question_id = ? AND kind = ? AND ref = ?', id, kind, ref) === undefined) return false;
-    this.run('DELETE FROM question_links WHERE question_id = ? AND kind = ? AND ref = ?', id, kind, ref);
+  removeTicketLink(id: string, kind: string, ref: string): boolean {
+    if (this.get('SELECT 1 FROM ticket_links WHERE ticket_id = ? AND kind = ? AND ref = ?', id, kind, ref) === undefined) return false;
+    this.run('DELETE FROM ticket_links WHERE ticket_id = ? AND kind = ? AND ref = ?', id, kind, ref);
     return true;
   }
 
-  addQuestion(q: { id?: string | undefined; text: string; anchor: Anchor; highlightId?: string | null; who?: string }): Question {
+  addTicket(q: { id?: string | undefined; text: string; anchor: Anchor; highlightId?: string | null; who?: string }): Ticket {
     const t = this.now();
     const id = q.id ?? `q-${randomUUID()}`;
     const course = 'course' in q.anchor ? q.anchor.course : '';
     this.tx(() => {
       this.run(
-        `INSERT INTO questions (id, text, anchor, course, highlight_id, who, read, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)`,
-        id, q.text.trim().slice(0, MAX_QUESTION), JSON.stringify(q.anchor), course, q.highlightId ?? null, q.who ?? null, q.who ? 0 : 1, t, t,
+        `INSERT INTO tickets (id, text, anchor, course, highlight_id, who, read, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)`,
+        id, q.text.trim().slice(0, MAX_TICKET), JSON.stringify(q.anchor), course, q.highlightId ?? null, q.who ?? null, q.who ? 0 : 1, t, t,
       );
     });
-    return this.getQuestion(id)!;
+    return this.getTicket(id)!;
   }
 
   /**
    * Archiving and reading are filing, not editing: they leave `updated_at` alone (a proposal waits on it). Restoring
    * from the archive forgets when it was archived; the answer, if any, stays.
    */
-  updateQuestion(id: string, patch: { text?: string; archived?: boolean; read?: boolean; answer?: string | null; answerBy?: AnswerBy }): Question | null {
-    const cur = this.getQuestion(id);
+  updateTicket(id: string, patch: { text?: string; archived?: boolean; read?: boolean; answer?: string | null; answerBy?: AnswerBy }): Ticket | null {
+    const cur = this.getTicket(id);
     if (!cur) return null;
     const t = this.now();
     const archived = patch.archived ?? cur.archived;
     const archivedAt = archived ? (cur.archived ? cur.archivedAt : t) : null;
     // Restoring a merged duplicate is the student disagreeing: it stands on its own again.
-    if (patch.archived === false) this.run('UPDATE questions SET merged_into = NULL WHERE id = ?', id);
+    if (patch.archived === false) this.run('UPDATE tickets SET merged_into = NULL WHERE id = ?', id);
     const edits = patch.text !== undefined || patch.answer !== undefined;
     const answer = patch.answer === undefined ? cur.answer : patch.answer?.trim() ? patch.answer : null;
     this.run(
-      'UPDATE questions SET text = ?, archived = ?, archived_at = ?, read = ?, answer = ?, answer_by = ?, updated_at = ? WHERE id = ?',
-      patch.text === undefined ? cur.text : patch.text.trim().slice(0, MAX_QUESTION),
+      'UPDATE tickets SET text = ?, archived = ?, archived_at = ?, read = ?, answer = ?, answer_by = ?, updated_at = ? WHERE id = ?',
+      patch.text === undefined ? cur.text : patch.text.trim().slice(0, MAX_TICKET),
       archived ? 1 : 0,
       archivedAt,
       (patch.read ?? cur.read) ? 1 : 0,
@@ -555,7 +555,7 @@ export class Store {
       edits ? t : cur.updatedAt,
       id,
     );
-    return this.getQuestion(id);
+    return this.getTicket(id);
   }
 
   /**
@@ -565,27 +565,27 @@ export class Store {
    */
   reviews(): Map<string, AnnotationReview> {
     const out = new Map<string, AnnotationReview>();
-    for (const r of this.all('SELECT highlight_id, archived FROM questions WHERE highlight_id IS NOT NULL ORDER BY created_at DESC, rowid DESC')) out.set(r.highlight_id as string, Number(r.archived) === 1 ? 'resolved' : 'open');
+    for (const r of this.all('SELECT highlight_id, archived FROM tickets WHERE highlight_id IS NOT NULL ORDER BY created_at DESC, rowid DESC')) out.set(r.highlight_id as string, Number(r.archived) === 1 ? 'resolved' : 'open');
     return out;
   }
 
   /** Sets, changes or (null) clears the come-back question of `source`; a cleared one with text of its own stays, unlinked. */
   setReview(source: string, review: AnnotationReview | null, anchor: Anchor): void {
-    const cur = this.get('SELECT id, text FROM questions WHERE highlight_id = ? ORDER BY created_at, rowid LIMIT 1', source);
+    const cur = this.get('SELECT id, text FROM tickets WHERE highlight_id = ? ORDER BY created_at, rowid LIMIT 1', source);
     if (review === null) {
       if (!cur) return;
-      if (cur.text) this.run('UPDATE questions SET highlight_id = NULL WHERE id = ?', cur.id as string);
+      if (cur.text) this.run('UPDATE tickets SET highlight_id = NULL WHERE id = ?', cur.id as string);
       else {
-        this.run('DELETE FROM questions WHERE id = ?', cur.id as string);
+        this.run('DELETE FROM tickets WHERE id = ?', cur.id as string);
         this.unlinkAll('question', cur.id as string);
       }
       return;
     }
     const archived = review === 'resolved';
-    if (cur) this.updateQuestion(cur.id as string, { archived });
+    if (cur) this.updateTicket(cur.id as string, { archived });
     else {
-      const q = this.addQuestion({ text: '', anchor, highlightId: source });
-      if (archived) this.updateQuestion(q.id, { archived });
+      const q = this.addTicket({ text: '', anchor, highlightId: source });
+      if (archived) this.updateTicket(q.id, { archived });
     }
   }
 
@@ -594,12 +594,12 @@ export class Store {
     return { kind: 'text', course: this.course, target: a.target as string, part: a.part as string, quote: a.quote as string, prefix: a.prefix as string, suffix: a.suffix as string };
   }
 
-  deleteQuestion(id: string): boolean {
-    const had = this.get('SELECT 1 FROM questions WHERE id = ?', id) !== undefined;
+  deleteTicket(id: string): boolean {
+    const had = this.get('SELECT 1 FROM tickets WHERE id = ?', id) !== undefined;
     if (had) {
       // Duplicates that were merged into it are open questions again.
-      this.run("UPDATE questions SET merged_into = NULL, archived = 0, archived_at = NULL WHERE merged_into = ?", id);
-      this.run('DELETE FROM questions WHERE id = ?', id);
+      this.run("UPDATE tickets SET merged_into = NULL, archived = 0, archived_at = NULL WHERE merged_into = ?", id);
+      this.run('DELETE FROM tickets WHERE id = ?', id);
       this.unlinkAll('question', id);
     }
     return had;
@@ -612,7 +612,7 @@ export class Store {
     return ids.flatMap((i) => (names.has(i) ? [names.get(i)!] : []));
   }
 
-  private setQuestionLabels(id: string, names: string[]): void {
+  private setTicketLabels(id: string, names: string[]): void {
     this.setTags('question', id, [...new Set(names.map((x) => x.trim()).filter(Boolean))].map((n) => this.ensureTag(n)));
   }
 
@@ -621,7 +621,7 @@ export class Store {
    * replaced. Returns what was filed, or why not.
    */
   proposeInner(who: string, questionId: string, p: { labels?: string[]; answer?: string; text?: string; reason?: string }): { ids: string[] } | { error: string } {
-    const q = this.getQuestion(questionId);
+    const q = this.getTicket(questionId);
     if (!q) return { error: 'unknown question' };
     const wanted: [ChangeField, string | string[] | null, string | string[] | null][] = [];
     if (p.labels !== undefined) {
@@ -631,7 +631,7 @@ export class Store {
       if (next.length !== cur.length) wanted.push(['labels', cur, next]);
     }
     if (p.answer !== undefined && p.answer.trim()) wanted.push(['answer', q.answer, p.answer.trim().slice(0, 8000)]);
-    if (p.text !== undefined && p.text.trim() && p.text.trim() !== q.text) wanted.push(['text', q.text, p.text.trim().slice(0, MAX_QUESTION)]);
+    if (p.text !== undefined && p.text.trim() && p.text.trim() !== q.text) wanted.push(['text', q.text, p.text.trim().slice(0, MAX_TICKET)]);
     if (!wanted.length) return { error: 'nothing to change' };
     const pending = Number(this.get("SELECT COUNT(*) AS n FROM changes WHERE status = 'pending'")!.n);
     const replaced = wanted.filter(([f]) => this.get("SELECT 1 FROM changes WHERE status = 'pending' AND ref_kind = 'question' AND ref_id = ? AND field = ?", questionId, f)).length;
@@ -640,7 +640,7 @@ export class Store {
     const group = this.pendingGroup(questionId) ?? `g-${randomUUID()}`;
     const ids: string[] = [];
     this.tx(() => {
-      this.run('UPDATE questions SET read = 0 WHERE id = ?', questionId);
+      this.run('UPDATE tickets SET read = 0 WHERE id = ?', questionId);
       for (const [field, before, after] of wanted) {
         this.run("DELETE FROM changes WHERE status = 'pending' AND ref_kind = 'question' AND ref_id = ? AND field = ?", questionId, field);
         const id = `ch-${randomUUID()}`;
@@ -673,9 +673,9 @@ export class Store {
     const err = this.checkCreate(kind, payload);
     if (err) return { error: err };
     const question = kind === 'question' ? undefined : (payload as CardPayload | HighlightPayload).question;
-    if (question !== undefined && !this.get('SELECT 1 FROM questions WHERE id = ?', question)) return { error: 'unknown question' };
+    if (question !== undefined && !this.get('SELECT 1 FROM tickets WHERE id = ?', question)) return { error: 'unknown question' };
     const id = `ch-${randomUUID()}`;
-    if (question !== undefined) this.run('UPDATE questions SET read = 0 WHERE id = ?', question);
+    if (question !== undefined) this.run('UPDATE tickets SET read = 0 WHERE id = ?', question);
     this.run(
       `INSERT INTO changes (id, who, ref_kind, ref_id, field, before, after, base_version, group_id, status, reason, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?,?)`,
       id, who, kind, '', 'create', null, JSON.stringify(payload), 0, (question && this.pendingGroup(question)) || `g-${randomUUID()}`, reason.slice(0, 500), this.now(),
@@ -690,11 +690,11 @@ export class Store {
     const ids = [...new Set(duplicates)];
     const err = this.checkMerge(survivor, ids);
     if (err) return { error: err };
-    if (opts.text !== undefined && (!opts.text.trim() || opts.text.length > MAX_QUESTION)) return { error: 'text must be a question of reasonable length' };
+    if (opts.text !== undefined && (!opts.text.trim() || opts.text.length > MAX_TICKET)) return { error: 'text must be a question of reasonable length' };
     this.run("DELETE FROM changes WHERE status = 'pending' AND ref_kind = 'question' AND ref_id = ? AND field = 'merge'", survivor);
     if (Number(this.get("SELECT COUNT(*) AS n FROM changes WHERE status = 'pending'")!.n) >= MAX_PENDING_CHANGES) return { error: 'inbox full: the student has to go through what is waiting first' };
     const id = `ch-${randomUUID()}`;
-    this.run('UPDATE questions SET read = 0 WHERE id = ?', survivor);
+    this.run('UPDATE tickets SET read = 0 WHERE id = ?', survivor);
     const payload: MergePayload = { duplicates: ids, ...(opts.text?.trim() ? { text: opts.text.trim() } : {}) };
     this.run(
       `INSERT INTO changes (id, who, ref_kind, ref_id, field, before, after, base_version, group_id, status, reason, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?,?)`,
@@ -760,14 +760,14 @@ export class Store {
   }
 
   private checkMerge(survivor: string, duplicates: string[]): string | null {
-    const s = this.getQuestion(survivor);
+    const s = this.getTicket(survivor);
     if (!s) return 'the surviving question does not exist';
     if (s.mergedInto) return 'the surviving question was itself merged into another';
     if (!duplicates.length) return 'name at least one duplicate';
     if (duplicates.length > 20) return 'at most 20 duplicates';
     for (const d of duplicates) {
       if (d === survivor) return 'a question cannot be merged into itself';
-      const q = this.getQuestion(d);
+      const q = this.getTicket(d);
       if (!q) return `unknown question ${d}`;
       if (q.mergedInto) return `question ${d} was merged already`;
     }
@@ -779,18 +779,18 @@ export class Store {
       const u = c.before as MergeUndo | null;
       if (!u?.survivor) return null;
       const s = u.survivor;
-      if (this.getQuestion(c.ref.id)) {
-        this.run('UPDATE questions SET text = ?, answer = ?, answer_by = ?, archived = ?, archived_at = ?, updated_at = ? WHERE id = ?', s.text, s.answer, s.answer === null ? null : (s.answerBy ?? 'assistant'), wasArchived(s) ? 1 : 0, wasArchivedAt(s), s.updatedAt, c.ref.id);
+      if (this.getTicket(c.ref.id)) {
+        this.run('UPDATE tickets SET text = ?, answer = ?, answer_by = ?, archived = ?, archived_at = ?, updated_at = ? WHERE id = ?', s.text, s.answer, s.answer === null ? null : (s.answerBy ?? 'assistant'), wasArchived(s) ? 1 : 0, wasArchivedAt(s), s.updatedAt, c.ref.id);
         this.setTags('question', c.ref.id, s.labels);
       }
       for (const d of u.duplicates) {
-        if (!this.getQuestion(d.id)) continue;
-        this.run('UPDATE questions SET merged_into = NULL, archived = ?, archived_at = ?, answer = ?, answer_by = ? WHERE id = ?', wasArchived(d) ? 1 : 0, wasArchivedAt(d), d.answer, d.answer === null ? null : (d.answerBy ?? 'assistant'), d.id);
+        if (!this.getTicket(d.id)) continue;
+        this.run('UPDATE tickets SET merged_into = NULL, archived = ?, archived_at = ?, answer = ?, answer_by = ? WHERE id = ?', wasArchived(d) ? 1 : 0, wasArchivedAt(d), d.answer, d.answer === null ? null : (d.answerBy ?? 'assistant'), d.id);
       }
       for (const l of u.links ?? []) {
-        if (!this.getQuestion(l.from)) continue;
-        if (!l.kept) this.run('DELETE FROM question_links WHERE question_id = ? AND kind = ? AND ref = ?', c.ref.id, l.kind, l.ref);
-        this.run('INSERT OR IGNORE INTO question_links (question_id, kind, ref, created_at) VALUES (?,?,?,?)', l.from, l.kind, l.ref, l.createdAt);
+        if (!this.getTicket(l.from)) continue;
+        if (!l.kept) this.run('DELETE FROM ticket_links WHERE ticket_id = ? AND kind = ? AND ref = ?', c.ref.id, l.kind, l.ref);
+        this.run('INSERT OR IGNORE INTO ticket_links (ticket_id, kind, ref, created_at) VALUES (?,?,?,?)', l.from, l.kind, l.ref, l.createdAt);
       }
       return null;
     }
@@ -799,8 +799,8 @@ export class Store {
     const bad = this.checkMerge(c.ref.id, dups);
     if (bad) return bad;
     if (p.text !== undefined && (typeof p.text !== 'string' || !p.text.trim())) return 'the question needs text';
-    const s = this.getQuestion(c.ref.id)!;
-    const all = dups.map((d) => this.getQuestion(d)!);
+    const s = this.getTicket(c.ref.id)!;
+    const all = dups.map((d) => this.getTicket(d)!);
     const moved: NonNullable<MergeUndo['links']> = [];
     const undo_: MergeUndo = {
       survivor: { text: s.text, answer: s.answer, answerBy: s.answerBy, archived: s.archived, archivedAt: s.archivedAt, updatedAt: s.updatedAt, labels: s.labels },
@@ -810,26 +810,26 @@ export class Store {
     // The survivor's answer wins; without one it takes the first duplicate's. Labels are the union, links move over.
     const donor = s.answer?.trim() ? s : all.find((q) => q.answer?.trim());
     const t = this.now();
-    this.run('UPDATE questions SET text = ?, answer = ?, answer_by = ?, updated_at = ? WHERE id = ?', (p.text?.trim() ?? s.text).slice(0, MAX_QUESTION), donor?.answer ?? null, donor ? donor.answerBy : null, t, s.id);
+    this.run('UPDATE tickets SET text = ?, answer = ?, answer_by = ?, updated_at = ? WHERE id = ?', (p.text?.trim() ?? s.text).slice(0, MAX_TICKET), donor?.answer ?? null, donor ? donor.answerBy : null, t, s.id);
     for (const d of all) {
-      for (const l of this.all('SELECT kind, ref, created_at FROM question_links WHERE question_id = ?', d.id)) {
-        const kind = l.kind as QuestionLinkKind;
+      for (const l of this.all('SELECT kind, ref, created_at FROM ticket_links WHERE ticket_id = ?', d.id)) {
+        const kind = l.kind as TicketLinkKind;
         const ref = l.ref as string;
-        const kept = this.get('SELECT 1 FROM question_links WHERE question_id = ? AND kind = ? AND ref = ?', s.id, kind, ref) !== undefined;
+        const kept = this.get('SELECT 1 FROM ticket_links WHERE ticket_id = ? AND kind = ? AND ref = ?', s.id, kind, ref) !== undefined;
         moved.push({ from: d.id, kind, ref, createdAt: Number(l.created_at), kept });
-        this.run('INSERT OR IGNORE INTO question_links (question_id, kind, ref, created_at) VALUES (?,?,?,?)', s.id, kind, ref, Number(l.created_at));
+        this.run('INSERT OR IGNORE INTO ticket_links (ticket_id, kind, ref, created_at) VALUES (?,?,?,?)', s.id, kind, ref, Number(l.created_at));
       }
-      this.run('DELETE FROM question_links WHERE question_id = ?', d.id);
+      this.run('DELETE FROM ticket_links WHERE ticket_id = ?', d.id);
     }
     this.setTags('question', s.id, [...new Set(all.flatMap((q) => q.labels))]);
-    for (const q of all) this.run("UPDATE questions SET merged_into = ?, archived = 1, archived_at = ? WHERE id = ?", s.id, q.archived ? (q.archivedAt ?? t) : t, q.id);
+    for (const q of all) this.run("UPDATE tickets SET merged_into = ?, archived = 1, archived_at = ? WHERE id = ?", s.id, q.archived ? (q.archivedAt ?? t) : t, q.id);
     this.run('UPDATE changes SET before = ? WHERE id = ?', JSON.stringify(undo_), c.id);
     return null;
   }
 
   private checkCreate(kind: ChangeRefKind, p: CreatePayload): string | null {
     const text = (v: unknown, max: number) => typeof v === 'string' && v.trim().length > 0 && v.length <= max;
-    if (kind === 'question') return text((p as QuestionPayload).text, MAX_QUESTION) && (p as QuestionPayload).anchor ? null : 'a question needs text and a place';
+    if (kind === 'question') return text((p as QuestionPayload).text, MAX_TICKET) && (p as QuestionPayload).anchor ? null : 'a question needs text and a place';
     if (kind === 'card') {
       const c = p as CardPayload;
       if (!text(c.front, 4000) || !text(c.back, 4000) && c.cardKind !== 'cloze' && c.cardKind !== 'quiz') return 'a card needs a front and a back';
@@ -898,7 +898,7 @@ export class Store {
 
   private expireStale(): void {
     const t = this.now();
-    this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE status = 'pending' AND ref_kind = 'question' AND field <> 'create' AND NOT EXISTS (SELECT 1 FROM questions q WHERE q.id = changes.ref_id)", t);
+    this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE status = 'pending' AND ref_kind = 'question' AND field <> 'create' AND NOT EXISTS (SELECT 1 FROM tickets q WHERE q.id = changes.ref_id)", t);
     // A creation only goes stale when what it points at (the deck, the material) is gone.
     for (const r of this.all("SELECT id, ref_kind, after FROM changes WHERE status = 'pending' AND field = 'create' AND ref_kind <> 'question'")) {
       if (this.db.creators?.gone(r.ref_kind as 'card' | 'highlight', JSON.parse(r.after as string) as CreatePayload)) this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE id = ?", t, r.id as string);
@@ -912,7 +912,7 @@ export class Store {
       const p = JSON.parse(r.after as string) as MergePayload;
       if (this.checkMerge(r.ref_id as string, p.duplicates)) this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE id = ?", t, r.id as string);
     }
-    this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE status = 'pending' AND field IN ('answer','text') AND EXISTS (SELECT 1 FROM questions q WHERE q.id = changes.ref_id AND q.updated_at <> changes.base_version)", t);
+    this.run("UPDATE changes SET status = 'expired', decided_at = ? WHERE status = 'pending' AND field IN ('answer','text') AND EXISTS (SELECT 1 FROM tickets q WHERE q.id = changes.ref_id AND q.updated_at <> changes.base_version)", t);
   }
 
   /** Applies a proposal (`after` replaces the proposed value, for accept after editing) or turns it down. */
@@ -1020,8 +1020,8 @@ export class Store {
       const made = c.before as Created | null;
       if (!made?.id) return null;
       const from = kind === 'question' ? undefined : (c.after as CardPayload | HighlightPayload).question;
-      if (from) this.removeQuestionLink(from, kind === 'card' ? 'card' : 'note', made.id);
-      if (kind === 'question') this.deleteQuestion(made.id);
+      if (from) this.removeTicketLink(from, kind === 'card' ? 'card' : 'note', made.id);
+      if (kind === 'question') this.deleteTicket(made.id);
       else this.db.creators?.remove(kind, made);
       this.run("UPDATE changes SET ref_id = '' WHERE id = ?", c.id);
       return null;
@@ -1032,7 +1032,7 @@ export class Store {
     let made: Created;
     if (kind === 'question') {
       const q = payload as QuestionPayload;
-      made = { id: this.addQuestion({ text: q.text, anchor: q.anchor, who: c.who }).id };
+      made = { id: this.addTicket({ text: q.text, anchor: q.anchor, who: c.who }).id };
     } else {
       if (!this.db.creators) return 'cannot be made here';
       try {
@@ -1044,27 +1044,27 @@ export class Store {
     this.run('UPDATE changes SET ref_id = ?, before = ? WHERE id = ?', made.id, JSON.stringify(made), c.id);
     // The student may have edited the payload; the question it comes from is the proposal's own.
     const from = kind === 'question' ? undefined : ((c.after as CardPayload | HighlightPayload).question ?? (payload as CardPayload | HighlightPayload).question);
-    if (from) this.addQuestionLink(from, kind === 'card' ? 'card' : 'note', made.id);
+    if (from) this.addTicketLink(from, kind === 'card' ? 'card' : 'note', made.id);
     return null;
   }
 
   /** Labels leave `updated_at` alone, so a proposal for the answer is not made stale by another one of the group. */
   private applyField(questionId: string, field: ChangeField, value: string | string[] | null, undo = false): string | null {
-    const q = this.getQuestion(questionId);
+    const q = this.getTicket(questionId);
     if (!q) return 'the question is gone';
     if (field === 'labels') {
-      this.setQuestionLabels(questionId, Array.isArray(value) ? value : []);
+      this.setTicketLabels(questionId, Array.isArray(value) ? value : []);
     } else if (field === 'text') {
       if (typeof value !== 'string' || !value.trim()) return 'the question needs text';
-      this.updateQuestion(questionId, { text: value });
+      this.updateTicket(questionId, { text: value });
     } else {
       // An answer does not settle the question: it stays open (or done) as the student left it.
-      if (undo) this.updateQuestion(questionId, { answer: (value as string | null) ?? null });
-      else this.updateQuestion(questionId, { answer: typeof value === 'string' ? value : null, answerBy: 'assistant' });
+      if (undo) this.updateTicket(questionId, { answer: (value as string | null) ?? null });
+      else this.updateTicket(questionId, { answer: typeof value === 'string' ? value : null, answerBy: 'assistant' });
     }
     if (field === 'answer' || field === 'text') {
       // Another waiting proposal for the same question (answer and rewrite come in one group) stays current.
-      const now = this.getQuestion(questionId)!.updatedAt;
+      const now = this.getTicket(questionId)!.updatedAt;
       this.run("UPDATE changes SET base_version = ? WHERE status = 'pending' AND ref_kind = 'question' AND ref_id = ? AND field IN ('answer','text')", now, questionId);
     }
     return null;
@@ -1176,7 +1176,7 @@ export class Store {
   }
 
   resolvedMarkCount(): number {
-    return Number(this.get("SELECT COUNT(*) AS n FROM questions q JOIN annotations a ON a.id = q.highlight_id AND a.course = q.course WHERE q.course = ? AND q.archived = 1 AND q.merged_into IS NULL", this.course)!.n);
+    return Number(this.get("SELECT COUNT(*) AS n FROM tickets q JOIN annotations a ON a.id = q.highlight_id AND a.course = q.course WHERE q.course = ? AND q.archived = 1 AND q.merged_into IS NULL", this.course)!.n);
   }
 
   noteCount(): number {
@@ -1552,8 +1552,8 @@ export class Store {
           // Questions are global and carry their course in the anchor too.
           this.db.raw
             .prepare(
-              `INSERT INTO main.questions (id, text, anchor, course, highlight_id, archived, answer, created_at, updated_at, archived_at)
-               SELECT id, text, json_set(anchor, '$.course', ?), ?, highlight_id, archived, answer, created_at, updated_at, archived_at FROM legacy.questions ORDER BY rowid`,
+              `INSERT INTO main.tickets (id, text, anchor, course, highlight_id, archived, answer, created_at, updated_at, archived_at)
+               SELECT id, text, json_set(anchor, '$.course', ?), ?, highlight_id, archived, answer, created_at, updated_at, archived_at FROM legacy.tickets ORDER BY rowid`,
             )
             .run(this.course, this.course);
           this.setSetting('legacyImported', true);
@@ -1591,7 +1591,7 @@ function rowToChange(r: Row): Change {
   };
 }
 
-function rowToQuestion(r: Row, labels: string[] = [], links: QuestionLink[] = [], fetched: Question['fetched'] = null): Question {
+function rowToTicket(r: Row, labels: string[] = [], links: TicketLink[] = [], fetched: Ticket['fetched'] = null): Ticket {
   return {
     id: r.id as string,
     text: r.text as string,

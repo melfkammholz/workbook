@@ -35,7 +35,7 @@ export function mimeOf(filename: string): string {
 }
 
 type UnplacedKind = 'highlight' | 'page' | 'toc' | 'question';
-const TABLES: Record<UnplacedKind, string> = { highlight: 'pdf_annotations', page: 'pdf_pages', toc: 'pdf_toc', question: 'questions' };
+const TABLES: Record<UnplacedKind, string> = { highlight: 'pdf_annotations', page: 'pdf_pages', toc: 'pdf_toc', question: 'tickets' };
 /** A question asked on a page of the resource; the resource id is the parameter. */
 const ON_RESOURCE = "json_extract(anchor, '$.kind') = 'page' AND json_extract(anchor, '$.resource') = ?";
 
@@ -47,11 +47,11 @@ const COLUMNS = `r.id, r.title, r.type, r.author, r.date, r.series, r.position, 
   (SELECT COUNT(*) FROM pdf_annotations WHERE resource = r.id AND version <> v.sha256)
     + (SELECT COUNT(*) FROM pdf_pages WHERE resource = r.id AND version <> v.sha256)
     + (SELECT COUNT(*) FROM pdf_toc WHERE resource = r.id AND embedded_key IS NULL AND version <> v.sha256)
-    + (SELECT COUNT(*) FROM questions WHERE json_extract(anchor, '$.kind') = 'page' AND json_extract(anchor, '$.resource') = r.id AND json_extract(anchor, '$.version') <> v.sha256) AS stale,
+    + (SELECT COUNT(*) FROM tickets WHERE json_extract(anchor, '$.kind') = 'page' AND json_extract(anchor, '$.resource') = r.id AND json_extract(anchor, '$.version') <> v.sha256) AS stale,
   (SELECT COUNT(*) FROM pdf_annotations WHERE resource = r.id AND unplaced = 1)
     + (SELECT COUNT(*) FROM pdf_pages WHERE resource = r.id AND unplaced = 1)
     + (SELECT COUNT(*) FROM pdf_toc WHERE resource = r.id AND unplaced = 1)
-    + (SELECT COUNT(*) FROM questions WHERE json_extract(anchor, '$.kind') = 'page' AND json_extract(anchor, '$.resource') = r.id AND unplaced = 1) AS unplaced`;
+    + (SELECT COUNT(*) FROM tickets WHERE json_extract(anchor, '$.kind') = 'page' AND json_extract(anchor, '$.resource') = r.id AND unplaced = 1) AS unplaced`;
 
 type Row = Record<string, unknown>;
 
@@ -250,7 +250,7 @@ export class Resources {
       this.sql.run('DELETE FROM resources WHERE id = ?', id);
       this.store.unlinkAll('resource', id);
       // Like its highlights, the questions asked about it go with it.
-      this.sql.run("DELETE FROM questions WHERE json_extract(anchor, '$.resource') = ?", id);
+      this.sql.run("DELETE FROM tickets WHERE json_extract(anchor, '$.resource') = ?", id);
       this.dropEmptySeries();
     });
     for (const sha of shas) this.removeIfUnused(sha);
@@ -911,7 +911,7 @@ export class Resources {
       pages: this.sql.all('SELECT id, page_index, fingerprint FROM pdf_pages WHERE resource = ? AND version <> ?', id, version).map((r) => ({ id: r.id as string, pageIndex: Number(r.page_index), fingerprint: r.fingerprint as string })),
       toc: this.sql.all('SELECT id, page_index, fingerprint FROM pdf_toc WHERE resource = ? AND embedded_key IS NULL AND version <> ?', id, version).map((r) => ({ id: r.id as string, pageIndex: Number(r.page_index), fingerprint: r.fingerprint as string })),
       questions: this.sql
-        .all(`SELECT id, anchor FROM questions WHERE ${ON_RESOURCE} AND json_extract(anchor, '$.version') <> ?`, id, version)
+        .all(`SELECT id, anchor FROM tickets WHERE ${ON_RESOURCE} AND json_extract(anchor, '$.version') <> ?`, id, version)
         .map((r) => {
           const a = JSON.parse(r.anchor as string) as Extract<Anchor, { kind: 'page' }>;
           return { id: r.id as string, pageIndex: a.pageIndex, fingerprint: a.fingerprint, quote: a.quote ?? '', prefix: a.prefix ?? '', suffix: a.suffix ?? '' };
@@ -946,7 +946,7 @@ export class Resources {
         }
       }
       for (const q of found.questions) {
-        if (q.pageIndex === null) this.sql.run(`UPDATE questions SET anchor = json_set(anchor, '$.version', ?), unplaced = 1 WHERE id = ? AND ${ON_RESOURCE}`, found.version, q.id, id);
+        if (q.pageIndex === null) this.sql.run(`UPDATE tickets SET anchor = json_set(anchor, '$.version', ?), unplaced = 1 WHERE id = ? AND ${ON_RESOURCE}`, found.version, q.id, id);
         else this.movePageQuestion(id, q.id, found.version, q.pageIndex, q.fingerprint);
       }
       for (const e of found.toc) {
@@ -965,14 +965,14 @@ export class Resources {
       highlights: this.sql.all('SELECT * FROM pdf_annotations WHERE resource = ? AND unplaced = 1 ORDER BY page_index, created_at', id).map((r) => toHighlight(r, reviews, this.store.tagsOf('pdfHighlight', r.id as string))),
       pages: this.sql.all('SELECT * FROM pdf_pages WHERE resource = ? AND unplaced = 1 ORDER BY page_index', id).map((r) => toPage(r, reviews, this.store.tagsOf('pdfPage', r.id as string))),
       toc: this.sql.all('SELECT * FROM pdf_toc WHERE resource = ? AND unplaced = 1 ORDER BY page_index', id).map(toToc),
-      questions: this.store.listQuestions({ resource: id }).filter((q) => q.unplaced),
+      questions: this.store.listTickets({ resource: id }).filter((q) => q.unplaced),
     };
   }
 
   /** A question's anchor on the new file: its version, page and (when known) the page's fingerprint. */
   private movePageQuestion(resource: string, question: string, version: string, pageIndex: number, fingerprint?: string): void {
     this.sql.run(
-      `UPDATE questions SET anchor = json_set(anchor, '$.version', ?, '$.pageIndex', ?, '$.fingerprint', COALESCE(?, json_extract(anchor, '$.fingerprint'))), unplaced = 0 WHERE id = ? AND ${ON_RESOURCE}`,
+      `UPDATE tickets SET anchor = json_set(anchor, '$.version', ?, '$.pageIndex', ?, '$.fingerprint', COALESCE(?, json_extract(anchor, '$.fingerprint'))), unplaced = 0 WHERE id = ? AND ${ON_RESOURCE}`,
       version, pageIndex, fingerprint ?? null, question, resource,
     );
   }

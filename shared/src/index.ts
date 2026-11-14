@@ -1,7 +1,7 @@
 // Types shared by server and web. Keep this file free of runtime dependencies.
 
 import type { Anchor } from './anchors';
-import type { Question } from './questions';
+import type { Ticket } from './tickets';
 import type { SldTree } from './sld';
 
 // ───────────────────────── content model ─────────────────────────
@@ -302,7 +302,7 @@ export interface StudentState {
   /** How much of the course the student wants to see. Null until they were asked. */
   focus: Focus | null;
   /** Open questions asked in this workbook, done ones too. */
-  questions: Question[];
+  questions: Ticket[];
   /** Latest reflection per exercise. */
   reflections: Record<string, Reflection>;
   stats: Record<string, Stats>;
@@ -702,7 +702,7 @@ export interface ReviewData {
   progress: Record<string, ProgressEntry>;
   reflections: Reflection[];
   /** Open questions asked in this workbook, done ones too. */
-  questions: Question[];
+  questions: Ticket[];
   stats: Record<string, Stats>;
   answers: Record<string, Record<string, string>>;
   notes: Record<string, NoteDoc>;
@@ -961,7 +961,7 @@ export * from './pdfAnnotations';
 export * from './pdfPages';
 export * from './pdfToc';
 export * from './pdfReanchor';
-export * from './questions';
+export * from './tickets';
 export * from './assistant';
 export * from './bibliography';
 export * from './citations';

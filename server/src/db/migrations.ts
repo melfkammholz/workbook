@@ -947,6 +947,18 @@ export const MIGRATIONS: Migration[] = [
   DELETE FROM changes WHERE ref_kind = 'question' AND field = 'kind';
   ALTER TABLE questions DROP COLUMN kind;
   `,
+  /*
+   * The questions page became the ticket system: the table, its links and its fetch log are renamed, `question_id`
+   * columns with them. Stored requests keep working: their `params_json` ids move from `questions` to `tickets`.
+   * (The row kind 'question' in `changes`, tag links and the search index stays: it is the kind of one row.)
+   */ `
+  ALTER TABLE questions RENAME TO tickets;
+  ALTER TABLE question_links RENAME TO ticket_links;
+  ALTER TABLE ticket_links RENAME COLUMN question_id TO ticket_id;
+  ALTER TABLE question_fetches RENAME TO ticket_fetches;
+  ALTER TABLE ticket_fetches RENAME COLUMN question_id TO ticket_id;
+  UPDATE assistant_requests SET params_json = json_set(json_remove(params_json, '$.questions'), '$.tickets', json(COALESCE(json_extract(params_json, '$.questions'), '[]'))) WHERE json_type(params_json, '$.questions') IS NOT NULL;
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

@@ -2,7 +2,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { useQueryClient } from '@tanstack/react-query';
 import { Highlighter, Layers, Sparkles, StickyNote } from 'lucide-react';
 import { useState } from 'react';
-import type { Anchor, PdfPageItem, Question } from '@wb/shared';
+import type { Anchor, PdfPageItem, Ticket } from '@wb/shared';
 import { api, linkQuestion } from '@/lib/api';
 import { addAnnotation, arrived as textArrived, escapeMarkup } from '@/lib/annotations';
 import { useT } from '@/lib/i18n';
@@ -14,7 +14,7 @@ import { Button, IconButton } from './ui';
 const pageAnchor = (a: Anchor) => (a.kind === 'page' ? a : null);
 
 /** The menu among a row's actions: make a card, a page note or a highlight from the question; each saves the link. */
-export function QuestionMake({ item, q, size = 'sm', buttons = false }: { item: string | null; q: Question; size?: 'sm' | 'md'; /** The detail panel's own buttons, with words, instead of the menu. */ buttons?: boolean }) {
+export function QuestionMake({ item, q, size = 'sm', buttons = false }: { item: string | null; q: Ticket; size?: 'sm' | 'md'; /** The detail panel's own buttons, with words, instead of the menu. */ buttons?: boolean }) {
   const t = useT();
   const qc = useQueryClient();
   const [menu, setMenu] = useState(false);

@@ -1,10 +1,10 @@
 import * as Popover from '@radix-ui/react-popover';
 import { Eye, HelpCircle, Mail, Pencil, Trash2, X } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
-import { type Question } from '@wb/shared';
+import { type Ticket } from '@wb/shared';
 import { useTags } from '@/lib/tags';
 import { TagPicker } from './TagPicker';
-import { askQuestion, deleteQuestion, setQuestionTags, updateQuestion, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
+import { askQuestion, deleteTicket, setQuestionTags, updateTicket, usePendingProposals, useQuestions, useSettings } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { ProposalMarker } from './Proposals';
 import { QuestionMake } from './QuestionMake';
@@ -116,7 +116,7 @@ export function QuestionInput({ item, autoFocus = false }: { item: string; autoF
  * `dense`: one line per question (text and the passage it was made on, then type, labels and age); the done mark is a
  * button among the hover actions, a done question is struck through with a small check at its end.
  */
-export function QuestionRow({ item, q, extra, dense = false, where }: { item: string | null; q: Question; extra?: React.ReactNode; dense?: boolean; where?: string }) {
+export function QuestionRow({ item, q, extra, dense = false, where }: { item: string | null; q: Ticket; extra?: React.ReactNode; dense?: boolean; where?: string }) {
   const t = useT();
   const [draft, setDraft] = useState<string | null>(null);
   const [answerOpen, setAnswerOpen] = useState(false);
@@ -124,7 +124,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
   const done = q.archived;
   /** Looking at what the assistant brought (its answer, its proposals) reads the question. */
   const readNow = () => {
-    if (!q.read) void updateQuestion(item, q.id, { read: true });
+    if (!q.read) void updateTicket(item, q.id, { read: true });
   };
   const toggleAnswer = () => {
     if (!answerOpen) readNow();
@@ -132,7 +132,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
   };
   const unreadDot = q.read ? null : <span role="img" aria-label={t.questionUnreadDot} title={t.questionUnreadDot} className="mr-1.5 inline-block size-1.5 shrink-0 rounded-full bg-accent align-middle" />;
   const markUnread = q.read ? (
-    <IconButton label={t.questionMarkUnread} className="size-5" onClick={() => void updateQuestion(item, q.id, { read: false })}>
+    <IconButton label={t.questionMarkUnread} className="size-5" onClick={() => void updateTicket(item, q.id, { read: false })}>
       <Mail size={12} />
     </IconButton>
   ) : null;
@@ -143,7 +143,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
   const store = () => {
     const text = (draft ?? '').trim();
     setDraft(null);
-    if (text && text !== q.text) void updateQuestion(item, q.id, { text });
+    if (text && text !== q.text) void updateTicket(item, q.id, { text });
   };
   const editor = (
     <div className="min-w-0 flex-1">
@@ -197,7 +197,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
                 <IconButton label={t.editQuestion} className="size-5" onClick={() => setDraft(q.text)}>
                   <Pencil size={12} />
                 </IconButton>
-                <IconButton label={t.deleteQuestion} className="size-5" onClick={() => void deleteQuestion(item, q.id)}>
+                <IconButton label={t.deleteQuestion} className="size-5" onClick={() => void deleteTicket(item, q.id)}>
                   <Trash2 size={12} />
                 </IconButton>
               </span>
@@ -214,7 +214,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
                 checked={done}
                 aria-label={done ? t.questionReopen : t.questionDone}
                 title={done ? t.questionReopen : t.questionDone}
-                onChange={() => void updateQuestion(item, q.id, { archived: !done })}
+                onChange={() => void updateTicket(item, q.id, { archived: !done })}
                 className="wb-check shrink-0"
               />
             </div>
@@ -232,7 +232,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
         checked={done}
         aria-label={done ? t.questionReopen : t.questionDone}
         title={done ? t.questionReopen : t.questionDone}
-        onChange={() => void updateQuestion(item, q.id, { archived: !done })}
+        onChange={() => void updateTicket(item, q.id, { archived: !done })}
         className="wb-check mt-1 shrink-0"
       />
       {draft !== null ? (
@@ -280,7 +280,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
             <IconButton label={t.editQuestion} className="size-6" onClick={() => setDraft(q.text)}>
               <Pencil size={13} />
             </IconButton>
-            <IconButton label={t.deleteQuestion} className="size-6" onClick={() => void deleteQuestion(item, q.id)}>
+            <IconButton label={t.deleteQuestion} className="size-6" onClick={() => void deleteTicket(item, q.id)}>
               <Trash2 size={13} />
             </IconButton>
           </span>
@@ -293,7 +293,7 @@ export function QuestionRow({ item, q, extra, dense = false, where }: { item: st
 }
 
 /** The questions on one item: open ones, and done ones behind a switch. No counts: a list is not a score. */
-export function QuestionList({ item, questions }: { item: string | null; questions: Question[] }) {
+export function QuestionList({ item, questions }: { item: string | null; questions: Ticket[] }) {
   const t = useT();
   const [showDone, setShowDone] = useState(false);
   const open = questions.filter((q) => !q.archived);
@@ -320,7 +320,7 @@ export function QuestionList({ item, questions }: { item: string | null; questio
 }
 
 /** In the bar of an exercise: its questions and a line to add one, one click away and out of the way. */
-export function ExerciseQuestions({ item, questions }: { item: string; questions: Question[] }) {
+export function ExerciseQuestions({ item, questions }: { item: string; questions: Ticket[] }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   return (

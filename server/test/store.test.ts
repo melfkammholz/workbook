@@ -97,17 +97,17 @@ describe('Store', () => {
     const { store } = make();
     const a = store.forCourse('a');
     const b = store.forCourse('b');
-    const q = a.addQuestion({ text: 'Warum terminiert foldr nicht?', anchor: { kind: 'exercise', course: 'a', id: 'x' } });
+    const q = a.addTicket({ text: 'Warum terminiert foldr nicht?', anchor: { kind: 'exercise', course: 'a', id: 'x' } });
     b.saveNote('y', 'typst', 'foldr Notiz in b');
     expect(store.search('foldr', { courses: ['a'] })).toEqual([expect.objectContaining({ source: 'question', course: 'a', anchor: expect.objectContaining({ id: 'x', questionId: q.id }) })]);
     expect(store.search('foldr', { courses: ['a', 'b'] })).toHaveLength(2);
     expect(store.search('foldr', { courses: [] })).toEqual([]);
-    a.updateQuestion(q.id, { text: 'Warum divergiert zipWith?' });
+    a.updateTicket(q.id, { text: 'Warum divergiert zipWith?' });
     expect(store.search('foldr', { courses: ['a'] })).toEqual([]);
     expect(store.search('zipwith', { courses: ['a'] })).toHaveLength(1);
     a.resetWork();
     expect(store.search('zipwith', { courses: ['a'] })).toHaveLength(1);
-    a.deleteQuestion(q.id);
+    a.deleteTicket(q.id);
     expect(store.search('zipwith', { courses: ['a'] })).toEqual([]);
   });
 
@@ -127,7 +127,7 @@ describe('Store', () => {
     store.saveAnswer('x', 'text', 'my answer');
     store.saveNote('x', 'typst', 'my note');
     store.addReflection('x', 2, ['alone'], '');
-    store.addQuestion({ text: 'Warum?', anchor: { kind: 'exercise', course: '', id: 'x' } });
+    store.addTicket({ text: 'Warum?', anchor: { kind: 'exercise', course: '', id: 'x' } });
     const data = store.reviewData();
     expect(data.progress.x?.status).toBe('review');
     expect(data.answers.x).toEqual({ text: 'my answer' });
@@ -155,7 +155,7 @@ describe('Store', () => {
     store.saveAnswer('x', 'text', 'Antwort mit Suchwort', 'check');
     store.saveNote('x', 'typst', 'Notiz');
     store.addReflection('x', 2, ['alone'], '');
-    store.addQuestion({ text: 'Warum?', anchor: { kind: 'exercise', course: '', id: 'x' } });
+    store.addTicket({ text: 'Warum?', anchor: { kind: 'exercise', course: '', id: 'x' } });
     store.addActiveSeconds('x', 60);
     store.recordCheckRun('x', 1, 2);
     store.saveChecklistAnswer('q', 'a', 1, 'n');
@@ -241,29 +241,29 @@ describe('Store', () => {
     const cards = new Map([['c1', 'deck1']]);
     store.useCreators({ create: () => ({ id: 'x' }), remove: () => {}, gone: () => false, cardDecks: (ids) => new Map(ids.flatMap((i) => (cards.has(i) ? [[i, cards.get(i)!] as const] : []))) });
     const anchor = { kind: 'none' } as const;
-    const q = store.addQuestion({ text: 'Warum?', anchor });
+    const q = store.addTicket({ text: 'Warum?', anchor });
     expect(q).toMatchObject({ answer: null, answerBy: null, links: [] });
-    expect(store.updateQuestion(q.id, { answer: 'Weil.' })).toMatchObject({ answer: 'Weil.', answerBy: 'you', archived: false });
-    expect(store.updateQuestion(q.id, { answer: 'Anders.', answerBy: 'assistant' })).toMatchObject({ answerBy: 'assistant' });
-    expect(store.updateQuestion(q.id, { answer: '  ' })).toMatchObject({ answer: null, answerBy: null });
+    expect(store.updateTicket(q.id, { answer: 'Weil.' })).toMatchObject({ answer: 'Weil.', answerBy: 'you', archived: false });
+    expect(store.updateTicket(q.id, { answer: 'Anders.', answerBy: 'assistant' })).toMatchObject({ answerBy: 'assistant' });
+    expect(store.updateTicket(q.id, { answer: '  ' })).toMatchObject({ answer: null, answerBy: null });
     // a link needs an existing target; a gone one disappears on read, and comes back with it
-    expect(store.addQuestionLink(q.id, 'card', 'nope')).toBe(false);
-    expect(store.addQuestionLink('nope', 'card', 'c1')).toBe(false);
-    expect(store.addQuestionLink(q.id, 'card', 'c1')).toBe(true);
-    expect(store.addQuestionLink(q.id, 'card', 'c1')).toBe(true);
-    expect(store.getQuestion(q.id)!.links).toEqual([{ kind: 'card', ref: 'c1', deck: 'deck1', createdAt: 5 }]);
-    expect(store.listQuestions()[0]!.links).toHaveLength(1);
+    expect(store.addTicketLink(q.id, 'card', 'nope')).toBe(false);
+    expect(store.addTicketLink('nope', 'card', 'c1')).toBe(false);
+    expect(store.addTicketLink(q.id, 'card', 'c1')).toBe(true);
+    expect(store.addTicketLink(q.id, 'card', 'c1')).toBe(true);
+    expect(store.getTicket(q.id)!.links).toEqual([{ kind: 'card', ref: 'c1', deck: 'deck1', createdAt: 5 }]);
+    expect(store.listTickets()[0]!.links).toHaveLength(1);
     cards.delete('c1');
-    expect(store.getQuestion(q.id)!.links).toEqual([]);
-    expect(store.listQuestions()[0]!.links).toEqual([]);
+    expect(store.getTicket(q.id)!.links).toEqual([]);
+    expect(store.listTickets()[0]!.links).toEqual([]);
     cards.set('c1', 'deck2');
-    expect(store.getQuestion(q.id)!.links[0]).toMatchObject({ deck: 'deck2' });
-    expect(store.removeQuestionLink(q.id, 'card', 'c1')).toBe(true);
-    expect(store.removeQuestionLink(q.id, 'card', 'c1')).toBe(false);
+    expect(store.getTicket(q.id)!.links[0]).toMatchObject({ deck: 'deck2' });
+    expect(store.removeTicketLink(q.id, 'card', 'c1')).toBe(true);
+    expect(store.removeTicketLink(q.id, 'card', 'c1')).toBe(false);
     // deleting the question takes its links
-    store.addQuestionLink(q.id, 'card', 'c1');
-    store.deleteQuestion(q.id);
-    expect(store.sql.get('SELECT 1 AS x FROM question_links')).toBeUndefined();
+    store.addTicketLink(q.id, 'card', 'c1');
+    store.deleteTicket(q.id);
+    expect(store.sql.get('SELECT 1 AS x FROM ticket_links')).toBeUndefined();
     store.close();
   });
 
@@ -271,26 +271,26 @@ describe('Store', () => {
     let now = 1_000_000;
     const store = new Store(':memory:', () => now);
     const anchor = { kind: 'exercise', course: '', id: 'a' } as const;
-    const q1 = store.addQuestion({ text: '  Warum der Basisfall?  ', anchor });
+    const q1 = store.addTicket({ text: '  Warum der Basisfall?  ', anchor });
     now += 60_000;
-    const q2 = store.addQuestion({ text: 'Und der Schritt?', anchor });
+    const q2 = store.addTicket({ text: 'Und der Schritt?', anchor });
     now += 31 * 60_000;
-    const q3 = store.addQuestion({ text: 'Neue Sitzung', anchor });
+    const q3 = store.addTicket({ text: 'Neue Sitzung', anchor });
     expect(q1.text).toBe('Warum der Basisfall?');
     expect(q3.createdAt).toBeGreaterThan(q2.createdAt);
     expect(store.getState().questions.map((q) => q.text)).toEqual(['Warum der Basisfall?', 'Und der Schritt?', 'Neue Sitzung']);
-    expect(store.updateQuestion(q1.id, { text: 'Anders gefragt', archived: true })).toMatchObject({ text: 'Anders gefragt', archived: true, archivedAt: now });
-    expect(store.updateQuestion(q1.id, { archived: false })).toMatchObject({ archived: false, archivedAt: null });
-    expect(store.listQuestions({ exercise: 'zzz' })).toEqual([]);
-    expect(store.deleteQuestion(q2.id)).toBe(true);
-    expect(store.deleteQuestion(q2.id)).toBe(false);
+    expect(store.updateTicket(q1.id, { text: 'Anders gefragt', archived: true })).toMatchObject({ text: 'Anders gefragt', archived: true, archivedAt: now });
+    expect(store.updateTicket(q1.id, { archived: false })).toMatchObject({ archived: false, archivedAt: null });
+    expect(store.listTickets({ exercise: 'zzz' })).toEqual([]);
+    expect(store.deleteTicket(q2.id)).toBe(true);
+    expect(store.deleteTicket(q2.id)).toBe(false);
     expect(store.getState().questions).toHaveLength(2);
     store.close();
   });
 
   it('keeps questions when the work of a course is reset', () => {
     const store = new Store(':memory:').forCourse('a');
-    store.addQuestion({ text: 'Warum?', anchor: { kind: 'exercise', course: 'a', id: 'x' } });
+    store.addTicket({ text: 'Warum?', anchor: { kind: 'exercise', course: 'a', id: 'x' } });
     store.resetWork();
     expect(store.getState().questions.map((q) => q.text)).toEqual(['Warum?']);
   });
@@ -433,10 +433,10 @@ describe('one database for all courses', () => {
     c.saveNote('x', 'typst', 'n');
     c.addReflection('x', 3, [], '');
     c.listReflections('x');
-    const q = c.addQuestion({ text: 'q', anchor: { kind: 'exercise', course: 'a', id: 'x' } });
-    c.listQuestions({ course: 'a', exercise: 'x' });
-    c.updateQuestion(q.id, { archived: true });
-    c.deleteQuestion(q.id);
+    const q = c.addTicket({ text: 'q', anchor: { kind: 'exercise', course: 'a', id: 'x' } });
+    c.listTickets({ course: 'a', exercise: 'x' });
+    c.updateTicket(q.id, { archived: true });
+    c.deleteTicket(q.id);
     c.saveChecklistAnswer('l', 'q', 3, '');
     c.saveChecklistAnswer('l', 'q', null, '');
     c.listChecklistRatings();
@@ -555,7 +555,7 @@ describe('migration 17', () => {
     oldDatabase(file, 16, `INSERT INTO open_questions (course, exercise_id, content, updated_at) VALUES ('c1', 'e1', 'Warum?', 5), ('c2', 'e1', 'Wie?', 6)`);
     const store = new Store(file);
     expect(store.forCourse('c1').getState().questions).toMatchObject([{ text: 'Warum?', archived: false, course: 'c1', anchor: { kind: 'exercise', course: 'c1', id: 'e1' }, createdAt: 5 }]);
-    expect(store.listQuestions().map((q) => q.text)).toEqual(['Warum?', 'Wie?']);
+    expect(store.listTickets().map((q) => q.text)).toEqual(['Warum?', 'Wie?']);
     expect(store.sql.get("SELECT name FROM sqlite_master WHERE name = 'open_questions'")).toBeUndefined();
     store.close();
     fs.rmSync(dir, { recursive: true, force: true });
@@ -575,6 +575,29 @@ describe('highlight tags (migration 34)', () => {
     expect(store.getAnnotation(h.id)!.tags).toEqual([a.id]);
     store.deleteAnnotation(h.id);
     expect(store.tagLinks('highlight').size).toBe(0);
+    store.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('migration 50 (tickets)', () => {
+  it('renames the questions table, its links and fetch log, and moves stored request ids to `tickets`', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-m50-'));
+    const file = path.join(dir, 'workbook.db');
+    oldDatabase(
+      file,
+      MIGRATIONS.length - 1,
+      `INSERT INTO questions (id, text, anchor, course, created_at, updated_at) VALUES ('q1', 'Warum?', '{"kind":"none"}', '', 1, 1);
+       INSERT INTO question_links (question_id, kind, ref, created_at) VALUES ('q1', 'card', 'c1', 2);
+       INSERT INTO question_fetches (question_id, at, purpose) VALUES ('q1', 3, 'answer-recent');
+       INSERT INTO assistant_requests (id, kind, skill, params_json, workbook, status, created_at) VALUES ('r1', 'answer', 's', '{"questions":["q1"],"note":"x"}', 'w', 'queued', 4)`,
+    );
+    const store = new Store(file);
+    expect(store.listTickets().map((q) => q.id)).toEqual(['q1']);
+    expect(store.getTicket('q1')).toMatchObject({ links: [], fetched: { purpose: 'answer-recent' } });
+    expect(store.sql.get('SELECT ticket_id FROM ticket_links')).toMatchObject({ ticket_id: 'q1' });
+    expect(JSON.parse(String(store.sql.get("SELECT params_json FROM assistant_requests WHERE id = 'r1'")!.params_json))).toEqual({ tickets: ['q1'], note: 'x' });
+    expect(store.sql.get("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('questions', 'question_links', 'question_fetches')")).toBeUndefined();
     store.close();
     fs.rmSync(dir, { recursive: true, force: true });
   });

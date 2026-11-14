@@ -1,8 +1,8 @@
 import * as Popover from '@radix-ui/react-popover';
 import { Check } from 'lucide-react';
 import { useState } from 'react';
-import type { Question } from '@wb/shared';
-import { sendAssistantRequest, setQuestionTags, updateQuestion, useAssistant } from '@/lib/api';
+import type { Ticket } from '@wb/shared';
+import { sendAssistantRequest, setQuestionTags, updateTicket, useAssistant } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useTags } from '@/lib/tags';
 import { ConnectAssistant } from './ConnectAssistant';
@@ -12,13 +12,13 @@ type Ask = 'answer' | 'cards' | 'assess';
 const ASKS: Ask[] = ['answer', 'cards', 'assess'];
 
 /** The place a question is read from, for the item argument the API wants. */
-export const itemOf = (q: Question): string | null => {
+export const itemOf = (q: Ticket): string | null => {
   const a = q.anchor;
   return a.kind === 'page' || a.kind === 'none' || a.kind === 'material' ? null : a.kind === 'text' ? a.target : a.id;
 };
 
 /** One dialog for one question or fifty: what to ask, an optional note, and what is read. Without a helper it copies a prompt. */
-export function AskDialog({ questions, onClose }: { questions: Question[]; onClose: () => void }) {
+export function AskDialog({ questions, onClose }: { questions: Ticket[]; onClose: () => void }) {
   const t = useT();
   const [kind, setKind] = useState<Ask>('answer');
   const [note, setNote] = useState('');
@@ -28,7 +28,7 @@ export function AskDialog({ questions, onClose }: { questions: Question[]; onClo
   const helper = useAssistant().data;
   const canSend = !!helper?.allowed;
   const send = () => {
-    void sendAssistantRequest({ kind, questions: questions.map((q) => q.id), ...(note.trim() ? { note: note.trim() } : {}) }).then(() => {
+    void sendAssistantRequest({ kind, tickets: questions.map((q) => q.id), ...(note.trim() ? { note: note.trim() } : {}) }).then(() => {
       setSent(true);
       setTimeout(onClose, 700);
     });
@@ -87,7 +87,7 @@ export function AskDialog({ questions, onClose }: { questions: Question[]; onClo
 }
 
 /** Sticks to the bottom of the list while questions are selected. */
-export function BulkBar({ picked, archive, ai, onAsk, onClear }: { picked: Question[]; archive: boolean; ai: boolean; onAsk: () => void; onClear: () => void }) {
+export function BulkBar({ picked, archive, ai, onAsk, onClear }: { picked: Ticket[]; archive: boolean; ai: boolean; onAsk: () => void; onClear: () => void }) {
   const t = useT();
   const labels = useTags().data ?? [];
   const [open, setOpen] = useState(false);
@@ -108,11 +108,11 @@ export function BulkBar({ picked, archive, ai, onAsk, onClear }: { picked: Quest
         </button>
       ) : null}
       {archive ? null : (
-        <button type="button" className={btn} onClick={() => { for (const q of picked) if (!q.read) void updateQuestion(itemOf(q), q.id, { read: true }); }}>
+        <button type="button" className={btn} onClick={() => { for (const q of picked) if (!q.read) void updateTicket(itemOf(q), q.id, { read: true }); }}>
           {t.questionsMarkRead}
         </button>
       )}
-      <button type="button" className={btn} onClick={() => { for (const q of picked) void updateQuestion(itemOf(q), q.id, { archived: !archive }); onClear(); }}>
+      <button type="button" className={btn} onClick={() => { for (const q of picked) void updateTicket(itemOf(q), q.id, { archived: !archive }); onClear(); }}>
         {archive ? t.questionsRestore : t.questionsArchiveAction}
       </button>
       {labels.length ? (

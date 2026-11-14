@@ -43,7 +43,7 @@ describe('host helper', () => {
     key = (await api('POST', '/api/assistant/key')).json().key;
     expect((await api('GET', '/api/helper/poll', undefined, `Bearer ${token}`)).statusCode).toBe(401); // the MCP token is not the helper key
     expect((await api('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'ping' }, `Bearer ${key}`)).statusCode).toBe(401);
-    expect((await api('GET', '/api/questions', undefined, `Bearer ${key}`)).statusCode).toBe(401);
+    expect((await api('GET', '/api/tickets', undefined, `Bearer ${key}`)).statusCode).toBe(401);
     expect((await helper('/api/helper/poll')).json()).toEqual({ request: null, cancel: [] });
     expect((await api('GET', '/api/assistant')).json().connected).toBe(true);
     const old = key;
@@ -52,10 +52,10 @@ describe('host helper', () => {
   });
 
   it('hands out one request at a time and counts what it did from its own records', async () => {
-    const q = (await api('POST', '/api/questions', { text: 'Why is foldr lazy?' })).json();
-    const a = (await api('POST', '/api/assistant/requests', { kind: 'answer', questions: [q.id, 'nope'], note: 'short' })).json();
-    const b = (await api('POST', '/api/assistant/requests', { kind: 'cards', questions: [q.id] })).json();
-    expect(a).toMatchObject({ status: 'queued', skill: 'workbook-answer-recent', params: { questions: [q.id], note: 'short' } });
+    const q = (await api('POST', '/api/tickets', { text: 'Why is foldr lazy?' })).json();
+    const a = (await api('POST', '/api/assistant/requests', { kind: 'answer', tickets: [q.id, 'nope'], note: 'short' })).json();
+    const b = (await api('POST', '/api/assistant/requests', { kind: 'cards', tickets: [q.id] })).json();
+    expect(a).toMatchObject({ status: 'queued', skill: 'workbook-answer-recent', params: { tickets: [q.id], note: 'short' } });
     expect((await api('POST', '/api/assistant/requests', { kind: 'cards' })).statusCode).toBe(400);
     expect((await api('POST', '/api/assistant/requests', { kind: 'exercise-help', item: 'nope' })).statusCode).toBe(400);
 
@@ -66,10 +66,10 @@ describe('host helper', () => {
 
     // The assistant reads the request through the MCP and reads the question under its number.
     const got = JSON.parse((await mcp('get_request', { request: a.id })).content[0].text);
-    expect(got).toMatchObject({ kind: 'answer', questions: [q.id], studentNote: 'short' });
+    expect(got).toMatchObject({ kind: 'answer', tickets: [q.id], studentNote: 'short' });
     expect((await mcp('get_request', { request: b.id })).isError).toBe(true); // not running
-    const read = JSON.parse((await mcp('list_questions', { purpose: `workbook-answer-recent #${a.id}`, ids: [q.id] })).content[0].text);
-    expect(read.questions).toHaveLength(1);
+    const read = JSON.parse((await mcp('list_tickets', { purpose: `workbook-answer-recent #${a.id}`, ids: [q.id] })).content[0].text);
+    expect(read.tickets).toHaveLength(1);
 
     expect((await helper(`/api/helper/report/${a.id}`, 'POST', { exitCode: 0, logTail: 'ok' })).statusCode).toBe(200);
     expect((await helper(`/api/helper/report/${a.id}`, 'POST', { exitCode: 0, logTail: 'ok' })).statusCode).toBe(404);
@@ -84,8 +84,8 @@ describe('host helper', () => {
   });
 
   it('shows a failure, lets the student retry or dismiss it', async () => {
-    const q = (await api('POST', '/api/questions', { text: 'What is a monoid?' })).json();
-    const r = (await api('POST', '/api/assistant/requests', { kind: 'assess', questions: [q.id] })).json();
+    const q = (await api('POST', '/api/tickets', { text: 'What is a monoid?' })).json();
+    const r = (await api('POST', '/api/assistant/requests', { kind: 'assess', tickets: [q.id] })).json();
     await helper('/api/helper/poll');
     await helper(`/api/helper/report/${r.id}`, 'POST', { exitCode: 1, logTail: 'claude: command not found' });
     const failed = (await api('GET', '/api/assistant')).json().requests.find((x: { id: string }) => x.id === r.id);

@@ -1,8 +1,8 @@
 import { Check, Mail, Pencil, Sparkles, Trash2, Undo2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'wouter';
-import type { Change, Question } from '@wb/shared';
-import { acceptChanges, decideChange, deleteQuestion, setQuestionTags, undoBatch, updateQuestion, useChanges, usePendingProposals, useSettings } from '@/lib/api';
+import type { Change, Ticket } from '@wb/shared';
+import { acceptChanges, decideChange, deleteTicket, setQuestionTags, undoBatch, updateTicket, useChanges, usePendingProposals, useSettings } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useTags } from '@/lib/tags';
 import { ProposalList, useChangeText } from './Proposals';
@@ -23,7 +23,7 @@ interface Event {
 }
 
 /** The ticket for one question: the question, what you can do with it, what the assistant proposed, and what happened so far. */
-export function QuestionDetail({ q, item, where, href, onClose, onAsk }: { q: Question; item: string | null; where: string; href: string | null; onClose: () => void; onAsk: () => void }) {
+export function QuestionDetail({ q, item, where, href, onClose, onAsk }: { q: Ticket; item: string | null; where: string; href: string | null; onClose: () => void; onAsk: () => void }) {
   const t = useT();
   const settings = useSettings().data;
   const ai = !!settings?.showAi;
@@ -70,7 +70,7 @@ export function QuestionDetail({ q, item, where, href, onClose, onAsk }: { q: Qu
           {t.detailKind} · {href ? <Link href={href} className="text-accent hover:underline"><Title text={where} /></Link> : <Title text={where} />}
         </span>
         {q.read ? (
-          <button type="button" onClick={() => void updateQuestion(item, q.id, { read: false })} className="inline-flex h-6 items-center gap-1 rounded-full border border-line-strong px-2.5 text-ink-2 hover:bg-sunk">
+          <button type="button" onClick={() => void updateTicket(item, q.id, { read: false })} className="inline-flex h-6 items-center gap-1 rounded-full border border-line-strong px-2.5 text-ink-2 hover:bg-sunk">
             <Mail size={12} aria-hidden /> {t.questionMarkUnread}
           </button>
         ) : null}
@@ -103,7 +103,7 @@ export function QuestionDetail({ q, item, where, href, onClose, onAsk }: { q: Qu
                 onClick={() => {
                   const text = editing.trim();
                   setEditing(null);
-                  if (text && text !== q.text) void updateQuestion(item, q.id, { text });
+                  if (text && text !== q.text) void updateTicket(item, q.id, { text });
                 }}
               >
                 {t.save}
@@ -199,7 +199,7 @@ export function QuestionDetail({ q, item, where, href, onClose, onAsk }: { q: Qu
           title={t.deleteQuestion}
           onClick={() => {
             onClose();
-            void deleteQuestion(item, q.id);
+            void deleteTicket(item, q.id);
           }}
         >
           <Trash2 size={15} aria-hidden />
@@ -209,7 +209,7 @@ export function QuestionDetail({ q, item, where, href, onClose, onAsk }: { q: Qu
           variant="primary"
           onClick={() => {
             if (!q.archived) onClose();
-            void updateQuestion(item, q.id, { archived: !q.archived });
+            void updateTicket(item, q.id, { archived: !q.archived });
           }}
         >
           <Check size={14} aria-hidden /> {q.archived ? t.questionsRestore : t.questionsArchiveAction}
