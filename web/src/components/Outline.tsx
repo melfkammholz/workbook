@@ -12,7 +12,7 @@ import { useT } from '@/lib/i18n';
 import { ITEM_TYPES, activeCount, matches, type Filters } from '@/lib/filters';
 import { Plant } from './Plant';
 import { Level, StatusMark, clsx } from './ui';
-import { Title } from '@/components/Title';
+import { Title, plainTitle } from '@/components/Title';
 import { NavLink } from '@/lib/history';
 import { afterPaint } from '@/lib/afterPaint';
 
@@ -249,7 +249,7 @@ const PartBlock = memo(function PartBlock({
         {/* Numbered, so the course's parts read as the level above its chapters. */}
         <span aria-hidden className="grid size-[26px] shrink-0 place-items-center rounded-[7px] border border-line bg-sheet text-[13px] font-bold tabular-nums text-accent">{number}</span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[14px] font-bold leading-tight text-ink">{part.title}</span>
+          <span className="block text-[14px] font-bold leading-tight text-ink"><Title text={part.title} /></span>
           {part.summary ? <span className="block truncate text-xs leading-snug text-ink-3">{part.summary}</span> : null}
         </span>
         <span className="shrink-0 text-xs tabular-nums text-ink-3">
@@ -305,7 +305,7 @@ const ChapterBlock = memo(function ChapterBlock({
     <section className="pb-1.5">
       {/* Stays in sight while the chapter's rows scroll by, and leaves with the last of them. Its own ground marks where a chapter starts. */}
       <div className="group sticky top-[var(--band,0px)] z-[9] flex w-full items-center gap-1 bg-sheet pl-[9px] pr-3 hover:bg-[color-mix(in_srgb,var(--paper)_45%,var(--sheet))]">
-        <button type="button" onClick={() => setOpen(!open)} aria-expanded={expanded} aria-label={expanded ? t.collapseChapter(chapter.title) : t.expandChapter(chapter.title)} className="shrink-0 rounded p-1 text-ink-3 hover:text-ink">
+        <button type="button" onClick={() => setOpen(!open)} aria-expanded={expanded} aria-label={expanded ? t.collapseChapter(plainTitle(chapter.title)) : t.expandChapter(plainTitle(chapter.title))} className="shrink-0 rounded p-1 text-ink-3 hover:text-ink">
           <ChevronDown size={14} className={clsx('transition-transform', !expanded && '-rotate-90')} />
         </button>
         <NavLink
@@ -317,7 +317,7 @@ const ChapterBlock = memo(function ChapterBlock({
           className="flex min-w-0 flex-1 items-center gap-2 py-[9px]"
         >
           {chapter.number !== null ? <span className="w-4 shrink-0 text-right text-[13.5px] font-medium tabular-nums text-ink-3">{chapter.number}</span> : null}
-          <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold">{chapter.title}</span>
+          <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold"><Title text={chapter.title} /></span>
           {reviewing > 0 ? <span className="text-xs font-medium text-review">{t.toReview(reviewing)}</span> : null}
           <Plant chapterId={chapter.id} className="shrink-0 text-[13px] leading-none" />
           <span className="shrink-0 text-xs font-medium tabular-nums text-ink-3">
@@ -384,7 +384,7 @@ const SECTION_TEXT = 'relative pb-[3px] pl-[38px] pr-3.5 pt-2.5 text-xs font-sem
 function SectionLabel({ title, adventure, onNavigate }: { title: string; adventure: ThreadInfo | undefined; onNavigate?: () => void }) {
   return (
     <li className="relative">
-      {adventure ? <AdventureLabel title={title} adventure={adventure} {...(onNavigate ? { onNavigate } : {})} /> : <p className={clsx(SECTION_TEXT, 'truncate text-ink-3')}>{title}</p>}
+      {adventure ? <AdventureLabel title={title} adventure={adventure} {...(onNavigate ? { onNavigate } : {})} /> : <p className={clsx(SECTION_TEXT, 'truncate text-ink-3')}><Title text={title} /></p>}
     </li>
   );
 }
@@ -395,7 +395,7 @@ function AdventureLabel({ title, adventure, onNavigate }: { title: string; adven
   const [here] = useRoute(`/adventure/${adventure.id}`);
   return (
     <Link href={`/adventure/${adventure.id}`} onClick={onNavigate} aria-current={here ? 'page' : undefined} title={t.openAdventure} className={clsx(SECTION_TEXT, 'flex items-center gap-1.5 hover:underline', here ? 'text-accent' : 'text-ink-3')}>
-      <span className="min-w-0 truncate">{title}</span>
+      <span className="min-w-0 truncate"><Title text={title} /></span>
       <Compass size={12} className="shrink-0 text-accent" aria-hidden />
     </Link>
   );
@@ -549,7 +549,7 @@ function FilterPopover({ outline, filters, patch, reset, count }: { outline: Out
             <Group title={t.adventures}>
               {adventures.map((a) => (
                 <Toggle key={a.id} on={filters.threads.includes(a.id)} onClick={() => patch({ threads: toggle(filters.threads, a.id) })}>
-                  {a.title}
+                  <Title text={a.title} />
                 </Toggle>
               ))}
             </Group>

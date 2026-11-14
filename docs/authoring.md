@@ -359,6 +359,10 @@ their own (a quiz card, written the same way).
 Code in a title is written in backticks, as in the text: `title: "`foldl` und `foldr`"` (in quotes: YAML does not
 allow a backtick at the start of a plain value). The app shows it in the code font.
 
+Math in a title is written between dollar signs, as in Typst: `title: Das Newton-Verfahren für $x^2 = a$`. Titles read the
+basics (letters, numbers, Greek names, `^`, `_`, `a/b`, `sqrt(x)`, `sum`, arrows); a title it cannot read is shown as
+typed. `\$` is a dollar sign. Headings of a lesson keep their math in the outline.
+
 Lists have no declaration in Haskell; write `"data [a] = a : [a] | []"` for them. The fold is then `foldr`, with
 the constructors in the order of that line, and the functions are keyed `"(:)"` and `"[]"`.
 

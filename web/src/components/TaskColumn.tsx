@@ -67,7 +67,7 @@ export function TaskColumn({ detail, outline, byId, state, revealedHints, onReve
         {chapter ? (
           // The way up, to the chapter this belongs to.
           <Link href={`/chapter/${chapter.id}`} className="mb-2 inline-flex max-w-full items-center gap-1 text-[13px] text-ink-3 hover:text-ink">
-            <ArrowLeft size={13} className="shrink-0" /> <span className="truncate">{chapter.title}</span>
+            <ArrowLeft size={13} className="shrink-0" /> <span className="truncate"><Title text={chapter.title} /></span>
           </Link>
         ) : null}
         {lesson || extra ? (

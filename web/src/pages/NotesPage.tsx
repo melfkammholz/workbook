@@ -1,3 +1,4 @@
+import { Title } from '@/components/Title';
 import { useMemo } from 'react';
 import { Link } from 'wouter';
 import { RenderedText } from '@/components/RenderedText';
@@ -44,7 +45,7 @@ export function NotesPage() {
         )}
         {chapters.map(({ chapter, items }) => (
           <section key={chapter.id} className="mt-8">
-            <h2 className="mb-3 text-[15px] font-semibold">{chapter.title}</h2>
+            <h2 className="mb-3 text-[15px] font-semibold"><Title text={chapter.title} /></h2>
             <div className="space-y-5">
               {items.map((item) => (
                 <article key={item.id}>

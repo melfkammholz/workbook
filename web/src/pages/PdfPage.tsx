@@ -1,3 +1,4 @@
+import { Title } from '@/components/Title';
 import { useQueryClient } from '@tanstack/react-query';
 import { chapterOf, embeddedKeys, mergeToc, pageFingerprint, pageQuote, rectsTop, slideGroups, slideOfPage, type Anchor, type BibEntry, type EmbeddedTocEntry, type PdfAnnotation, type PdfPageItem, type Resource, type TocEntry } from '@wb/shared';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
@@ -694,7 +695,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
           <>
             <ColumnHandle side="right" width={rightW} onWidth={setRightW} label={t.pdfResizeColumn} />
             <aside data-pdf-column="notes" style={{ width: rightW }} className="my-2 mr-2 shrink-0 overflow-y-auto rounded-xl border border-line bg-sheet p-4 text-sm shadow-sm">
-              {chapter ? <p className="font-medium">{chapter.title}</p> : null}
+              {chapter ? <p className="font-medium"><Title text={chapter.title} /></p> : null}
               {doc ? <p className={chapter ? 'text-ink-2' : 'font-medium'}>{t.pdfPageInfo(current, count, labelOf(current))}</p> : null}
               {marks && doc ? <AllHighlights resource={resource.id} list={highlights ?? []} current={current} labelOf={labelOf} chapterAt={chapterAt} editing={editing?.id ?? null} onJump={(a) => jumpTo(a, true)} /> : null}
               {doc ? <PdfQuestionList resource={resource} questions={questions} current={current} labelOf={labelOf} onGo={goto} /> : null}

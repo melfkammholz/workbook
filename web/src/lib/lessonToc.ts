@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { mathElementToSource } from './titleMath';
 
 /** The sections of the open lesson and the one being read, for the outline. */
 export interface LessonToc {
@@ -29,7 +30,9 @@ export function useLessonToc(): LessonToc | null {
 function titleOf(el: HTMLElement): string {
   let out = '';
   el.childNodes.forEach((n) => {
-    out += n instanceof HTMLElement && n.tagName === 'CODE' ? `\`${n.textContent ?? ''}\`` : (n.textContent ?? '');
+    if (n instanceof HTMLElement && n.tagName === 'CODE') out += `\`${n.textContent ?? ''}\``;
+    else if (n instanceof Element && n.tagName.toLowerCase() === 'math') out += `$${mathElementToSource(n)}$`;
+    else out += n.textContent ?? '';
   });
   return out.trim();
 }

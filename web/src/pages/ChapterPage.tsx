@@ -43,7 +43,7 @@ export function ChapterPage({ id }: { id: string }) {
     <div className="h-full overflow-y-auto">
       <article className={`settle pb-24 pt-10 ${READING_COLUMN}`}>
         <h1 className="text-balance text-[2rem] font-semibold leading-tight tracking-[-0.025em]">
-          {chapter.title} <Plant chapterId={chapter.id} className="ml-1 text-[1.5rem] leading-none" />
+          <Title text={chapter.title} /> <Plant chapterId={chapter.id} className="ml-1 text-[1.5rem] leading-none" />
         </h1>
         {chapter.summary ? <p className="mt-2 text-ink-2">{chapter.summary}</p> : null}
         <div className="mt-6">

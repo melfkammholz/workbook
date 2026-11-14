@@ -578,6 +578,8 @@ a.wb-external::after {
 
 /* Code in a title (`backticks` in the course): the code font and a quiet background, no highlighting. */
 .wb-title-code { font-family: var(--font-mono); font-size: 0.88em; font-weight: inherit; background: var(--sunk); padding: 0.05em 0.3em; border-radius: 4px; }
+.wb-title-math { font-family: var(--font-math); font-size: 1.08em; font-weight: inherit; }
+.wb-title-math math { font-family: inherit; }
 
 /* Tables in a lesson, as in the prototype: no cell borders, a quiet header, a line between rows. */
 .wb-lesson table { width: 100%; border-collapse: collapse; font-size: 14.5px; line-height: 1.5; }
