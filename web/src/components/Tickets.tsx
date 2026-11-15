@@ -100,7 +100,7 @@ export function CaptureField({
         {...(attr ? { [attr]: '' } : {})}
         onChange={(e) => setText(e.target.value)}
         onBlur={() => !text.trim() && onBlurEmpty?.()}
-        onKeyDown={(e) => submitKey(e, save, onCancel)}
+        onKeyDown={(e) => submitKey(e, save, onCancel ?? (() => e.currentTarget.blur()))}
         className="block w-full resize-none wb-field px-2.5 py-1.5 text-sm placeholder:text-ink-3"
       />
     </div>
