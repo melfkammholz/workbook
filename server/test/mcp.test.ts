@@ -99,6 +99,14 @@ describe('assistant bridge', () => {
     expect(JSON.parse((await tool('list_tickets', { workbook: 'nowhere', item })).text).tickets).toHaveLength(0);
     expect(JSON.parse((await tool('list_tickets', { workbook: 'all', item })).text).tickets.length).toBe(20);
     expect(JSON.parse((await tool('list_tickets', { resource: 'no-such-material' })).text).tickets).toEqual([]);
+    // Each ticket names its workbook (key), the reply says which one it used and lists id and key; the id works as a filter too.
+    const named = JSON.parse((await tool('list_tickets', { item })).text);
+    const own = named.workbooks.find((w: { key: string }) => w.key === named.workbook);
+    expect(named.tickets[0].workbook).toBe(named.workbook);
+    expect(own.id).toBeTruthy();
+    const byId = JSON.parse((await tool('list_tickets', { item, workbook: own.id })).text);
+    expect(byId.workbook).toBe(named.workbook);
+    expect(byId.tickets).toHaveLength(20);
     // A rejection shows up on its own question only.
     const target = page.tickets[0].id as string;
     await tool('propose', { ticket: target, labels: ['Warum'], reason: 'test' });

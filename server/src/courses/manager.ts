@@ -269,10 +269,10 @@ export class CourseManager {
   }
 
   list(): CoursesResponse {
-    const courses: CourseInfo[] = this.shown().map((r) => ({ id: r.id, title: r.title, source: r.local ? 'local' : 'git', url: r.local ? null : r.url, folder: r.local ?? null, update: this.updates.get(r.id) ?? 'unknown' }));
+    const courses: CourseInfo[] = this.shown().map((r) => ({ id: r.id, key: this.key(r.id), title: r.title, source: r.local ? 'local' : 'git', url: r.local ? null : r.url, folder: r.local ?? null, update: this.updates.get(r.id) ?? 'unknown' }));
     if (this.hasMount) {
       const { title } = this.openCourse(MOUNTED).content.current.outline;
-      courses.unshift({ id: MOUNTED, title, source: 'mounted', url: null, folder: null, update: 'unknown' });
+      courses.unshift({ id: MOUNTED, key: MOUNTED, title, source: 'mounted', url: null, folder: null, update: 'unknown' });
     }
     return { courses, activeId: this.activeId };
   }

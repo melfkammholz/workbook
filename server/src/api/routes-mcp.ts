@@ -25,7 +25,7 @@ const TOOLS = [
       type: 'object',
       properties: {
         purpose: { type: 'string', description: 'Required. Why you read them, e.g. the name of the skill ("answer-recent"). The student sees it.' },
-        workbook: { type: 'string', description: 'Workbook id; "all" for every workbook. Default: the active one' },
+        workbook: { type: 'string', description: 'Workbook id (as in workbook.yml) or its key (the `workbook` of each ticket); "all" for every workbook. Default: the active one. The reply says which one it used and lists all workbooks with id and key' },
         resource: { type: 'string', description: 'Only tickets about this material' },
         item: { type: 'string', description: 'Only tickets about this workbook item (exercise, lesson, page)' },
         ids: { type: 'array', items: { type: 'string' }, description: 'Only these tickets (at most 20; from get_request), in any workbook and whether closed or not' },
@@ -354,7 +354,9 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
       case 'list_tickets': {
         const purpose = purposeOf(a);
         const workbook = str(a.workbook) ?? str(a.course);
-        const wb = workbook === 'all' ? null : (workbook ?? d.store.course);
+        // `workbook` may be the id from workbook.yml or the key the student's work is stored under; tickets carry the key.
+        const scopes = d.courses.searchScope();
+        const wb = workbook === 'all' ? null : workbook ? (scopes.find((s) => s.id === workbook || s.key === workbook)?.key ?? workbook) : d.store.course;
         const resource = str(a.resource);
         const item = str(a.item);
         const sinceRaw = str(a.since);
@@ -382,12 +384,13 @@ export function mcpRoutes(app: FastifyInstance, d: Deps): void {
           answer: q.answer,
           labels: q.labels.flatMap((l) => (names.has(l) ? [names.get(l)!] : [])),
           where: where(q),
+          workbook: 'course' in q.anchor ? q.anchor.course : null,
           created: new Date(q.createdAt).toISOString(),
           lastRead: q.fetched ? { at: new Date(q.fetched.at).toISOString(), purpose: q.fetched.purpose } : null,
           ...(rejected.has(q.id) ? { rejected: rejected.get(q.id) } : {}),
         }));
         g().logTicketFetches(qs.map((q) => q.id), purpose);
-        return { tickets: out, remaining: all.length - qs.length };
+        return { workbook: wb ?? 'all', workbooks: scopes.map((s) => ({ id: s.id, key: s.key, title: s.title })), tickets: out, remaining: all.length - qs.length };
       }
       case 'get_request': {
         const req = queueOf(d.courses).get(str(a.request) ?? '');

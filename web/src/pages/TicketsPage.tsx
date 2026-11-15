@@ -40,7 +40,7 @@ interface Filters {
   labels: string[];
   answered: boolean;
   unseen: boolean;
-  tab: '' | 'unread' | 'archive';
+  tab: '' | 'all' | 'unread' | 'archive';
 }
 
 const NO_FILTERS: Filters = { text: '', where: '', age: '', labels: [], answered: false, unseen: false, tab: '' };
@@ -48,7 +48,7 @@ const DAY = 86_400_000;
 
 const readUrl = (): Filters => {
   const p = new URLSearchParams(location.search);
-  return { text: p.get('q') ?? '', where: p.get('in') ?? '', age: p.get('age') ?? '', labels: (p.get('labels') ?? '').split(',').filter(Boolean), answered: p.get('answer') === '1', unseen: p.get('unseen') === '1', tab: p.get('tab') === 'unread' ? 'unread' : p.get('tab') === 'archive' ? 'archive' : '' };
+  return { text: p.get('q') ?? '', where: p.get('in') ?? '', age: p.get('age') ?? '', labels: (p.get('labels') ?? '').split(',').filter(Boolean), answered: p.get('answer') === '1', unseen: p.get('unseen') === '1', tab: p.get('tab') === 'unread' ? 'unread' : p.get('tab') === 'archive' ? 'archive' : p.get('tab') === 'all' ? 'all' : '' };
 };
 
 const writeUrl = (f: Filters) => {
@@ -72,6 +72,7 @@ export function TicketsPage() {
   const all = useTickets().data;
   const outline = useOutline().data;
   const courses = useCourses().data;
+  const activeKey = courses?.courses.find((c) => c.id === courses.activeId)?.key;
   const resources = useResources(null).data?.resources;
   const labelDefs = useTags().data;
   const settings = useSettings().data;
@@ -115,8 +116,14 @@ export function TicketsPage() {
     for (const q of all ?? []) {
       if (q.unplaced) continue;
       const a = q.anchor;
-      // This page is about the open workbook and the student's materials; other workbooks' questions wait there.
-      if (a.kind !== 'page' && a.kind !== 'material' && a.kind !== 'none' && a.course !== courses?.activeId) continue;
+      // By default this page is about the open workbook and the student's materials; other workbooks' questions show under All.
+      if (f.tab !== 'all') {
+        if (a.kind === 'page' || a.kind === 'material') {
+          // A material belongs here when this workbook lists it (its `courses` hold workbook ids, not the app's course ids).
+          const r = resources?.find((x) => x.id === a.resource);
+          if (!outline?.id || !r?.courses.includes(outline.id)) continue;
+        } else if (a.kind !== 'none' && a.course !== activeKey) continue;
+      }
       if (a.kind === 'none') out.push({ q, gKey: '', gTitle: t.ticketsElsewhere, mtype: null, pKey: '', pTitle: '', pHref: null, pOrder: 0 });
       else if (a.kind === 'page' || a.kind === 'material') {
         const r = resources?.find((x) => x.id === a.resource);
@@ -124,12 +131,12 @@ export function TicketsPage() {
         out.push({ q, gKey: `m:${a.resource}`, gTitle: r?.title ?? a.resource, mtype: r?.type ?? 'other', pKey: String(n), pTitle: n < 0 ? t.pdfQuestionWhole : t.ticketPageLabel(n + 1), pHref: n < 0 ? `/resources/${encodeURIComponent(a.resource)}` : `/resources/${encodeURIComponent(a.resource)}/${encodeURIComponent(q.id)}`, pOrder: n });
       } else {
         const id = placeOf(a);
-        const here = !!courses?.activeId && courses.activeId === a.course;
-        out.push({ q, gKey: `c:${a.course}`, gTitle: courses?.courses.find((c) => c.id === a.course)?.title ?? a.course, mtype: null, pKey: id, pTitle: here ? titleOf(id) : id, pHref: here ? (id.startsWith('chapter/') ? `/${id}` : `/item/${id}`) : null, pOrder: here ? (order.get(id) ?? 1e9) : 0 });
+        const here = !!activeKey && activeKey === a.course;
+        out.push({ q, gKey: `c:${a.course}`, gTitle: courses?.courses.find((c) => c.key === a.course)?.title ?? a.course, mtype: null, pKey: id, pTitle: here ? titleOf(id) : id, pHref: here ? (id.startsWith('chapter/') ? `/${id}` : `/item/${id}`) : null, pOrder: here ? (order.get(id) ?? 1e9) : 0 });
       }
     }
     return out;
-  }, [all, resources, outline, courses, t]);
+  }, [all, resources, outline, courses, activeKey, t, f.tab]);
 
   const whereOptions = useMemo(() => {
     const books = new Map<string, string>();
@@ -197,9 +204,9 @@ export function TicketsPage() {
     // Questions with an open proposal go first in their list (stable, so the rest keeps its order).
     for (const g of gs.values()) for (const p of g.parts.values()) p.items.sort((a, b) => Number(!!proposals.get(b.id)?.length) - Number(!!proposals.get(a.id)?.length));
     const rank = (k: string) => (k === '' ? 2 : k.startsWith('m:') ? 0 : 1);
-    const active = courses?.activeId ? `c:${courses.activeId}` : null;
+    const active = activeKey ? `c:${activeKey}` : null;
     return [...gs.values()].sort((a, b) => rank(a.key) - rank(b.key) || (a.key === active ? -1 : b.key === active ? 1 : 0) || a.title.localeCompare(b.title));
-  }, [filtered, courses?.activeId, proposals]);
+  }, [filtered, activeKey, proposals]);
 
   /** Ids in the order the list shows them, for shift-click ranges. */
   const ordered = useMemo(() => groups.flatMap((g) => [...g.parts.values()].sort((a, b) => a.order - b.order || a.title.localeCompare(b.title)).flatMap((p) => p.items.map((q) => q.id))), [groups]);
@@ -350,7 +357,7 @@ export function TicketsPage() {
         <ConnectAssistant open={connecting} onClose={() => setConnecting(false)} />
 
         <div role="tablist" aria-label={t.ticketsTitle} className="mt-4 flex gap-1 border-b border-line">
-          {([['', t.ticketsTabAll], ['unread', t.ticketsTabUnread], ['archive', t.ticketsTabArchive]] as const).map(([id, label]) => (
+          {([['', t.ticketsTabHere], ['all', t.ticketsTabAll], ['unread', t.ticketsTabUnread], ['archive', t.ticketsTabArchive]] as const).map(([id, label]) => (
             <button key={id} type="button" role="tab" aria-selected={f.tab === id} onClick={() => set({ tab: id })} className={clsx('-mb-px border-b-2 px-3 py-1.5 text-[14px]', f.tab === id ? 'border-accent font-medium text-ink' : 'border-transparent text-ink-3 hover:text-ink')}>
               {label}
             </button>

@@ -584,6 +584,8 @@ export type CourseUpdate = 'available' | 'current' | 'unknown';
 
 export interface CourseInfo {
   id: string;
+  /** What the student's work in it is stored under (tickets, highlights: `anchor.course`); not the same as `id`. */
+  key: string;
   title: string;
   /** `mounted` is a folder given at startup (CONTENT_DIR), `git` a repository the student added by address, `local` one from the workbooks folder. */
   source: 'mounted' | 'git' | 'local';
