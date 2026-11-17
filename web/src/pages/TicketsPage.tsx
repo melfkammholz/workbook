@@ -515,7 +515,7 @@ export function TicketsPage() {
           })}
           </>
         )}
-        {anyPicked ? <BulkBar picked={ordered.filter((i) => picked.has(i)).flatMap((i) => entryOf.get(i)?.q ?? [])} archive={f.tab === 'archive'} ai={!!settings?.showAi} onAsk={() => setAsking(ordered.filter((i) => picked.has(i)).flatMap((i) => entryOf.get(i)?.q ?? []))} onClear={() => setPicked(new Set())} /> : null}
+        {anyPicked ? <BulkBar picked={ordered.filter((i) => picked.has(i)).flatMap((i) => entryOf.get(i)?.q ?? [])} archive={f.tab === 'archive'} ai={!!settings?.showAi} cards={!!settings?.showFlashcards} onAsk={() => setAsking(ordered.filter((i) => picked.has(i)).flatMap((i) => entryOf.get(i)?.q ?? []))} onClear={() => setPicked(new Set())} /> : null}
       </div>
     </div>
     {openChange ? (

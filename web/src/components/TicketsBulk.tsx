@@ -1,8 +1,10 @@
 import * as Popover from '@radix-ui/react-popover';
-import { Check } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Check, Layers } from 'lucide-react';
 import { useState } from 'react';
 import type { Ticket } from '@wb/shared';
-import { sendAssistantRequest, setQuestionTags, updateTicket, useAssistant } from '@/lib/api';
+import { linkQuestion, sendAssistantRequest, setQuestionTags, updateTicket, useAssistant } from '@/lib/api';
+import { addCard, cardKeys, createDeck, useFlashcards } from '@/lib/flashcards';
 import { useT } from '@/lib/i18n';
 import { useTags } from '@/lib/tags';
 import { ConnectAssistant } from './ConnectAssistant';
@@ -86,11 +88,45 @@ export function AskDialog({ questions, onClose }: { questions: Ticket[]; onClose
   );
 }
 
+/** What goes on a card's front: the question, or the passage it was asked about. */
+const frontOf = (q: Ticket): string => {
+  const a = q.anchor;
+  const quote = a.kind === 'text' ? a.quote : a.kind === 'page' ? a.quote?.trim() || '' : '';
+  return (q.text || quote).trim();
+};
+
+/** Tickets that can become a draft: something to put on the front, and no card made from them yet. */
+const draftable = (q: Ticket) => !!frontOf(q) && !q.links.some((l) => l.kind === 'card');
+
 /** Sticks to the bottom of the list while questions are selected. */
-export function BulkBar({ picked, archive, ai, onAsk, onClear }: { picked: Ticket[]; archive: boolean; ai: boolean; onAsk: () => void; onClear: () => void }) {
+export function BulkBar({ picked, archive, ai, cards, onAsk, onClear }: { picked: Ticket[]; archive: boolean; ai: boolean; cards: boolean; onAsk: () => void; onClear: () => void }) {
   const t = useT();
   const labels = useTags().data ?? [];
   const [open, setOpen] = useState(false);
+  const qc = useQueryClient();
+  const decks = useFlashcards().data?.decks ?? [];
+  const [deckMenu, setDeckMenu] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const todo = picked.filter(draftable);
+  /** Quietly one draft per ticket, one after the other because each rewrites the deck's text. */
+  const addDrafts = async (deckId: string | null, title: string) => {
+    setDeckMenu(false);
+    setFailed(false);
+    try {
+      const target = deckId ?? (await createDeck(t.defaultDeckTitle, true)).id;
+      for (const q of todo) {
+        const a = q.anchor;
+        const r = await addCard(target, { kind: 'basic', front: frontOf(q), back: q.answer ?? '', exercise: a.kind === 'exercise' ? a.id : null, highlight: q.highlightId, anchor: a.kind === 'none' ? null : a, draft: true });
+        await linkQuestion(itemOf(q), q.id, 'card', r.cardId);
+      }
+      void qc.invalidateQueries({ queryKey: cardKeys.all });
+      setDone(t.draftsAdded(todo.length, title));
+      setTimeout(() => setDone(null), 4000);
+    } catch {
+      setFailed(true);
+    }
+  };
   const toggleLabel = (id: string) => {
     const all = picked.every((q) => q.labels.includes(id));
     for (const q of picked) {
@@ -107,6 +143,34 @@ export function BulkBar({ picked, archive, ai, onAsk, onClear }: { picked: Ticke
           {t.ticketsAsk}
         </button>
       ) : null}
+      {cards && todo.length ? (
+        <Popover.Root open={deckMenu} onOpenChange={setDeckMenu}>
+          <Popover.Trigger asChild>
+            <button type="button" className={btn}>
+              <Layers size={14} aria-hidden /> {t.ticketsDrafts(todo.length)} ▾
+            </button>
+          </Popover.Trigger>
+          <Popover.Portal>
+            <Popover.Content side="top" align="start" sideOffset={6} aria-label={t.ticketsDraftsInto} className="wb-menu max-h-64 w-60 overflow-y-auto p-1">
+              <div className="px-2.5 py-1 text-[12px] text-ink-3">{t.ticketsDraftsInto}</div>
+              {decks.length ? (
+                decks.map((d) => (
+                  <button key={d.id} type="button" onClick={() => void addDrafts(d.id, d.title)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] hover:bg-sunk">
+                    <span className="min-w-0 flex-1 truncate">{d.title}</span>
+                    <span className="text-[12px] text-ink-3">{t.deckCounts(d.cards)}</span>
+                  </button>
+                ))
+              ) : (
+                <button type="button" onClick={() => void addDrafts(null, t.defaultDeckTitle)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] hover:bg-sunk">
+                  {t.defaultDeckTitle}
+                </button>
+              )}
+            </Popover.Content>
+          </Popover.Portal>
+        </Popover.Root>
+      ) : null}
+      {done ? <span role="status" className="text-[13px]">{done}</span> : null}
+      {failed ? <span role="alert" className="text-[13px]">{t.inboxFailed}</span> : null}
       {archive ? null : (
         <button type="button" className={btn} onClick={() => { for (const q of picked) if (!q.read) void updateTicket(itemOf(q), q.id, { read: true }); }}>
           {t.ticketsMarkRead}

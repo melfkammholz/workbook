@@ -52,7 +52,7 @@ export interface Unit {
 
 /** One schedule per direction and per gap. */
 export function unitsOf(source: string, card: CardCall): Unit[] {
-  if (!card.id) return [];
+  if (!card.id || card.draft) return [];
   const id = card.id;
   if (card.kind === 'basic' || card.kind === 'quiz') return [{ key: id, cardId: id, side: 'front', gap: null }];
   if (card.kind === 'both')
@@ -180,13 +180,14 @@ const indent = (text: string) =>
  *       back
  *     ]
  */
-export function cardText(kind: CardKind, front: string, back: string, from: string | null, id: string | null = null, tags: string[] = [], highlight: string | null = null, anchor: string | null = null): string {
+export function cardText(kind: CardKind, front: string, back: string, from: string | null, id: string | null = null, tags: string[] = [], highlight: string | null = null, anchor: string | null = null, draft = false): string {
   const args: string[] = [];
   if (id) args.push(`id: ${JSON.stringify(id)}`);
   if (from) args.push(`from: ${JSON.stringify(from)}`);
   if (highlight) args.push(`highlight: ${JSON.stringify(highlight)}`);
   if (anchor) args.push(`anchor: ${JSON.stringify(anchor)}`);
   if (kind === 'both') args.push('both: true');
+  if (draft) args.push('draft: true');
   // A one-element array needs its trailing comma in Typst.
   if (tags.length) args.push(`tags: (${tags.map((t) => JSON.stringify(t)).join(', ')}${tags.length === 1 ? ',' : ''})`);
   // A quiz is all arguments: the question and its choices follow the named ones.
@@ -213,6 +214,7 @@ export interface CardFields {
   highlight: string | null;
   anchor: Anchor | null;
   tags: string[];
+  draft: boolean;
   front: string;
   back: string;
   line: number;
@@ -227,17 +229,17 @@ export function quizBody(args: string): string {
 export function fieldsOf(source: string, c: CardCall): CardFields {
   if (c.kind === 'quiz') {
     const front = c.args ? dedent(quizBody(source.slice(c.args.from + 1, c.args.to))) : '';
-    return { id: c.id, kind: c.kind, from: c.from, highlight: c.highlight, anchor: c.anchor, tags: c.tags, front, back: '', line: c.line };
+    return { id: c.id, kind: c.kind, from: c.from, highlight: c.highlight, anchor: c.anchor, tags: c.tags, draft: c.draft, front, back: '', line: c.line };
   }
   const body = (i: number) => (c.bodies[i] ? dedent(source.slice(c.bodies[i]!.from, c.bodies[i]!.to)) : '');
-  return { id: c.id, kind: c.kind, from: c.from, highlight: c.highlight, anchor: c.anchor, tags: c.tags, front: body(0), back: c.kind === 'cloze' ? '' : body(1), line: c.line };
+  return { id: c.id, kind: c.kind, from: c.from, highlight: c.highlight, anchor: c.anchor, tags: c.tags, draft: c.draft, front: body(0), back: c.kind === 'cloze' ? '' : body(1), line: c.line };
 }
 
 /** Rewrites one card, keeping its id and where it came from. Anything else in its arguments is written anew. */
-export function replaceCard(source: string, id: string, kind: CardKind, front: string, back: string, tags: string[], refs: { from?: string | null; highlight?: string | null; anchor?: Anchor | null } = {}): string | null {
+export function replaceCard(source: string, id: string, kind: CardKind, front: string, back: string, tags: string[], refs: { from?: string | null; highlight?: string | null; anchor?: Anchor | null; draft?: boolean } = {}): string | null {
   const c = scanCards(source).find((x) => x.id === id);
   if (!c) return null;
-  return source.slice(0, c.start) + cardText(kind, front, back, refs.from !== undefined ? refs.from : c.from, c.id, tags, refs.highlight !== undefined ? refs.highlight : c.highlight, refs.anchor !== undefined ? (refs.anchor ? encodeAnchor(refs.anchor) : null) : c.anchorArg) + source.slice(c.end);
+  return source.slice(0, c.start) + cardText(kind, front, back, refs.from !== undefined ? refs.from : c.from, c.id, tags, refs.highlight !== undefined ? refs.highlight : c.highlight, refs.anchor !== undefined ? (refs.anchor ? encodeAnchor(refs.anchor) : null) : c.anchorArg, refs.draft !== undefined ? refs.draft : c.draft) + source.slice(c.end);
 }
 
 /** Removes a card and the blank line it leaves. */

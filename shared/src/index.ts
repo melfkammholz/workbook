@@ -766,6 +766,8 @@ export interface DeckCard {
   /** What `from` and `highlight` point at now; null when it is gone. Only where a card is shown for editing. */
   origin?: CardOrigin | null;
   highlightInfo?: CardHighlight | null;
+  /** Added in bulk (e.g. from tickets) and not yet kept: shown in the deck, never asked. */
+  draft?: boolean;
   /** Written on the card. Those of its exercise come on top. */
   tags: string[];
   front: string;
@@ -790,7 +792,10 @@ export interface ExamDate {
 export interface DeckSummary {
   id: string;
   title: string;
+  /** Cards that are asked (drafts not counted). */
   cards: number;
+  /** Drafts waiting to be kept. */
+  drafts: number;
   /** Waiting today, without the new ones. */
   due: number;
   /** New ones that may come today. */

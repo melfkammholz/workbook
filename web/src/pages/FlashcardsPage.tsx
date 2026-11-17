@@ -210,7 +210,7 @@ function DeckRow({ deck: d, picked, onPick, onEdit }: { deck: DeckSummary; picke
             {d.title}
           </Link>
           <span className="text-[13px] text-ink-3">
-            {t.deckCounts(d.cards)} · {t.dueCounts(d.due, d.fresh)}
+            {t.deckCounts(d.cards)}{d.drafts ? ` · ${t.deckDrafts(d.drafts)}` : ''} · {t.dueCounts(d.due, d.fresh)}
           </span>
           {big ? <span className="text-[12.5px] text-review">{t.deckIsBigShort}</span> : null}
         </div>

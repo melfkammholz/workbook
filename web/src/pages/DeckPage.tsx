@@ -21,6 +21,7 @@ import { useLang, useT } from '@/lib/i18n';
 import { readPref, writePref } from '@/lib/shell';
 import { useDebouncedCallback } from '@/lib/useDebounced';
 import { cursorCard } from '@/lib/currentCard';
+import { anchorsById, diffChange, restoreAnchors, stripAnchors } from '@/lib/deckAnchors';
 import { BackLink } from '@/lib/history';
 import { usePageKeys } from '@/lib/keys';
 import { tagLabel } from '@/lib/typstContext';
@@ -117,7 +118,7 @@ function DeckEditor({ deck, focusCard }: { deck: DeckDoc; focusCard: string | nu
               </IconButton>
             </>
           )}
-          <span className="text-[13px] text-ink-3">{t.deckCounts(deck.cards.length)}</span>
+          <span className="text-[13px] text-ink-3">{t.deckCounts(deck.cards.filter((c) => !c.draft).length)}{deck.cards.some((c) => c.draft) ? ` · ${t.deckDrafts(deck.cards.filter((c) => c.draft).length)}` : ''}</span>
           <div className="ml-auto flex items-center gap-2">
             <Segmented<View>
               value={view}
@@ -233,6 +234,7 @@ function CardList({ deck, focusCard, onSaved }: { deck: DeckDoc; focusCard: stri
                 first={i === 0}
                 last={i === deck.cards.length - 1}
                 onEdit={() => setEditing(c.id)}
+                onKeep={c.draft && c.id ? async () => onSaved(await editCard(deck.id, c.id!, { kind: c.kind, front: c.front, back: c.back, tags: c.tags, draft: false })) : undefined}
                 onMove={async (d) => onSaved(await moveCardBy(deck.id, c.id!, d))}
                 drop={over === i ? 'before' : over === i + 1 && i === deck.cards.length - 1 ? 'after' : null}
                 dragging={drag?.id === c.id}
@@ -284,6 +286,7 @@ function CardRow({
   first,
   last,
   onEdit,
+  onKeep,
   onMove,
   onDelete,
   drop,
@@ -300,6 +303,8 @@ function CardRow({
   first: boolean;
   last: boolean;
   onEdit: () => void;
+  /** A draft only: make it a card that is asked. */
+  onKeep?: () => Promise<void>;
   onMove: (d: -1 | 1) => Promise<void>;
   /** Where a dragged card would land, relative to this one. */
   drop: 'before' | 'after' | null;
@@ -365,6 +370,7 @@ function CardRow({
             <GripVertical size={14} />
           </span>
         ) : null}
+        {card.draft ? <span className="rounded-full bg-review-soft px-2 py-0.5 font-medium text-review">{t.cardDraft}</span> : null}
         {card.kind === 'both' ? <span>{t.cardKind.both}</span> : null}
         {card.origin ? (
           card.origin.href ? (
@@ -421,6 +427,11 @@ function CardRow({
               <IconButton label={t.deleteCard} onClick={() => setConfirming(true)} className="size-7">
                 <Trash2 size={14} />
               </IconButton>
+              {onKeep ? (
+                <Button size="sm" onClick={() => void onKeep()}>
+                  <Check size={13} /> {t.cardKeep}
+                </Button>
+              ) : null}
               <Button size="sm" variant="ghost" onClick={onEdit}>
                 <Pencil size={13} /> {t.editCard}
               </Button>
@@ -437,7 +448,8 @@ function CardRow({
 
 function TextView({ deck, focusCard, onSaved }: { deck: DeckDoc; focusCard: string | null; onSaved: (r: DeckSaved) => void }) {
   const t = useT();
-  const [text, setText] = useState(deck.source);
+  const [text, setText] = useState(() => stripAnchors(deck.source));
+  const anchors = useRef(anchorsById(deck.source));
   const [warnings, setWarnings] = useState<DeckWarning[]>([]);
   const [saved, setSaved] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const view = useRef<EditorView | null>(null);
@@ -447,7 +459,7 @@ function TextView({ deck, focusCard, onSaved }: { deck: DeckDoc; focusCard: stri
 
   const persist = useDebouncedCallback((value: string) => {
     setSaved('saving');
-    saveDeckSource(deck.id, value).then(
+    saveDeckSource(deck.id, restoreAnchors(value, anchors.current)).then(
       (r) => {
         setSaved('saved');
         setWarnings(r.warnings);
@@ -457,7 +469,7 @@ function TextView({ deck, focusCard, onSaved }: { deck: DeckDoc; focusCard: stri
         // If the text changed meanwhile, the next save hands them out again.
         const v = view.current;
         if (r.edits.length && v && v.state.doc.toString() === value) {
-          v.dispatch({ changes: r.edits.map((e) => ({ from: e.from, to: e.to, insert: e.insert })), annotations: Transaction.addToHistory.of(false) });
+          v.dispatch({ changes: diffChange(value, stripAnchors(r.source)), annotations: Transaction.addToHistory.of(false) });
         }
       },
       () => setSaved('error'),
@@ -466,9 +478,11 @@ function TextView({ deck, focusCard, onSaved }: { deck: DeckDoc; focusCard: stri
 
   // Cards added elsewhere (the quick way, the card view) show up here, unless something typed here is still on its way.
   useEffect(() => {
-    if (dirty.current || deck.source === text) return;
-    adopted.current = deck.source;
-    setText(deck.source);
+    anchorsById(deck.source, anchors.current);
+    const shown = stripAnchors(deck.source);
+    if (dirty.current || shown === text) return;
+    adopted.current = shown;
+    setText(shown);
     // Only when the deck changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deck.source]);

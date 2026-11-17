@@ -212,11 +212,12 @@ export class Flashcards {
       return {
         id: d.id,
         title: d.title,
-        cards: cards.length,
+        cards: cards.filter((c) => !c.draft).length,
+        drafts: cards.filter((c) => c.draft).length,
         due: mine.filter((u) => u.bucket === 'due' || u.bucket === 'soon').length,
         fresh: mine.filter((u) => u.bucket === 'fresh').length,
         settings: d.settings,
-        confidence: tally(cards.map((c) => knowledge.group(d.source, c))),
+        confidence: tally(cards.filter((c) => !c.draft).map((c) => knowledge.group(d.source, c))),
         struggling: cards.filter((c) => c.id && knowledge.struggling(c.id)).length,
       };
     });
@@ -262,11 +263,11 @@ export class Flashcards {
   }
 
   /** "Make a card", or a card added in the deck's card view: one more card in the text, as if typed there. */
-  addCard(id: string, kind: CardKind, front: string, back: string, from: string | null, after: string | null = null, tags: string[] = [], highlight: string | null = null, anchor: Anchor | null = null): DeckSaved & { cardId: string } {
+  addCard(id: string, kind: CardKind, front: string, back: string, from: string | null, after: string | null = null, tags: string[] = [], highlight: string | null = null, anchor: Anchor | null = null, draft = false): DeckSaved & { cardId: string } {
     const d = this.deck(id);
     check(kind, front, back);
     const before = new Set(scanCards(d.source).map((c) => c.id));
-    const text = cardText(kind, front, back, from, null, tags, highlight, anchor ? encodeAnchor(anchor) : null);
+    const text = cardText(kind, front, back, from, null, tags, highlight, anchor ? encodeAnchor(anchor) : null, draft);
     const next = (after && insertAfter(d.source, after, text)) || appendCard(d.source, text);
     const saved = this.saveSource(id, next);
     this.sql.run('UPDATE decks SET used_at = ? WHERE id = ?', this.now(), id);
@@ -275,7 +276,7 @@ export class Flashcards {
   }
 
   /** Rewrites one card's text. Its id stays, and with it what was learned. */
-  editCard(id: string, cardId: string, kind: CardKind, front: string, back: string, tags: string[], refs: { from?: string | null; highlight?: string | null; anchor?: Anchor | null } = {}): DeckSaved {
+  editCard(id: string, cardId: string, kind: CardKind, front: string, back: string, tags: string[], refs: { from?: string | null; highlight?: string | null; anchor?: Anchor | null; draft?: boolean } = {}): DeckSaved {
     check(kind, front, back);
     const next = replaceCard(this.deck(id).source, cardId, kind, front, back, tags, refs);
     if (next === null) throw new FlashcardError('unknown-card');

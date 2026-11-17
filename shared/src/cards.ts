@@ -35,6 +35,8 @@ export interface CardCall {
   anchor: Anchor | null;
   /** The argument as written, kept so an unreadable one is not lost. */
   anchorArg: string | null;
+  /** `draft: true`: not asked in reviews until the student keeps it. */
+  draft: boolean;
   /** Its own tags, besides those of its exercise. */
   tags: string[];
   /** Content blocks, without their brackets. */
@@ -134,6 +136,7 @@ class Scanner {
       const fromMatch = /(?:^|[\s,])from\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(argText);
       const highlightMatch = /(?:^|[\s,])highlight\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(argText);
       const anchorMatch = /(?:^|[\s,])anchor\s*:\s*"([A-Za-z0-9_-]*)"/.exec(argText);
+      const draft = /(?:^|[\s,])draft\s*:\s*true\b/.test(argText);
       const both = /(?:^|[\s,])both\s*:\s*true\b/.test(argText);
       // `tags: ("a", "b")`, or a single `tags: "a"`.
       const tagMatch = /(?:^|[\s,])tags\s*:\s*(\([^)]*\)|"(?:[^"\\]|\\.)*")/.exec(argText);
@@ -155,6 +158,7 @@ class Scanner {
         highlight: highlightMatch ? highlightMatch[1]! : null,
         anchor: anchorMatch ? decodeAnchor(anchorMatch[1]!) : null,
         anchorArg: anchorMatch ? anchorMatch[1]! : null,
+        draft,
         tags,
         bodies,
         end: i,
