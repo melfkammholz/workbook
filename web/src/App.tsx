@@ -8,6 +8,7 @@ import { CourseMenu, FocusQuestion } from '@/components/Focus';
 import { OutlinePanel } from '@/components/Outline';
 import { SearchDialog } from '@/components/SearchDialog';
 import { QuickSettings } from '@/components/QuickMenus';
+import { LineNotice } from '@/components/LineNotice';
 import { SaveNotice } from '@/components/SaveNotice';
 import { SetupDialog } from '@/components/SetupDialog';
 import { Empty, IconButton, Spinner, TipLayer, clsx } from '@/components/ui';
@@ -66,6 +67,7 @@ export function App() {
       <AppQueries />
       <Shell />
       <SaveNotice />
+      <LineNotice />
       <TipLayer />
       <PdfRefPeek />
     </Router>

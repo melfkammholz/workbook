@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import type { Todo, TodoLink } from '@wb/shared';
-import { api } from './api';
+import { api, askQuestion, keys, type QuestionPlace } from './api';
+import { showLineNote } from './lineToast';
+import type { Outline } from '@wb/shared';
 import { queryClient } from './queryClient';
 
 export const todosKey = ['todos'] as const;
@@ -66,4 +68,20 @@ export function useTodoFor(kind: TodoLink['kind'], ref: string): Todo | undefine
     return undefined;
   };
   return data ? find(data) : undefined;
+}
+
+/**
+ * The ticket line: `!todo text` adds a todo (linked to the item being looked at, if any); any other text is a question.
+ * An unknown `!x` stays a question, so nothing typed is lost, with a hint.
+ */
+export function askOrTodo(where: QuestionPlace, text: string) {
+  const m = /^!(\S+)\s*([\s\S]*)$/.exec(text.trim());
+  if (m && m[1]!.toLowerCase() === 'todo' && m[2]!.trim()) {
+    const item = where.item && !where.item.startsWith('chapter/') ? where.item : null;
+    const course = queryClient.getQueryData<Outline>(keys.outline)?.id ?? null;
+    showLineNote({ kind: 'todo' });
+    return addTodo({ title: m[2]!.trim(), course: item ? course : null, origin: 'ticket-line', ...(item ? { link: { kind: 'item' as const, ref: item, title: null } } : {}) });
+  }
+  if (m) showLineNote({ kind: 'unknown', cmd: m[1]! });
+  return askQuestion(where, text);
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
-import { askQuestion, useOutline } from '@/lib/api';
+import { useOutline } from '@/lib/api';
+import { askOrTodo } from '@/lib/todos';
 import { useT } from '@/lib/i18n';
 import { usePageKeys } from '@/lib/keys';
 import { CaptureField, QuestionCard } from './Tickets';
@@ -61,7 +62,7 @@ export function QuestionPopup() {
           placeholder={place.title ? t.ticketAbout(place.title) : t.ticketAboutNothing}
           onCancel={close}
           onBlurEmpty={close}
-          onSave={(text) => void askQuestion(place.item ? { item: place.item } : {}, text)}
+          onSave={(text) => void askOrTodo(place.item ? { item: place.item } : {}, text)}
         />
       </QuestionCard>
     </div>

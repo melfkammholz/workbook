@@ -4,7 +4,8 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { type Ticket } from '@wb/shared';
 import { useTags } from '@/lib/tags';
 import { TagPicker } from './TagPicker';
-import { askQuestion, deleteTicket, setQuestionTags, updateTicket, usePendingProposals, useTickets, useSettings } from '@/lib/api';
+import { deleteTicket, setQuestionTags, updateTicket, usePendingProposals, useTickets, useSettings } from '@/lib/api';
+import { askOrTodo } from '@/lib/todos';
 import { useT } from '@/lib/i18n';
 import { ProposalMarker } from './Proposals';
 import { TicketMake } from './TicketMake';
@@ -109,7 +110,7 @@ export function CaptureField({
 
 /** A question on an item: the line to write it, saved to that item. */
 export function QuestionInput({ item, autoFocus = false }: { item: string; autoFocus?: boolean }) {
-  return <CaptureField autoFocus={autoFocus} onSave={(text) => void askQuestion({ item }, text)} />;
+  return <CaptureField autoFocus={autoFocus} onSave={(text) => void askOrTodo({ item }, text)} />;
 }
 
 /**

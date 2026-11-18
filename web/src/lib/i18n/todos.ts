@@ -40,6 +40,9 @@ export const en = {
   todosAddTo: 'Add to todos',
   todosIn: 'In todos',
   todosGone: 'No longer available',
+  lineTodoAdded: 'Added to your todos.',
+  lineOpenTodos: 'Open todos',
+  lineUnknown: (cmd: string) => `Unknown command !${cmd}, saved as a question.`,
 };
 
 export const de: typeof en = {
@@ -82,4 +85,7 @@ export const de: typeof en = {
   todosAddTo: 'Zu Todos hinzufügen',
   todosIn: 'In Todos',
   todosGone: 'Nicht mehr vorhanden',
+  lineTodoAdded: 'Zu deinen Todos hinzugefügt.',
+  lineOpenTodos: 'Todos öffnen',
+  lineUnknown: (cmd: string) => `Unbekannter Befehl !${cmd}, als Frage gespeichert.`,
 };

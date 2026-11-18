@@ -52,6 +52,7 @@ export const en = {
         ['g, then t', 'Go to your tickets'],
         ['g, then o', 'Go to your todos'],
         ['q', 'Write down a question about what is open'],
+        ['!todo …', 'On the question line: add a todo instead of a question'],
       ],
     ],
     [
@@ -208,6 +209,7 @@ export const de: typeof en = {
         ['g, dann t', 'Zu deinen Tickets'],
         ['g, dann o', 'Zu deinen Todos'],
         ['q', 'Eine Frage zu dem notieren, was gerade offen ist'],
+        ['!todo …', 'In der Fragezeile: ein Todo statt einer Frage anlegen'],
       ],
     ],
     [
