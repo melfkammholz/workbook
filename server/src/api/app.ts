@@ -8,6 +8,7 @@ import { annotationRoutes } from './routes-annotations.js';
 import { helperRoutes } from './routes-helper.js';
 import { mcpRoutes } from './routes-mcp.js';
 import { ticketRoutes } from './routes-tickets.js';
+import { todoRoutes } from './routes-todos.js';
 import { contentRoutes } from './routes-content.js';
 import { courseRoutes } from './routes-courses.js';
 import { flashcardRoutes } from './routes-flashcards.js';
@@ -66,6 +67,7 @@ export async function buildApp(d: Deps): Promise<FastifyInstance> {
   aiRoutes(app, d);
   annotationRoutes(app, d);
   ticketRoutes(app, d);
+  todoRoutes(app, d);
   mcpRoutes(app, d);
   helperRoutes(app, d);
   courseRoutes(app, d);

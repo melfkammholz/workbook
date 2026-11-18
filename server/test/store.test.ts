@@ -586,7 +586,7 @@ describe('migration 50 (tickets)', () => {
     const file = path.join(dir, 'workbook.db');
     oldDatabase(
       file,
-      MIGRATIONS.length - 1,
+      42, // everything before the tickets migration (the last one when it was written)
       `INSERT INTO questions (id, text, anchor, course, created_at, updated_at) VALUES ('q1', 'Warum?', '{"kind":"none"}', '', 1, 1);
        INSERT INTO question_links (question_id, kind, ref, created_at) VALUES ('q1', 'card', 'c1', 2);
        INSERT INTO question_fetches (question_id, at, purpose) VALUES ('q1', 3, 'answer-recent');

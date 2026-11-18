@@ -959,6 +959,30 @@ export const MIGRATIONS: Migration[] = [
   ALTER TABLE ticket_fetches RENAME COLUMN question_id TO ticket_id;
   UPDATE assistant_requests SET params_json = json_set(json_remove(params_json, '$.questions'), '$.tickets', json(COALESCE(json_extract(params_json, '$.questions'), '[]'))) WHERE json_type(params_json, '$.questions') IS NOT NULL;
   `,
+  `
+  CREATE TABLE todos (
+    id         TEXT PRIMARY KEY,
+    parent_id  TEXT REFERENCES todos(id),
+    sort       INTEGER NOT NULL DEFAULT 0,
+    title      TEXT NOT NULL,
+    body       TEXT,
+    status     TEXT NOT NULL DEFAULT 'open',
+    course     TEXT,
+    link_kind  TEXT,
+    link_ref   TEXT,
+    link_title TEXT,
+    due        TEXT,
+    minutes    INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    done_at    INTEGER,
+    deleted_at INTEGER,
+    next_rank  INTEGER,
+    origin     TEXT NOT NULL DEFAULT 'manual'
+  );
+  CREATE INDEX todos_status_rank ON todos(status, next_rank);
+  CREATE INDEX todos_parent_sort ON todos(parent_id, sort);
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */
