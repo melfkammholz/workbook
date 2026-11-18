@@ -125,7 +125,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
                     <span className="flex items-baseline gap-2">
                       <span className="min-w-0 flex-1 truncate text-sm font-medium">{m.title ? <Title text={m.title} /> : t.searchSourceQuestion}</span>
                       <span className="shrink-0 text-xs text-ink-3">
-                        {m.source === 'note' ? t.searchSourceNote : m.source === 'annotation' ? t.searchSourceAnnotation : m.source === 'question' ? t.searchSourceQuestion : t.searchSourceAnswer}
+                        {m.source === 'note' ? t.searchSourceNote : m.source === 'annotation' ? t.searchSourceAnnotation : m.source === 'question' ? t.searchSourceQuestion : m.source === 'todo' ? `${t.searchSourceTodo}${m.status === 'done' ? ` · ${t.todosStatus.done}` : m.status === 'doing' ? ` · ${t.todosStatus.doing}` : ''}` : t.searchSourceAnswer}
                         {m.course && m.course !== activeId ? ` · ${m.courseTitle}` : ''}
                       </span>
                     </span>

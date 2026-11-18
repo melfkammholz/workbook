@@ -95,7 +95,7 @@ export interface SearchResponse {
   /** `course` is the id of the workbook the text is in; the dialog opens that workbook first if it is not the open one. */
   items: { id: string; title: string; href: string; snippet: string | null; course: string; courseTitle: string }[];
   /** The student's own text; `title` names the exercise, page or material it is on. */
-  mine: { source: 'note' | 'answer' | 'annotation' | 'question'; title: string; snippet: string; href: string; course: string | null; courseTitle: string | null }[];
+  mine: { source: 'note' | 'answer' | 'annotation' | 'question' | 'todo'; title: string; snippet: string; href: string; course: string | null; courseTitle: string | null; status?: string }[];
   /** Text of the materials' pages (1-based). */
   materials: { resource: string; title: string; page: number; snippet: string; href: string }[];
   cards: { deckId: string; deckTitle: string; cardId: string; title: string; snippet: string | null }[];

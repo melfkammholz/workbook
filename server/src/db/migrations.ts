@@ -983,6 +983,21 @@ export const MIGRATIONS: Migration[] = [
   CREATE INDEX todos_status_rank ON todos(status, next_rank);
   CREATE INDEX todos_parent_sort ON todos(parent_id, sort);
   `,
+  /*
+   * Todos are searchable. Same triggers as migration 20's sources: one `search_docs` row per live todo (title, note
+   * and the title of what it links to); done ones stay, soft-deleted ones go (restoring brings them back).
+   */
+  (db) => {
+    const content = (r: string) => `${r}.title || char(10) || COALESCE(${r}.body, '') || char(10) || COALESCE(${r}.link_title, '')`;
+    const drop = (r: string) => `DELETE FROM search_docs WHERE ref_kind = 'todo' AND ref_id = ${r}.id;`;
+    const add = (r: string) => `INSERT INTO search_docs (ref_kind, ref_id, course, anchor, source, content) SELECT 'todo', ${r}.id, ${r}.course, json_object('kind','todo','id',${r}.id), 'todo', ${content(r)} WHERE ${r}.deleted_at IS NULL;`;
+    db.exec(`
+      CREATE TRIGGER todos_search_ai AFTER INSERT ON todos BEGIN ${drop('new')} ${add('new')} END;
+      CREATE TRIGGER todos_search_au AFTER UPDATE ON todos BEGIN ${drop('old')} ${drop('new')} ${add('new')} END;
+      CREATE TRIGGER todos_search_ad AFTER DELETE ON todos BEGIN ${drop('old')} END;
+      UPDATE todos SET title = title;
+    `);
+  },
 ];
 
 /** The course a mounted `/content` folder is. */

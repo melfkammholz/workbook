@@ -36,7 +36,7 @@ export const MAX_VERSIONS = 60;
 export const MAX_TICK_SECONDS = 120;
 
 export type Row = Record<string, unknown>;
-export type SearchSource = 'note' | 'answer' | 'annotation' | 'question' | 'material';
+export type SearchSource = 'note' | 'answer' | 'annotation' | 'question' | 'material' | 'todo';
 /** What the index found; `anchor` says where it is (`kind` as in `Anchor`, plus `id` of the highlight, page item or question, and `slot`). */
 export interface SearchHit {
   course: string | null;

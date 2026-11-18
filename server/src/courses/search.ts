@@ -8,7 +8,7 @@ export interface SearchResponse {
   /** Text of the workbooks. `course` is the workbook's id; `courseTitle` says which one when there are several. */
   items: { id: string; title: string; href: string; snippet: string | null; course: string; courseTitle: string }[];
   /** The student's own text, wherever it is. `course` is null for what belongs to no workbook. */
-  mine: { source: SearchSource; title: string; snippet: string; href: string; course: string | null; courseTitle: string | null }[];
+  mine: { source: SearchSource; title: string; snippet: string; href: string; course: string | null; courseTitle: string | null; status?: string }[];
   /** Text of the materials, by page (1-based). */
   materials: { resource: string; title: string; page: number; snippet: string; href: string }[];
   cards: { deckId: string; deckTitle: string; cardId: string; title: string; snippet: string | null }[];
@@ -57,6 +57,9 @@ export function searchEverything(m: CourseManager, q: string): SearchResponse {
       if (!title) continue;
       const href = `/resources/${encodeURIComponent(a.resource!)}${a.questionId || a.id ? `/${encodeURIComponent((a.questionId ?? a.id)!)}` : a.pageIndex !== undefined ? `/page:${a.pageIndex + 1}` : ''}`;
       mine.push({ ...base, title: a.pageIndex !== undefined ? `${title}, ${a.pageIndex + 1}` : title, href, course: null, courseTitle: null });
+    } else if (a.kind === 'todo') {
+      const todo = a.id ? m.global.getTodo(a.id) : null;
+      if (todo) mine.push({ ...base, title: todo.title, href: `/todos?focus=${encodeURIComponent(todo.id)}`, course: null, courseTitle: null, status: todo.status });
     } else if (a.kind === 'none') {
       mine.push({ ...base, title: '', href: '/tickets', course: null, courseTitle: null });
     } else {

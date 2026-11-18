@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { Calendar, Check, CircleDot, GripVertical, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { Outline, Todo, TodoStatus } from '@wb/shared';
-import { Link } from 'wouter';
+import { Link, useSearch } from 'wouter';
 import { Spinner } from '@/components/ui';
 import { useCourses, useOutline } from '@/lib/api';
 import { useLang, useT, type Strings } from '@/lib/i18n';
@@ -72,6 +72,8 @@ interface Ctx {
   outline: Outline | undefined;
   courseTitles: Map<string, string>;
   showCourse: boolean;
+  /** The todo the search led to, marked for a moment. */
+  marked: string | null;
   toggle: (todo: Todo) => void;
   setStatus: (todo: Todo, status: TodoStatus) => void;
   remove: (todo: Todo) => void;
@@ -228,7 +230,7 @@ function Row({ todo, ctx, depth, top }: RowProps) {
         draggable={!!top?.draggable && !editing}
         onDragStart={top ? (e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', todo.id); top.onDragStart(); } : undefined}
         onDragEnd={top?.onDragEnd}
-        className={clsx('group flex items-center gap-2.5 rounded-md py-1.5 pr-1 outline-none focus-visible:bg-sunk focus-visible:ring-2 focus-visible:ring-accent/50', depth === 0 ? 'pl-0' : 'pl-0.5')}
+        className={clsx('group flex items-center gap-2.5 rounded-md py-1.5 pr-1 outline-none transition-colors focus-visible:bg-sunk focus-visible:ring-2 focus-visible:ring-accent/50', ctx.marked === todo.id && 'bg-accent-soft', depth === 0 ? 'pl-0' : 'pl-0.5')}
       >
         {top ? (
           <span title={t.todosDrag} className={clsx('w-3.5 shrink-0 cursor-grab text-ink-3 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100', !top.draggable && 'invisible')}>
@@ -515,6 +517,33 @@ export function TodosPage() {
     document.title = `${t.todosTitle} · ${outline?.title ?? ''}`;
   }, [t, outline?.title]);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
+
+  // `?focus=<id>` (from the search): show the list with everything open to that todo, scroll to it and mark it.
+  const focusParam = new URLSearchParams(useSearch()).get('focus');
+  const [marked, setMarked] = useState<string | null>(null);
+  const focused = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusParam || !todos || focused.current === focusParam) return;
+    const byId = new Map<string, Todo>();
+    const walk = (x: Todo) => {
+      byId.set(x.id, x);
+      x.children.forEach(walk);
+    };
+    todos.forEach(walk);
+    const target = byId.get(focusParam);
+    if (!target) return;
+    focused.current = focusParam;
+    let top = target;
+    while (top.parentId && byId.get(top.parentId)) top = byId.get(top.parentId)!;
+    setViewState('list');
+    setCourse('all');
+    setKind('all');
+    setShowAll(true);
+    setTab(top.status === 'done' ? 'done' : 'open');
+    setMarked(target.id);
+    window.setTimeout(() => document.querySelector(`[data-todo="${CSS.escape(target.id)}"]`)?.scrollIntoView({ block: 'center' }), 50);
+    window.setTimeout(() => setMarked(null), 2500);
+  }, [focusParam, todos]);
   useEffect(() => {
     if (!focusId.current) return;
     document.querySelector<HTMLElement>(`[data-todo="${focusId.current}"] > div`)?.focus();
@@ -574,7 +603,7 @@ export function TodosPage() {
     [nextIds],
   );
 
-  const ctx: Ctx = { t, lang, outline, courseTitles, showCourse: course === 'all', toggle, setStatus, remove, addingTo, setAddingTo, setNext };
+  const ctx: Ctx = { t, lang, outline, courseTitles, showCourse: course === 'all', marked, toggle, setStatus, remove, addingTo, setAddingTo, setNext };
 
   const shown = useMemo(() => {
     const keep = (x: Todo) => {

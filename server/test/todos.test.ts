@@ -84,4 +84,24 @@ describe('todos', () => {
     expect(store.listTodos()[0]!.children.map((c) => c.title)).toEqual(['B']);
     expect(store.restoreTodo(a.id)).toBe(false);
   });
+
+  it('keeps the search index in step', () => {
+    const { store } = make();
+    const find = (q: string) => store.search(q, { courses: ['c1'] }).filter((h) => h.source === 'todo').map((h) => h.anchor.id);
+    const a = store.addTodo({ title: 'Monaden wiederholen', body: 'Kapitel Faltung', course: 'c1', link: { kind: 'item', ref: 'x', title: 'Unifikation' } })!;
+    const b = store.addTodo({ title: 'Teil', parentId: a.id })!;
+    expect(find('monaden')).toEqual([a.id]);
+    expect(find('faltung')).toEqual([a.id]);
+    expect(find('unifikation')).toEqual([a.id]);
+    expect(find('teil')).toEqual([b.id]);
+    store.updateTodo(a.id, { title: 'Funktoren', status: 'done' });
+    expect(find('monaden')).toEqual([]);
+    expect(find('funktoren')).toEqual([a.id]);
+    store.deleteTodo(a.id);
+    expect(find('funktoren')).toEqual([]);
+    expect(find('teil')).toEqual([]);
+    store.restoreTodo(a.id);
+    expect(find('funktoren')).toEqual([a.id]);
+    expect(find('teil')).toEqual([b.id]);
+  });
 });
