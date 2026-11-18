@@ -61,7 +61,25 @@ try {
   await page.waitForSelector('h1:has-text("Tickets")');
   await page.goto(`${base}/#/inbox`);
   await page.waitForSelector('h1:has-text("Tickets")');
-  console.log('ok: set up, edited, evaluated, tested, marked done, rated, found it in review and reached Tickets');
+  // Todos: add with Enter, put one next, move it with the keys, tick it and undo.
+  await page.goto(`${base}/#/todos`);
+  const add = page.locator('input[aria-label="Add a todo"]');
+  await add.fill('Smoke todo one');
+  await add.press('Enter');
+  await add.fill('Smoke todo two');
+  await add.press('Enter');
+  await page.waitForSelector('li[data-todo]:has-text("Smoke todo one")');
+  const two = page.locator('li[data-todo]:has-text("Smoke todo two")');
+  await two.hover();
+  await two.locator('button[aria-label="Put next"]').click();
+  await page.waitForSelector('section:has-text("You decide the order") li:has-text("Smoke todo two")');
+  await two.locator('> div').focus();
+  await page.keyboard.press('Alt+ArrowDown');
+  await page.waitForSelector('section:has-text("Later") li:has-text("Smoke todo two")');
+  await two.locator('[role=checkbox]').first().click();
+  await page.waitForSelector('[role=status]:has-text("Marked as done")');
+  await page.click('[role=status] >> text=Undo');
+  console.log('ok: set up, edited, evaluated, tested, marked done, rated, found it in review, reached Tickets and used Todos');
 } catch (e) {
   problems.push(String(e));
 } finally {

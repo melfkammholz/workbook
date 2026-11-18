@@ -120,4 +120,18 @@ export class TodosPart {
     return true;
   }
 
+  /** Brings a deleted todo back with the parts that went with it. False when it is not deleted or its parent still is. */
+  restoreTodo(this: Store, id: string): boolean {
+    const r = this.get('SELECT deleted_at, parent_id FROM todos WHERE id = ? AND deleted_at IS NOT NULL', id);
+    if (!r) return false;
+    const at = r.deleted_at as number;
+    const parent = r.parent_id as string | null;
+    if (parent && !this.get('SELECT 1 FROM todos WHERE id = ? AND deleted_at IS NULL', parent)) return false;
+    const go = (x: string) => {
+      this.run('UPDATE todos SET deleted_at = NULL WHERE id = ?', x);
+      for (const c of this.all('SELECT id FROM todos WHERE parent_id = ? AND deleted_at = ?', x, at)) go(c.id as string);
+    };
+    this.tx(() => go(id));
+    return true;
+  }
 }

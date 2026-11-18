@@ -72,6 +72,10 @@ export function todoRoutes(app: FastifyInstance, d: Deps): void {
     return out;
   });
 
+  app.post<{ Params: { id: string } }>('/api/todos/:id/restore', async (req, reply) =>
+    d.store.restoreTodo(req.params.id) ? d.store.getTodo(req.params.id) : reply.code(404).send({ error: 'nothing to restore' }),
+  );
+
   app.delete<{ Params: { id: string } }>('/api/todos/:id', async (req, reply) =>
     d.store.deleteTodo(req.params.id) ? { ok: true } : reply.code(404).send({ error: 'unknown todo' }),
   );

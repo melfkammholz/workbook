@@ -1,4 +1,4 @@
-import { ArrowLeft, CircleHelp, ClipboardList, Highlighter, Layers, Library, Menu, MessageCircleQuestion, NotebookText, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Trophy, X } from 'lucide-react';
+import { ArrowLeft, CircleHelp, ClipboardList, Highlighter, ListTodo, Layers, Library, Menu, MessageCircleQuestion, NotebookText, PawPrint, PanelLeftClose, PanelLeftOpen, Search, Trophy, X } from 'lucide-react';
 import { Suspense, memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Redirect, Route, Router, Switch, useLocation, useRoute } from 'wouter';
 import { useAppLocation } from '@/lib/history';
@@ -39,6 +39,7 @@ import {
   NotesPage,
   PdfPage,
   TicketsPage,
+  TodosPage,
   ReviewPage,
   SettingsPage,
   StrugglingPage,
@@ -296,6 +297,7 @@ function CourseShell() {
     'g l': materialsOn ? () => navigate('/materials') : undefined,
     'g m': achievementsOn ? () => navigate('/achievements') : undefined,
     'g t': () => navigate('/tickets'),
+    'g o': () => navigate('/todos'),
   });
 
   useEffect(() => {
@@ -412,6 +414,15 @@ function CourseShell() {
             <MessageCircleQuestion size={18} />
             {inboxDot ? <span aria-hidden className="absolute right-1 top-1 size-2 rounded-full bg-accent" /> : null}
           </Link>
+          <Link
+            href="/todos"
+            className={clsx('inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk hover:text-ink', location === '/todos' ? 'bg-sunk text-ink' : 'text-ink-2')}
+            aria-label={t.todosTitle}
+            aria-current={location === '/todos' ? 'page' : undefined}
+            title={t.todosTitle}
+          >
+            <ListTodo size={18} />
+          </Link>
           {annotationsOn ? (
             <Link
               href="/highlights"
@@ -503,6 +514,7 @@ const CoursePages = memo(function CoursePages() {
         <Route path="/achievements" component={AchievementsPage} />
         <Route path="/notes" component={NotesPage} />
         <Route path="/tickets" component={TicketsPage} />
+        <Route path="/todos" component={TodosPage} />
         <Route path="/inbox">{() => <Redirect to="/tickets" replace />}</Route>
         <Route path="/questions">{() => <Redirect to="/tickets" replace />}</Route>
         <Route path="/highlights">{() => <HighlightsPage />}</Route>

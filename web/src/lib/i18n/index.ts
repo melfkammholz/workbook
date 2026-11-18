@@ -7,6 +7,7 @@ import { en as en2, de as de2 } from './help';
 import { en as en3, de as de3 } from './review';
 import { en as en4, de as de4 } from './search';
 import { en as en5, de as de5 } from './flashcards';
+import { en as en6, de as de6 } from './todos';
 
 /**
  * The language of the app itself. Exercises stay in the language they were
@@ -20,6 +21,7 @@ const en = {
   ...en3,
   ...en4,
   ...en5,
+  ...en6,
 };
 
 export type Strings = typeof en;
@@ -31,6 +33,7 @@ const de: Strings = {
   ...de3,
   ...de4,
   ...de5,
+  ...de6,
 };
 
 const STRINGS = { en, de };

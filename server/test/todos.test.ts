@@ -72,4 +72,16 @@ describe('todos', () => {
     expect(store.listTodos()).toEqual([]);
     expect(store.deleteTodo(a.id)).toBe(false);
   });
+
+  it('restores a deleted todo with its parts', () => {
+    const { store } = make();
+    const a = store.addTodo({ title: 'A' })!;
+    const b = store.addTodo({ title: 'B', parentId: a.id })!;
+    store.deleteTodo(a.id);
+    expect(store.listTodos()).toEqual([]);
+    expect(store.restoreTodo(b.id)).toBe(false);
+    expect(store.restoreTodo(a.id)).toBe(true);
+    expect(store.listTodos()[0]!.children.map((c) => c.title)).toEqual(['B']);
+    expect(store.restoreTodo(a.id)).toBe(false);
+  });
 });
