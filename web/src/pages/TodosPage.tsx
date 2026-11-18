@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { Calendar, Check, CircleDot, GripVertical, Pencil, Plus, Trash2, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { Outline, Todo, TodoStatus } from '@wb/shared';
 import { Link } from 'wouter';
 import { Spinner } from '@/components/ui';
@@ -295,17 +295,19 @@ interface Lane {
   todos: Todo[];
 }
 
-/** One slim card in a lane: tick, title, drag to another column to change the status. */
+type CardKind = "next" | "card" | "slim";
+
+/** One card in a lane: tick, title, drag to another column to change the status. */
 function LaneCard({
   todo,
   ctx,
-  next,
+  kind,
   onDragStart,
   onDragEnd,
 }: {
   todo: Todo;
   ctx: Ctx;
-  next: boolean;
+  kind: CardKind;
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
@@ -320,19 +322,22 @@ function LaneCard({
       }}
       onDragEnd={onDragEnd}
       className={clsx(
-        "flex cursor-grab items-center gap-2 rounded-md",
-        next
-          ? "border border-accent/40 bg-accent-soft/50 px-2 py-2"
-          : "px-1 py-1",
+        "flex cursor-grab items-center gap-2 rounded-lg",
+        kind === "next" && "bg-sheet px-2.5 py-2 shadow-sm",
+        kind === "card" &&
+          (done
+            ? "border border-dashed border-line-strong px-2.5 py-2"
+            : "border border-line-strong bg-sheet px-2.5 py-2"),
+        kind === "slim" && "px-1.5 py-1",
       )}
     >
-      <Circle todo={todo} ctx={ctx} size={next ? 17 : 15} />
+      <Circle todo={todo} ctx={ctx} size={kind === "slim" ? 15 : 17} />
       <TitleText
         todo={todo}
         className={clsx(
           "min-w-0 flex-1 truncate",
-          next ? "text-[14px] font-medium" : "text-[13px]",
-          done ? "text-ink-3 line-through" : next ? "text-ink" : "text-ink-2",
+          kind === "slim" ? "text-[13px]" : "text-[14px] font-medium",
+          done ? "text-ink-3 line-through" : kind === "slim" ? "text-ink-2" : "text-ink",
         )}
         onEdit={() => undefined}
       />
@@ -369,104 +374,106 @@ function Board({
   if (lanes.length === 0)
     return <p className="py-6 text-[13px] text-ink-3">{t.todosEmpty}</p>;
   return (
-    <div className="mt-5 space-y-4">
-      {lanes.map((lane) => (
-        <section
-          key={lane.key ?? "own"}
-          className="rounded-xl border border-line bg-sheet p-3"
+    <div className="mt-5 grid grid-cols-[150px_1.25fr_1fr_0.8fr] border-t border-line">
+      <div />
+      {TABS.map((status, i) => (
+        <h3
+          key={status}
+          className={clsx(
+            "px-2.5 pb-2 pt-2.5 text-[12.5px] font-semibold text-ink-2",
+            i > 0 && "border-l border-dashed border-line",
+          )}
         >
-          <h2 className="mb-2 px-1 text-[14.5px] font-semibold">
+          {t.todosStatus[status]}
+        </h3>
+      ))}
+      {lanes.map((lane) => (
+        <Fragment key={lane.key ?? "own"}>
+          <h2 className="border-t border-line py-3 pr-2.5 text-[14px] font-semibold">
             {lane.title}
           </h2>
-          <div className="grid gap-3 md:grid-cols-3">
-            {TABS.map((status) => {
-              const col = lane.todos.filter((x) => x.status === status);
-              const cid = `${lane.key ?? "own"}:${status}`;
-              const isNext = (x: Todo) =>
-                status === "open" && x.nextRank !== null;
-              const nexts = col
-                .filter(isNext)
-                .sort((a, b) => a.nextRank! - b.nextRank!);
-              const rest = col
-                .filter((x) => !isNext(x))
-                .sort((a, b) =>
-                  status === "done"
-                    ? (b.doneAt ?? 0) - (a.doneAt ?? 0)
-                    : b.createdAt - a.createdAt,
-                );
-              const open = expanded.has(cid);
-              const shownRest = open ? rest : rest.slice(0, LANE_ROWS);
-              return (
-                <div
-                  key={status}
-                  onDragOver={(e) => {
-                    if (!drag) return;
-                    e.preventDefault();
-                    setOver(cid);
-                  }}
-                  onDragLeave={() => setOver((o) => (o === cid ? null : o))}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    drop(status, lane.key);
-                  }}
-                  className={clsx(
-                    "min-h-16 rounded-lg bg-sunk/60 p-2",
-                    over === cid && "ring-2 ring-accent/50",
-                  )}
-                >
-                  <h3 className="mb-1.5 px-1 text-[12.5px] font-medium text-ink-3">
-                    {t.todosStatus[status]}
-                  </h3>
-                  {nexts.length ? (
-                    <ul className="mb-2 space-y-1.5">
-                      {nexts.map((x) => (
-                        <LaneCard
-                          key={x.id}
-                          todo={x}
-                          ctx={ctx}
-                          next
-                          onDragStart={() => setDrag(x.id)}
-                          onDragEnd={() => setDrag(null)}
-                        />
-                      ))}
-                    </ul>
-                  ) : null}
-                  {rest.length && nexts.length && status === "open" ? (
-                    <p className="px-1 pb-0.5 text-[11.5px] text-ink-3">
-                      {t.todosMore}
-                    </p>
-                  ) : null}
-                  <ul>
-                    {shownRest.map((x) => (
-                      <LaneCard
-                        key={x.id}
-                        todo={x}
-                        ctx={ctx}
-                        next={false}
-                        onDragStart={() => setDrag(x.id)}
-                        onDragEnd={() => setDrag(null)}
-                      />
-                    ))}
-                  </ul>
-                  {rest.length > LANE_ROWS && !open ? (
-                    <button
-                      type="button"
-                      onClick={() => setExpanded((s) => new Set(s).add(cid))}
-                      className="mt-0.5 px-1 text-[12.5px] text-accent hover:underline"
-                    >
-                      {t.todosShowMore}
-                    </button>
-                  ) : null}
-                </div>
+          {TABS.map((status, i) => {
+            const col = lane.todos.filter((x) => x.status === status);
+            const cid = `${lane.key ?? "own"}:${status}`;
+            const isNext = (x: Todo) =>
+              status === "open" && x.nextRank !== null;
+            const nexts = col
+              .filter(isNext)
+              .sort((a, b) => a.nextRank! - b.nextRank!);
+            const rest = col
+              .filter((x) => !isNext(x))
+              .sort((a, b) =>
+                status === "done"
+                  ? (b.doneAt ?? 0) - (a.doneAt ?? 0)
+                  : b.createdAt - a.createdAt,
               );
-            })}
-          </div>
-        </section>
+            const open = expanded.has(cid);
+            const shownRest = open ? rest : rest.slice(0, LANE_ROWS);
+            const kind: CardKind = status === "open" ? "slim" : "card";
+            const card = (x: Todo, k: CardKind) => (
+              <LaneCard
+                key={x.id}
+                todo={x}
+                ctx={ctx}
+                kind={k}
+                onDragStart={() => setDrag(x.id)}
+                onDragEnd={() => setDrag(null)}
+              />
+            );
+            return (
+              <div
+                key={status}
+                onDragOver={(e) => {
+                  if (!drag) return;
+                  e.preventDefault();
+                  setOver(cid);
+                }}
+                onDragLeave={() => setOver((o) => (o === cid ? null : o))}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  drop(status, lane.key);
+                }}
+                className={clsx(
+                  "min-h-16 min-w-0 border-t border-line p-2.5",
+                  i > 0 && "border-l border-dashed",
+                  over === cid && "bg-accent-soft/40",
+                )}
+              >
+                {nexts.length ? (
+                  <div className="rounded-lg bg-accent-soft p-1.5">
+                    <p className="px-1 pb-1.5 text-[12px] font-semibold text-accent">
+                      {t.todosNext}
+                    </p>
+                    <ul className="space-y-1.5">
+                      {nexts.map((x) => card(x, "next"))}
+                    </ul>
+                  </div>
+                ) : null}
+                {rest.length && nexts.length && status === "open" ? (
+                  <p className="my-1.5 flex items-center gap-2 text-[12px] text-ink-3 before:flex-1 before:border-t before:border-dashed before:border-line-strong after:flex-1 after:border-t after:border-dashed after:border-line-strong">
+                    {t.todosMore}
+                  </p>
+                ) : null}
+                <ul className={clsx(kind === "card" && "space-y-1.5")}>
+                  {shownRest.map((x) => card(x, kind))}
+                </ul>
+                {rest.length > LANE_ROWS && !open ? (
+                  <button
+                    type="button"
+                    onClick={() => setExpanded((s) => new Set(s).add(cid))}
+                    className="mt-0.5 px-1 text-[12.5px] text-accent hover:underline"
+                  >
+                    {t.todosShowMore}
+                  </button>
+                ) : null}
+              </div>
+            );
+          })}
+        </Fragment>
       ))}
     </div>
   );
 }
-
 
 const chip = (on: boolean) => clsx('h-[28px] rounded-full border px-3 text-[13px]', on ? 'border-transparent bg-accent-soft font-medium text-accent' : 'border-line-strong bg-sheet text-ink-2 hover:text-ink');
 const select = 'h-[28px] rounded-full border border-line-strong bg-sheet px-2.5 text-[13px] text-ink-2';
