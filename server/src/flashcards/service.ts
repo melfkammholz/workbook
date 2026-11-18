@@ -150,6 +150,10 @@ export class Flashcards {
     return this.decks().map((d) => d.title);
   }
 
+  titleOf(id: string): string | null {
+    return this.decks().find((d) => d.id === id)?.title ?? null;
+  }
+
   has(id: string): boolean {
     return this.decks().some((d) => d.id === id);
   }

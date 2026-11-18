@@ -8,6 +8,7 @@ import { formatClock } from '@/lib/attention';
 import { useT } from '@/lib/i18n';
 import { altKey } from '@/lib/keys';
 import { Button, IconButton, clsx } from './ui';
+import { AddToTodos } from './AddToTodos';
 import { StatusControl } from './StatusControl';
 import { LessonOptions } from './QuickMenus';
 import { ExerciseQuestions } from './Tickets';
@@ -36,6 +37,7 @@ export function ExerciseBar({
   layoutSwitch = false,
   lessonOptions = false,
   questions,
+  todoItem,
 }: {
   status: Status;
   onStatus: (s: Status) => void;
@@ -58,6 +60,8 @@ export function ExerciseBar({
   layoutSwitch?: boolean;
   /** A lesson: its own options (highlights, sections in the outline) sit beside the card. */
   lessonOptions?: boolean;
+  /** The item this bar is for, so it can be added to the todos. */
+  todoItem?: ItemMeta | undefined;
   /** An exercise: the questions asked on it, with a line to add one. */
   questions?: { item: string; list: Ticket[] } | undefined;
 }) {
@@ -100,6 +104,7 @@ export function ExerciseBar({
       {questions ? <ExerciseQuestions item={questions.item} questions={questions.list} /> : null}
       {lessonOptions ? <LessonOptions /> : null}
       <div className="ml-auto flex items-center gap-2">
+        {todoItem ? <AddToTodos link={{ kind: 'item', ref: todoItem.id, title: plainTitle(todoItem.title) }} /> : null}
         {layoutSwitch ? <LayoutSwitch /> : null}
         {confidenceLabel ? (
           <button type="button" onClick={onRate} className="hidden rounded-md px-2 py-1 text-[13px] text-ink-2 hover:bg-sunk md:block" title={t.changeRating}>

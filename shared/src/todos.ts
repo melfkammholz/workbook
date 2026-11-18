@@ -15,6 +15,16 @@ export interface TodoLink {
   title: string | null;
 }
 
+/** What a todo's link points at now: the current title (renames follow), a route, and whether the target is gone. */
+export interface TodoTarget {
+  title: string;
+  /** `exercise`, `lesson`, `page`, `checklist` for items; `deck`, `resource`, `url` otherwise. */
+  kind: 'exercise' | 'lesson' | 'page' | 'checklist' | 'deck' | 'resource' | 'url';
+  /** An app route, or the address for `url`; null when the target is gone or lives in a workbook that is not open. */
+  href: string | null;
+  gone: boolean;
+}
+
 export interface Todo {
   id: string;
   parentId: string | null;
@@ -27,6 +37,8 @@ export interface Todo {
   /** The workbook it belongs to; null is global. Children always have their parent's. */
   course: string | null;
   link: TodoLink | null;
+  /** Resolved by the server when the todo is read; absent in a todo just made on the client. */
+  target?: TodoTarget | null;
   /** A date, `YYYY-MM-DD`, no time. */
   due: string | null;
   /** A rough size in minutes. */

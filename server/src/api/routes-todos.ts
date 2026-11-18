@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { MAX_TODO_BODY, MAX_TODO_TITLE, TODO_LINK_KINDS, TODO_STATUSES } from '@wb/shared';
+import { withTargets } from '../todos/resolve.js';
 import type { Deps } from './deps.js';
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -42,7 +43,7 @@ export function todoRoutes(app: FastifyInstance, d: Deps): void {
   app.get<{ Querystring: { status?: string; course?: string } }>('/api/todos', async (req, reply) => {
     const { status, course } = req.query;
     if (status !== undefined && !(TODO_STATUSES as readonly string[]).includes(status)) return reply.code(400).send({ error: 'unknown status' });
-    return d.store.listTodos({ ...(status !== undefined ? { status: status as (typeof TODO_STATUSES)[number] } : {}), ...(course !== undefined ? { course } : {}) });
+    return withTargets(d, d.store.listTodos({ ...(status !== undefined ? { status: status as (typeof TODO_STATUSES)[number] } : {}), ...(course !== undefined ? { course } : {}) }));
   });
 
   app.post('/api/todos', async (req, reply) => {
@@ -51,7 +52,7 @@ export function todoRoutes(app: FastifyInstance, d: Deps): void {
     if (r.data.id && d.store.getTodo(r.data.id)) return reply.code(409).send({ error: 'todo exists' });
     const { link: l, ...rest } = r.data;
     const made = d.store.addTodo({ ...rest, ...(l !== undefined ? { link: l } : {}) });
-    return made ?? reply.code(404).send({ error: 'unknown parent' });
+    return made ? withTargets(d, [made])[0] : reply.code(404).send({ error: 'unknown parent' });
   });
 
   // Before `/:id`, so that "reorder" is not taken for an id.
@@ -59,7 +60,7 @@ export function todoRoutes(app: FastifyInstance, d: Deps): void {
     const r = bodies.reorder.safeParse(req.body);
     if (!r.success) return fail(reply, r.error);
     if (!d.store.reorderTodoNext(r.data.ids)) return reply.code(400).send({ error: 'ids must be distinct top-level todos' });
-    return d.store.listTodos();
+    return withTargets(d, d.store.listTodos());
   });
 
   app.patch<{ Params: { id: string } }>('/api/todos/:id', async (req, reply) => {
@@ -69,11 +70,11 @@ export function todoRoutes(app: FastifyInstance, d: Deps): void {
     if (out === 'unknown') return reply.code(404).send({ error: 'unknown todo' });
     if (out === 'cycle') return reply.code(409).send({ error: 'a todo cannot go under its own part' });
     if (out === 'child') return reply.code(400).send({ error: 'only top-level todos have a workbook or a rank' });
-    return out;
+    return withTargets(d, [out])[0];
   });
 
   app.post<{ Params: { id: string } }>('/api/todos/:id/restore', async (req, reply) =>
-    d.store.restoreTodo(req.params.id) ? d.store.getTodo(req.params.id) : reply.code(404).send({ error: 'nothing to restore' }),
+    d.store.restoreTodo(req.params.id) ? withTargets(d, [d.store.getTodo(req.params.id)!])[0] : reply.code(404).send({ error: 'nothing to restore' }),
   );
 
   app.delete<{ Params: { id: string } }>('/api/todos/:id', async (req, reply) =>

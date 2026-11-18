@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { Calendar, Check, CircleDot, GripVertical, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { Outline, Todo, TodoStatus } from '@wb/shared';
+import { Link } from 'wouter';
 import { Spinner } from '@/components/ui';
 import { useCourses, useOutline } from '@/lib/api';
 import { useLang, useT, type Strings } from '@/lib/i18n';
@@ -18,6 +19,7 @@ const TOAST_MS = 6000;
 /** What a todo's link is, for the chip and the filter. Items are told apart by the outline of the open workbook. */
 function kindOf(t: Todo, outline: Outline | undefined): KindId | null {
   if (!t.link) return null;
+  if (t.target) return t.target.kind === 'exercise' ? 'item' : t.target.kind === 'checklist' ? 'item' : t.target.kind === 'resource' ? 'page' : t.target.kind === 'url' ? 'link' : t.target.kind;
   switch (t.link.kind) {
     case 'item': {
       const hit = outline?.chapters.flatMap((c) => c.items).find((i) => i.id === t.link!.ref);
@@ -31,6 +33,16 @@ function kindOf(t: Todo, outline: Outline | undefined): KindId | null {
     default:
       return 'link';
   }
+}
+
+/** The title; a todo with a link opens it on click. A vanished target stays visible, greyed. */
+function TitleText({ todo, className, onEdit }: { todo: Todo; className: string; onEdit: () => void }) {
+  const href = todo.target?.href ?? null;
+  const gone = todo.target?.gone ?? false;
+  const cls = clsx(className, gone && 'text-ink-3');
+  if (!href) return <span className={cls} title={todo.title} onDoubleClick={onEdit}>{todo.title}</span>;
+  if (/^https?:/.test(href)) return <a href={href} target="_blank" rel="noreferrer" className={clsx(cls, 'hover:underline')} title={todo.title}>{todo.title}</a>;
+  return <Link href={href} className={clsx(cls, 'hover:underline')} title={todo.title}>{todo.title}</Link>;
 }
 
 const dayOf = (iso: string) => new Date(`${iso}T12:00:00`);
@@ -226,10 +238,8 @@ function Row({ todo, ctx, depth, top }: RowProps) {
           <EditFields todo={todo} onDone={() => setEditing(false)} />
         ) : (
           <>
-            <span className={clsx('min-w-0 truncate', depth === 0 ? 'text-[14.5px]' : 'text-[13.5px]', done ? 'text-ink-3 line-through' : top?.inNext ? 'font-medium' : depth === 0 ? 'text-ink' : 'text-ink-2')} title={todo.title} onDoubleClick={() => setEditing(true)}>
-              {todo.title}
-            </span>
-            {kind ? <span className={clsx('shrink-0 rounded px-1.5 text-[11.5px]', todo.link?.title === null && 'opacity-80', 'bg-accent-soft text-accent')}>{t.todosKind[kind]}</span> : null}
+            <TitleText todo={todo} className={clsx('min-w-0 truncate', depth === 0 ? 'text-[14.5px]' : 'text-[13.5px]', done ? 'text-ink-3 line-through' : top?.inNext ? 'font-medium' : depth === 0 ? 'text-ink' : 'text-ink-2')} onEdit={() => setEditing(true)} />
+            {kind ? <span className={clsx('shrink-0 rounded px-1.5 text-[11.5px]', todo.target?.gone ? 'bg-sunk text-ink-3' : 'bg-accent-soft text-accent')} title={todo.target?.gone ? t.todosGone : undefined}>{t.todosKind[kind]}</span> : null}
             {ctx.showCourse && depth === 0 && todo.course && ctx.courseTitles.get(todo.course) ? <span className="shrink-0 rounded bg-sunk px-1.5 text-[11.5px] text-ink-2">{ctx.courseTitles.get(todo.course)}</span> : null}
             <span className="ml-auto flex shrink-0 items-center gap-2 pl-2">
               <span className="hidden items-center gap-0.5 group-hover:flex group-focus-within:flex">

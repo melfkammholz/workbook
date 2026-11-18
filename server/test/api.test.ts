@@ -402,3 +402,19 @@ describe('tags', () => {
     expect(left.some((t) => t.id === a.id || t.id === b.id)).toBe(false);
   });
 });
+
+describe('todo links', () => {
+  it('follow the target: title and route from the item, a stored title greyed when it is gone', async () => {
+    const post = async (payload: unknown) => (await app.inject({ method: 'POST', url: '/api/todos', payload })).json() as { id: string; target: { title: string; href: string | null; gone: boolean; kind: string } | null };
+    const item = (await api('GET', '/api/items/automatic-differentiation')).json?.meta as { title: string };
+    const a = await post({ title: 'stale', link: { kind: 'item', ref: 'automatic-differentiation', title: 'old name' } });
+    expect(a.target).toMatchObject({ title: item.title, href: '/item/automatic-differentiation', gone: false, kind: 'exercise' });
+    const b = await post({ title: 'x', link: { kind: 'item', ref: 'vanished', title: 'Was here' } });
+    expect(b.target).toMatchObject({ title: 'Was here', href: null, gone: true });
+    const c = await post({ title: 'x', link: { kind: 'deck', ref: 'd-nope', title: 'Old deck' } });
+    expect(c.target).toMatchObject({ title: 'Old deck', gone: true });
+    const list = (await app.inject({ method: 'GET', url: '/api/todos' })).json() as { id: string; target: unknown }[];
+    expect(list.find((t) => t.id === a.id)?.target).toMatchObject({ href: '/item/automatic-differentiation' });
+    for (const t of [a, b, c]) await app.inject({ method: 'DELETE', url: `/api/todos/${t.id}` });
+  });
+});

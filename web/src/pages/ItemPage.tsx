@@ -242,6 +242,7 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
           group={group}
           onMakeCard={flashcardsOn ? () => setMakingCard(true) : undefined}
           lessonOptions
+          todoItem={meta}
         />
         {status === 'done' && upNext ? <ContinueBanner next={upNext} /> : null}
         <div className="min-h-0 flex-1">{task}</div>
@@ -297,6 +298,7 @@ function Loaded({ id, group }: { id: string; group: string | null }) {
       group={group}
       onMakeCard={flashcardsOn ? () => setMakingCard(true) : undefined}
       layoutSwitch={wide && !!ex.code?.runnable}
+      todoItem={meta}
       questions={{ item: id, list: w.questions }}
     />
   );

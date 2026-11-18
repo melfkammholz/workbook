@@ -1,3 +1,4 @@
+import { AddToTodos } from '@/components/AddToTodos';
 import { Title } from '@/components/Title';
 import { useQueryClient } from '@tanstack/react-query';
 import { chapterOf, embeddedKeys, mergeToc, pageFingerprint, pageQuote, rectsTop, slideGroups, slideOfPage, type Anchor, type BibEntry, type EmbeddedTocEntry, type PdfAnnotation, type PdfPageItem, type Resource, type TocEntry } from '@wb/shared';
@@ -585,6 +586,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
           {t.back}
         </BackLink>
         <h1 className="mr-2 min-w-0 max-w-[40%] truncate text-[15px] font-semibold">{resource.title}</h1>
+        <AddToTodos link={{ kind: 'resource', ref: resource.id, title: resource.title }} />
         <div className="ml-auto flex items-center gap-1">
           <Segmented value={layout} options={[['notes', t.pdfLayoutNotes], ['slides', t.pdfLayoutSlides]]} onChange={setLayoutKept} />
           <div className="mx-1 flex items-center gap-1" aria-label={t.pdfGoTo}>

@@ -4,7 +4,8 @@ import type { ItemMeta, StudentState } from '@wb/shared';
 import { itemHref, statusOf } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Level, StatusMark, clsx } from './ui';
-import { Title } from '@/components/Title';
+import { Title, plainTitle } from '@/components/Title';
+import { AddToTodos } from './AddToTodos';
 
 /** One exercise, page or checklist in a list, with how far along it is. */
 export function ItemRow({ item, state, outside = false, className, group }: { item: ItemMeta; state: StudentState | undefined; outside?: boolean; className?: string; group?: string }) {
@@ -27,6 +28,7 @@ export function ItemRow({ item, state, outside = false, className, group }: { it
       </span>
       {outside ? <span className="hidden shrink-0 text-xs text-ink-3 sm:inline">{t.outsideFocus}</span> : null}
       {item.type === 'exercise' ? <Level level={item.level} /> : null}
+      <AddToTodos compact link={{ kind: 'item', ref: item.id, title: plainTitle(item.title) }} className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100" />
       <ArrowRight size={14} className="text-ink-3 opacity-0 transition-opacity group-hover:opacity-100" />
     </Link>
   );

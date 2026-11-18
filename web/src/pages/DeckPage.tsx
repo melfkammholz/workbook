@@ -6,6 +6,7 @@ import { ArrowDown, ArrowUp, Check, CircleHelp, Copy, Download, ExternalLink, Gr
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { CHATS } from '@/components/AiPanel';
+import { AddToTodos } from '@/components/AddToTodos';
 import { CardFace } from '@/components/CardFace';
 import { CardForm } from '@/components/CardForm';
 import { ConfirmDialog } from '@/components/Dialogs';
@@ -62,6 +63,9 @@ function DeckEditor({ deck, focusCard }: { deck: DeckDoc; focusCard: string | nu
   const t = useT();
   const qc = useQueryClient();
   const [, navigate] = useLocation();
+  // About 20 seconds a card.
+  const due = useFlashcards().data?.decks.find((d) => d.id === deck.id)?.due ?? 0;
+  const dueMinutes = due > 0 ? Math.ceil(due / 3) : undefined;
   const aiOn = !!useSettings().data?.showAi;
   const [view, setViewState] = useState<View>(() => readPref(VIEW_KEY, VIEWS, 'cards'));
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -120,6 +124,7 @@ function DeckEditor({ deck, focusCard }: { deck: DeckDoc; focusCard: string | nu
           )}
           <span className="text-[13px] text-ink-3">{t.deckCounts(deck.cards.filter((c) => !c.draft).length)}{deck.cards.some((c) => c.draft) ? ` · ${t.deckDrafts(deck.cards.filter((c) => c.draft).length)}` : ''}</span>
           <div className="ml-auto flex items-center gap-2">
+            <AddToTodos link={{ kind: 'deck', ref: deck.id, title: deck.title }} minutes={dueMinutes} />
             <Segmented<View>
               value={view}
               onChange={setView}

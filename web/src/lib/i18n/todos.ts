@@ -37,6 +37,9 @@ export const en = {
   todosReopenedToast: 'Marked as open',
   todosUndo: 'Undo',
   todosFailed: 'That did not work.',
+  todosAddTo: 'Add to todos',
+  todosIn: 'In todos',
+  todosGone: 'No longer available',
 };
 
 export const de: typeof en = {
@@ -76,4 +79,7 @@ export const de: typeof en = {
   todosReopenedToast: 'Wieder geöffnet',
   todosUndo: 'Rückgängig',
   todosFailed: 'Das hat nicht geklappt.',
+  todosAddTo: 'Zu Todos hinzufügen',
+  todosIn: 'In Todos',
+  todosGone: 'Nicht mehr vorhanden',
 };

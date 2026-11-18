@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { Todo } from '@wb/shared';
+import type { Todo, TodoLink } from '@wb/shared';
 import { api } from './api';
 import { queryClient } from './queryClient';
 
@@ -34,10 +34,10 @@ export const patchTodo = (id: string, patch: TodoPatch) =>
     () => api.patch<Todo>(`/api/todos/${encodeURIComponent(id)}`, patch),
   );
 
-export const addTodo = (a: { title: string; parentId?: string | null; course?: string | null }) => {
+export const addTodo = (a: { title: string; parentId?: string | null; course?: string | null; link?: TodoLink; minutes?: number; origin?: Todo['origin'] }) => {
   const id = crypto.randomUUID();
   const now = Date.now();
-  const fresh: Todo = { id, parentId: a.parentId ?? null, sort: 1_000_000, title: a.title, body: null, status: 'open', course: a.course ?? null, link: null, due: null, minutes: null, nextRank: null, origin: 'manual', createdAt: now, updatedAt: now, doneAt: null, children: [] };
+  const fresh: Todo = { id, parentId: a.parentId ?? null, sort: 1_000_000, title: a.title, body: null, status: 'open', course: a.course ?? null, link: a.link ?? null, due: null, minutes: a.minutes ?? null, nextRank: null, origin: a.origin ?? 'manual', createdAt: now, updatedAt: now, doneAt: null, children: [] };
   return optimistic(
     (l) => (a.parentId ? mapTree(l, a.parentId, (p) => ({ ...p, children: [...p.children, { ...fresh, course: p.course }] })) : [fresh, ...l]),
     () => api.post<Todo>('/api/todos', { id, ...a }),
@@ -53,3 +53,17 @@ export const reorderNext = (ids: string[]) =>
     (l) => l.map((t) => ({ ...t, nextRank: ids.includes(t.id) ? ids.indexOf(t.id) : null })),
     () => api.post('/api/todos/reorder', { ids }),
   );
+
+/** The todo that already points at this, if it is not finished. */
+export function useTodoFor(kind: TodoLink['kind'], ref: string): Todo | undefined {
+  const { data } = useTodos();
+  const find = (l: Todo[]): Todo | undefined => {
+    for (const t of l) {
+      if (t.link?.kind === kind && t.link.ref === ref && t.status !== 'done') return t;
+      const c = find(t.children);
+      if (c) return c;
+    }
+    return undefined;
+  };
+  return data ? find(data) : undefined;
+}
