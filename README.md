@@ -270,7 +270,7 @@ which publishes a tag named after the branch, such as `main`, and leaves `latest
 | `server/src/ai` | The prompt students copy into their own chat |
 | `server/src/achievements.ts`, `suggest.ts`, `snapshots.ts` | Achievements, what to do next, daily backups |
 | `server/assets` | The Typst prelude, the `Workbook.Check` Haskell test library, the Prolog driver and test library |
-| `web/src` | The React app. All interface texts are in `lib/i18n.ts` |
+| `web/src` | The React app. All interface texts are in `lib/i18n/` |
 
 Environment variables: `PORT`, `HOST`, `CONTENT_DIR`, `DATA_DIR`, `WEB_DIR`, `TYPST_BIN`, `TYPST_PACKAGE_CACHE_PATH`,
 `WORKBOOKS_DIR`, `GHCI_BIN`, `RUNGHC_BIN`, `SWIPL_BIN`, `PYTHON_BIN`, `SLDCHECK_BIN`, `MAX_SESSIONS`, `SESSION_IDLE_MS`, `ALLOWED_HOSTS`.
