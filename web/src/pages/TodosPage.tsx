@@ -15,6 +15,8 @@ const KINDS: KindId[] = ['item', 'lesson', 'page', 'deck', 'link'];
 const LATER_ROWS = 5;
 const LINGER_MS = 1600;
 const TOAST_MS = 6000;
+const LANE_ROWS = 3;
+const VIEW_KEY = 'wb-todos-view';
 
 /** What a todo's link is, for the chip and the filter. Items are told apart by the outline of the open workbook. */
 function kindOf(t: Todo, outline: Outline | undefined): KindId | null {
@@ -287,6 +289,185 @@ function ActionButton({ label, onClick, children }: { label: string; onClick: ()
   );
 }
 
+interface Lane {
+  key: string | null;
+  title: string;
+  todos: Todo[];
+}
+
+/** One slim card in a lane: tick, title, drag to another column to change the status. */
+function LaneCard({
+  todo,
+  ctx,
+  next,
+  onDragStart,
+  onDragEnd,
+}: {
+  todo: Todo;
+  ctx: Ctx;
+  next: boolean;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+}) {
+  const done = allDone(todo);
+  return (
+    <li
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", todo.id);
+        onDragStart();
+      }}
+      onDragEnd={onDragEnd}
+      className={clsx(
+        "flex cursor-grab items-center gap-2 rounded-md",
+        next
+          ? "border border-accent/40 bg-accent-soft/50 px-2 py-2"
+          : "px-1 py-1",
+      )}
+    >
+      <Circle todo={todo} ctx={ctx} size={next ? 17 : 15} />
+      <TitleText
+        todo={todo}
+        className={clsx(
+          "min-w-0 flex-1 truncate",
+          next ? "text-[14px] font-medium" : "text-[13px]",
+          done ? "text-ink-3 line-through" : next ? "text-ink" : "text-ink-2",
+        )}
+        onEdit={() => undefined}
+      />
+      {!done && todo.due ? (
+        <span className="shrink-0 text-[11.5px] text-ink-3">
+          {ctx.t.todosDue(dueText(todo.due, ctx.lang))}
+        </span>
+      ) : null}
+    </li>
+  );
+}
+
+/** A lane per workbook (and the student's own), a column per status. */
+function Board({
+  todos,
+  ctx,
+  lanes,
+}: {
+  todos: Todo[];
+  ctx: Ctx;
+  lanes: Lane[];
+}) {
+  const { t } = ctx;
+  const [drag, setDrag] = useState<string | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const drop = (status: TodoStatus, laneKey: string | null) => {
+    const todo = todos.find((x) => x.id === drag);
+    setDrag(null);
+    setOver(null);
+    if (todo && todo.status !== status && todo.course === laneKey)
+      ctx.setStatus(todo, status);
+  };
+  if (lanes.length === 0)
+    return <p className="py-6 text-[13px] text-ink-3">{t.todosEmpty}</p>;
+  return (
+    <div className="mt-5 space-y-4">
+      {lanes.map((lane) => (
+        <section
+          key={lane.key ?? "own"}
+          className="rounded-xl border border-line bg-sheet p-3"
+        >
+          <h2 className="mb-2 px-1 text-[14.5px] font-semibold">
+            {lane.title}
+          </h2>
+          <div className="grid gap-3 md:grid-cols-3">
+            {TABS.map((status) => {
+              const col = lane.todos.filter((x) => x.status === status);
+              const cid = `${lane.key ?? "own"}:${status}`;
+              const isNext = (x: Todo) =>
+                status === "open" && x.nextRank !== null;
+              const nexts = col
+                .filter(isNext)
+                .sort((a, b) => a.nextRank! - b.nextRank!);
+              const rest = col
+                .filter((x) => !isNext(x))
+                .sort((a, b) =>
+                  status === "done"
+                    ? (b.doneAt ?? 0) - (a.doneAt ?? 0)
+                    : b.createdAt - a.createdAt,
+                );
+              const open = expanded.has(cid);
+              const shownRest = open ? rest : rest.slice(0, LANE_ROWS);
+              return (
+                <div
+                  key={status}
+                  onDragOver={(e) => {
+                    if (!drag) return;
+                    e.preventDefault();
+                    setOver(cid);
+                  }}
+                  onDragLeave={() => setOver((o) => (o === cid ? null : o))}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    drop(status, lane.key);
+                  }}
+                  className={clsx(
+                    "min-h-16 rounded-lg bg-sunk/60 p-2",
+                    over === cid && "ring-2 ring-accent/50",
+                  )}
+                >
+                  <h3 className="mb-1.5 px-1 text-[12.5px] font-medium text-ink-3">
+                    {t.todosStatus[status]}
+                  </h3>
+                  {nexts.length ? (
+                    <ul className="mb-2 space-y-1.5">
+                      {nexts.map((x) => (
+                        <LaneCard
+                          key={x.id}
+                          todo={x}
+                          ctx={ctx}
+                          next
+                          onDragStart={() => setDrag(x.id)}
+                          onDragEnd={() => setDrag(null)}
+                        />
+                      ))}
+                    </ul>
+                  ) : null}
+                  {rest.length && nexts.length && status === "open" ? (
+                    <p className="px-1 pb-0.5 text-[11.5px] text-ink-3">
+                      {t.todosMore}
+                    </p>
+                  ) : null}
+                  <ul>
+                    {shownRest.map((x) => (
+                      <LaneCard
+                        key={x.id}
+                        todo={x}
+                        ctx={ctx}
+                        next={false}
+                        onDragStart={() => setDrag(x.id)}
+                        onDragEnd={() => setDrag(null)}
+                      />
+                    ))}
+                  </ul>
+                  {rest.length > LANE_ROWS && !open ? (
+                    <button
+                      type="button"
+                      onClick={() => setExpanded((s) => new Set(s).add(cid))}
+                      className="mt-0.5 px-1 text-[12.5px] text-accent hover:underline"
+                    >
+                      {t.todosShowMore}
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+
 const chip = (on: boolean) => clsx('h-[28px] rounded-full border px-3 text-[13px]', on ? 'border-transparent bg-accent-soft font-medium text-accent' : 'border-line-strong bg-sheet text-ink-2 hover:text-ink');
 const select = 'h-[28px] rounded-full border border-line-strong bg-sheet px-2.5 text-[13px] text-ink-2';
 
@@ -298,6 +479,21 @@ export function TodosPage() {
   const outline = useOutline().data;
   const courses = useCourses().data?.courses;
   const [tab, setTab] = useState<TabId>('open');
+  const [view, setViewState] = useState<'list' | 'board'>(() => {
+    try {
+      return localStorage.getItem(VIEW_KEY) === 'board' ? 'board' : 'list';
+    } catch {
+      return 'list';
+    }
+  });
+  const setView = (v: 'list' | 'board') => {
+    setViewState(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* remembering is a convenience */
+    }
+  };
   const [course, setCourse] = useState<string>('all');
   const [kind, setKind] = useState<string>('all');
   const [showAll, setShowAll] = useState(false);
@@ -383,6 +579,12 @@ export function TodosPage() {
     return (todos ?? []).filter(keep);
   }, [todos, course, kind, tab, lingering, outline]);
 
+  const lanes = useMemo<Lane[]>(() => {
+    const pool = (todos ?? []).filter((x) => (kind === 'all' || kindOf(x, outline) === kind) && (course === 'all' || (course === 'own' ? x.course === null : x.course === course)));
+    const keys = [...(courses ?? []).map((c) => c.key), null].filter((k) => course === 'all' || (course === 'own' ? k === null : k === course));
+    return keys.map((k) => ({ key: k, title: k === null ? t.todosOwn : (courseTitles.get(k) ?? k), todos: pool.filter((x) => x.course === k) })).filter((l) => l.todos.length > 0);
+  }, [todos, kind, course, courses, courseTitles, outline, t]);
+
   const nextRows = shown.filter((x) => x.nextRank !== null && x.status !== 'done').sort((a, b) => a.nextRank! - b.nextRank!);
   const laterRows = shown.filter((x) => !(x.nextRank !== null && x.status !== 'done')).sort((a, b) => (tab === 'done' ? (b.doneAt ?? 0) - (a.doneAt ?? 0) : b.createdAt - a.createdAt));
 
@@ -436,9 +638,17 @@ export function TodosPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="settle wb-page mx-auto max-w-3xl px-6 pb-16 pt-8 sm:px-8">
+      <div className={clsx('settle wb-page mx-auto px-6 pb-16 pt-8 sm:px-8', view === 'board' ? 'max-w-6xl' : 'max-w-3xl')}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-[1.75rem] font-semibold tracking-[-0.02em]">{t.todosTitle}</h1>
+          <div className="flex items-center gap-2">
+            <div role="group" className="flex gap-1.5">
+              {(['list', 'board'] as const).map((v) => (
+                <button key={v} type="button" aria-pressed={view === v} onClick={() => setView(v)} className={chip(view === v)}>
+                  {v === 'list' ? t.todosViewList : t.todosViewBoard}
+                </button>
+              ))}
+            </div>
           <select value={course} onChange={(e) => setCourse(e.target.value)} aria-label={t.todosAllWorkbooks} className={select}>
             <option value="all">{t.todosAllWorkbooks}</option>
             <option value="own">{t.todosOwn}</option>
@@ -448,6 +658,7 @@ export function TodosPage() {
               </option>
             ))}
           </select>
+          </div>
         </div>
 
         <div className="mt-4">
@@ -455,7 +666,7 @@ export function TodosPage() {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <div role="tablist" className="flex gap-1.5">
+          <div role="tablist" className={clsx('flex gap-1.5', view === 'board' && 'invisible')}>
             {TABS.map((id) => (
               <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={chip(tab === id)}>
                 {t.todosStatus[id]}
@@ -472,7 +683,9 @@ export function TodosPage() {
           </select>
         </div>
 
-        {withNext ? (
+        {view === 'board' ? <Board todos={todos} ctx={ctx} lanes={lanes} /> : null}
+
+        {view === 'list' && withNext ? (
           <section className="mt-6 border-l-2 border-accent pl-4" onDragOver={(e) => dropHere(e, null)} onDrop={(e) => dropHere(e, nextIds.length)}>
             <h2 className="flex items-baseline gap-2 text-[15px] font-semibold">
               {t.todosNext} <span className="text-[12.5px] font-normal text-ink-3">{t.todosNextHint}</span>
@@ -488,6 +701,7 @@ export function TodosPage() {
           </section>
         ) : null}
 
+        {view === 'list' ? (
         <section className={clsx(withNext && 'mt-6 border-t border-line pt-5')} onDragOver={(e) => dropHere(e, null)} onDrop={(e) => dropHere(e, null)}>
           {withNext ? (
             <h2 className="flex items-baseline gap-2 text-[15px] font-semibold">
@@ -506,6 +720,7 @@ export function TodosPage() {
             </button>
           ) : null}
         </section>
+        ) : null}
       </div>
 
       {toast ? (
