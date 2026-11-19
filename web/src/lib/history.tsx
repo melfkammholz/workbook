@@ -14,7 +14,8 @@ const indexNow = (): number => {
 };
 
 const navigate = (to: string, opts: { replace?: boolean; state?: unknown } = {}) =>
-  hashNavigate(to, { replace: !!opts.replace, state: { wbIndex: opts.replace ? indexNow() : indexNow() + 1 } });
+  // wouter keeps the old `?query` when the target has none; an empty one clears it (closes `?todo=`).
+  hashNavigate(to.includes('?') ? to : `${to}?`, { replace: !!opts.replace, state: { wbIndex: opts.replace ? indexNow() : indexNow() + 1 } });
 
 export const useAppLocation = Object.assign((opts?: { ssrPath?: string }): [string, typeof navigate] => [useHashLocation(opts)[0], navigate], {
   // How links are written, as wouter's own hash hook does.

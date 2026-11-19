@@ -86,6 +86,45 @@ interface Ctx {
   setNext: (id: string, next: boolean) => void;
   open: (todo: Todo) => void;
   openBoard: (todo: Todo) => void;
+  /** The todo being dragged (a ref: it changes without re-rendering). */
+  dragId: { current: string | null };
+  /** The todo a drag is over the middle of: dropping makes the dragged one a part of it. */
+  nestOver: string | null;
+  setNestOver: (id: string | null) => void;
+  nest: (id: string, targetId: string) => void;
+}
+
+/** Middle band of an element: a drop there nests, the edges reorder. */
+function inMiddle(e: React.DragEvent<HTMLElement>): boolean {
+  const r = e.currentTarget.getBoundingClientRect();
+  return e.clientY > r.top + r.height * 0.25 && e.clientY < r.bottom - r.height * 0.25;
+}
+
+/** Drag handlers that make a drop on the middle of `todo` nest the dragged todo into it. */
+function nestHandlers(todo: Todo, ctx: Ctx) {
+  const ok = () => ctx.dragId.current !== null && ctx.dragId.current !== todo.id;
+  return {
+    over: (e: React.DragEvent<HTMLElement>): boolean => {
+      if (ok() && inMiddle(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (ctx.nestOver !== todo.id) ctx.setNestOver(todo.id);
+        return true;
+      }
+      if (ctx.nestOver === todo.id) ctx.setNestOver(null);
+      return false;
+    },
+    drop: (e: React.DragEvent<HTMLElement>): boolean => {
+      if (ctx.nestOver !== todo.id || !ok()) return false;
+      e.preventDefault();
+      e.stopPropagation();
+      const id = ctx.dragId.current!;
+      ctx.setNestOver(null);
+      ctx.dragId.current = null;
+      ctx.nest(id, todo.id);
+      return true;
+    },
+  };
 }
 
 function Circle({ todo, ctx, size = 18 }: { todo: Todo; ctx: Ctx; size?: number }) {
@@ -234,6 +273,7 @@ function Row({ todo, ctx, depth, top }: RowProps) {
       top.moveKey(e.key === 'ArrowUp' ? -1 : 1);
     }
   };
+  const nh = nestHandlers(todo, ctx);
   return (
     <li
       data-todo={todo.id}
@@ -244,9 +284,11 @@ function Row({ todo, ctx, depth, top }: RowProps) {
         tabIndex={editing ? -1 : 0}
         onKeyDown={key}
         draggable={!!top?.draggable && !editing}
-        onDragStart={top ? (e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', todo.id); top.onDragStart(); } : undefined}
-        onDragEnd={top?.onDragEnd}
-        className={clsx('group flex items-center gap-2.5 rounded-md py-1.5 pr-1 outline-none transition-colors focus-visible:bg-sunk focus-visible:ring-2 focus-visible:ring-accent/50', ctx.marked === todo.id && 'bg-accent-soft', depth === 0 ? 'pl-0' : 'pl-0.5')}
+        onDragStart={top ? (e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', todo.id); ctx.dragId.current = todo.id; top.onDragStart(); } : undefined}
+        onDragEnd={top ? () => { ctx.dragId.current = null; ctx.setNestOver(null); top.onDragEnd(); } : undefined}
+        onDragOver={(e) => { nh.over(e); }}
+        onDrop={(e) => { nh.drop(e); }}
+        className={clsx('group relative flex items-center gap-2.5 rounded-md py-1.5 pr-1 outline-none transition-colors focus-visible:bg-sunk focus-visible:ring-2 focus-visible:ring-accent/50', (ctx.marked === todo.id || ctx.nestOver === todo.id) && 'bg-accent-soft', ctx.nestOver === todo.id && 'ring-2 ring-accent', depth === 0 ? 'pl-0' : 'pl-0.5')}
       >
         {top ? (
           <span title={t.todosDrag} className={clsx('w-3.5 shrink-0 cursor-grab text-ink-3 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100', !top.draggable && 'invisible')}>
@@ -262,7 +304,7 @@ function Row({ todo, ctx, depth, top }: RowProps) {
             {kind ? <span className={clsx('shrink-0 rounded px-1.5 text-[11.5px]', todo.target?.gone ? 'bg-sunk text-ink-3' : 'bg-accent-soft text-accent')} title={todo.target?.gone ? t.todosGone : undefined}>{t.todosKind[kind]}</span> : null}
             {ctx.showCourse && depth === 0 && todo.course && ctx.courseTitles.get(todo.course) ? <span className="shrink-0 rounded bg-sunk px-1.5 text-[11.5px] text-ink-2">{ctx.courseTitles.get(todo.course)}</span> : null}
             <span className="ml-auto flex shrink-0 items-center gap-2 pl-2">
-              <span className="hidden items-center gap-0.5 group-hover:flex group-focus-within:flex">
+              <span className="absolute right-1 top-1/2 z-10 hidden -translate-y-1/2 items-center gap-0.5 rounded-md bg-sunk px-1 shadow-sm group-hover:flex group-focus-within:flex">
                 <ActionButton label={t.todosOpen} onClick={() => ctx.open(todo)}>
                   <Maximize2 size={13} />
                 </ActionButton>
@@ -390,6 +432,7 @@ interface CardProps {
 function LaneCard({ todo, ctx, kind, cardId, expanded, bare, onToggleParts, line, onDragStart, onDragEnd, onDragOver, onDrop, moveKey }: CardProps) {
   const { t } = ctx;
   const done = allDone(todo);
+  const nh = nestHandlers(todo, ctx);
   const half = (e: React.DragEvent<HTMLLIElement>) => e.clientY > e.currentTarget.getBoundingClientRect().top + e.currentTarget.getBoundingClientRect().height / 2;
   return (
     <li
@@ -407,13 +450,15 @@ function LaneCard({ todo, ctx, kind, cardId, expanded, bare, onToggleParts, line
         e.stopPropagation();
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', todo.id);
+        ctx.dragId.current = todo.id;
         onDragStart();
       }}
-      onDragEnd={onDragEnd}
-      onDragOver={onDragOver ? (e) => { e.preventDefault(); e.stopPropagation(); onDragOver(half(e)); } : undefined}
-      onDrop={onDrop ? (e) => { e.preventDefault(); e.stopPropagation(); onDrop(half(e)); } : undefined}
+      onDragEnd={() => { ctx.dragId.current = null; ctx.setNestOver(null); onDragEnd(); }}
+      onDragOver={(e) => { if (nh.over(e)) return; if (onDragOver) { e.preventDefault(); e.stopPropagation(); onDragOver(half(e)); } }}
+      onDrop={(e) => { if (nh.drop(e)) return; if (onDrop) { e.preventDefault(); e.stopPropagation(); onDrop(half(e)); } }}
       className={clsx(
         'group rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent/50',
+        ctx.nestOver === todo.id && 'ring-2 ring-accent bg-accent-soft',
         kind === 'next' && 'bg-sheet px-2 py-2 shadow-sm',
         kind === 'card' && (done ? 'border border-dashed border-line-strong px-2 py-2' : 'border border-line-strong bg-sheet px-2 py-2'),
         kind === 'slim' && 'px-1 py-1',
@@ -845,8 +890,30 @@ export function TodosPage({ rootId }: { rootId?: string } = {}) {
     [nextIds],
   );
 
+  const dragId = useRef<string | null>(null);
+  const [nestOver, setNestOver] = useState<string | null>(null);
+  const nest = useCallback(
+    (id: string, targetId: string) => {
+      const all = new Map<string, Todo>();
+      const walk = (x: Todo) => {
+        all.set(x.id, x);
+        x.children.forEach(walk);
+      };
+      (todos ?? []).forEach(walk);
+      const mine = all.get(id);
+      const target = all.get(targetId);
+      if (!mine || !target) return;
+      const rank = mine.nextRank;
+      const from = mine.parentId;
+      void patchTodo(id, { parentId: targetId });
+      showToast(t.todosNestedToast(target.title), () => {
+        void patchTodo(id, { parentId: from }).then(() => (rank !== null && from === null ? patchTodo(id, { nextRank: rank }) : undefined));
+      });
+    },
+    [todos, showToast, t],
+  );
   const dialog = useTodoDialog();
-  const ctx: Ctx = { t, lang, outline, courseTitles, showCourse: course === 'all', marked, toggle, setStatus, remove, addingTo, setAddingTo, setNext, open: (x) => dialog.open(x.id), openBoard: (x) => navigate(`/todos/${encodeURIComponent(x.id)}`) };
+  const ctx: Ctx = { dragId, nestOver, setNestOver, nest, t, lang, outline, courseTitles, showCourse: course === 'all', marked, toggle, setStatus, remove, addingTo, setAddingTo, setNext, open: (x) => dialog.open(x.id), openBoard: (x) => navigate(`/todos/${encodeURIComponent(x.id)}`) };
 
   const shown = useMemo(() => {
     const keep = (x: Todo) => {
