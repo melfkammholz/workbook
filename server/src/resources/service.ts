@@ -836,6 +836,14 @@ export class Resources {
     if (!this.sql.get('SELECT id FROM works WHERE id = ?', work)) throw new ResourceError('unknown-item');
     if (resource !== null) this.get(resource);
     this.sql.run('UPDATE works SET resource = ?, updated_at = ? WHERE id = ?', resource, this.now(), work);
+    // The work owns the tags once linked: the material's own move onto it, once.
+    if (resource !== null) {
+      const own = this.store.tagsOf('resource', resource);
+      if (own.length) {
+        this.store.setTags('work', work, [...this.store.tagsOf('work', work), ...own]);
+        this.store.setTags('resource', resource, []);
+      }
+    }
     const row = this.sql.get('SELECT * FROM works WHERE id = ?', work)!;
     // A work nothing else needs goes when its link is taken away.
     return toWork(row);
