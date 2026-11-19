@@ -40,6 +40,7 @@ import {
   PdfPage,
   TicketsPage,
   TodosPage,
+  TodoBoardPage,
   ReviewPage,
   SettingsPage,
   StrugglingPage,
@@ -516,6 +517,7 @@ const CoursePages = memo(function CoursePages() {
         <Route path="/notes" component={NotesPage} />
         <Route path="/tickets" component={TicketsPage} />
         <Route path="/todos" component={TodosPage} />
+        <Route path="/todos/:id" component={TodoBoardPage} />
         <Route path="/inbox">{() => <Redirect to="/tickets" replace />}</Route>
         <Route path="/questions">{() => <Redirect to="/tickets" replace />}</Route>
         <Route path="/highlights">{() => <HighlightsPage />}</Route>

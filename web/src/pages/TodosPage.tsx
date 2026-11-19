@@ -1,8 +1,8 @@
 import clsx from 'clsx';
-import { Calendar, Check, ChevronDown, ChevronRight, CircleDot, GripVertical, Maximize2, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Calendar, Check, ChevronDown, ChevronRight, CircleDot, GripVertical, LayoutGrid, Maximize2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { todoProgress, type Outline, type Todo, type TodoStatus } from '@wb/shared';
-import { useSearch } from 'wouter';
+import { Link, useLocation, useParams, useSearch } from 'wouter';
 import { TodoDialog, useTodoDialog } from '@/components/TodoDialog';
 import { TodoSegments } from '@/components/TodoSegments';
 import { TagPicker } from '@/components/TagPicker';
@@ -85,6 +85,7 @@ interface Ctx {
   setAddingTo: (id: string | null) => void;
   setNext: (id: string, next: boolean) => void;
   open: (todo: Todo) => void;
+  openBoard: (todo: Todo) => void;
 }
 
 function Circle({ todo, ctx, size = 18 }: { todo: Todo; ctx: Ctx; size?: number }) {
@@ -265,6 +266,11 @@ function Row({ todo, ctx, depth, top }: RowProps) {
                 <ActionButton label={t.todosOpen} onClick={() => ctx.open(todo)}>
                   <Maximize2 size={13} />
                 </ActionButton>
+                {todo.children.length ? (
+                  <ActionButton label={t.todosOpenBoard} onClick={() => ctx.openBoard(todo)}>
+                    <LayoutGrid size={13} />
+                  </ActionButton>
+                ) : null}
                 <ActionButton label={t.todosEdit} onClick={() => setEditing(true)}>
                   <Pencil size={13} />
                 </ActionButton>
@@ -322,6 +328,8 @@ interface Lane {
   /** What a todo added in this lane gets. */
   course: string | null;
   tag: string | null;
+  /** A board of one todo's parts: what is added here becomes a part of it. */
+  parent?: string;
   /** Dragging between lanes only changes anything in workbook mode (a todo is in one lane there). */
   reorder: boolean;
 }
@@ -365,6 +373,8 @@ interface CardProps {
   kind: CardKind;
   cardId: string;
   expanded: boolean;
+  /** A board of one todo: cards show no parts, a button opens the part's own board. */
+  bare?: boolean;
   onToggleParts: () => void;
   /** Line above or below this card while a drag is over it. */
   line: 'before' | 'after' | null;
@@ -377,7 +387,7 @@ interface CardProps {
 }
 
 /** One card in a lane: grip, tick, title; drag it to another column to change the status. */
-function LaneCard({ todo, ctx, kind, cardId, expanded, onToggleParts, line, onDragStart, onDragEnd, onDragOver, onDrop, moveKey }: CardProps) {
+function LaneCard({ todo, ctx, kind, cardId, expanded, bare, onToggleParts, line, onDragStart, onDragEnd, onDragOver, onDrop, moveKey }: CardProps) {
   const { t } = ctx;
   const done = allDone(todo);
   const half = (e: React.DragEvent<HTMLLIElement>) => e.clientY > e.currentTarget.getBoundingClientRect().top + e.currentTarget.getBoundingClientRect().height / 2;
@@ -424,13 +434,18 @@ function LaneCard({ todo, ctx, kind, cardId, expanded, onToggleParts, line, onDr
         />
         {todo.children.length ? <TodoSegments todo={todo} /> : null}
         {!done && todo.due ? <span className="shrink-0 text-[11.5px] text-ink-3">{t.todosDue(dueText(todo.due, ctx.lang))}</span> : null}
-        {todo.children.length ? (
+        {bare && todo.children.length ? (
+          <button type="button" aria-label={t.todosOpenBoard} title={t.todosOpenBoard} onClick={() => ctx.openBoard(todo)} className="grid size-5 shrink-0 place-items-center rounded text-ink-3 hover:bg-sunk hover:text-ink">
+            <LayoutGrid size={13} />
+          </button>
+        ) : null}
+        {!bare && todo.children.length ? (
           <button type="button" aria-expanded={expanded} aria-label={expanded ? t.todosPartsHide : t.todosPartsShow} title={expanded ? t.todosPartsHide : t.todosPartsShow} onClick={onToggleParts} className="grid size-5 shrink-0 place-items-center rounded text-ink-3 hover:bg-sunk hover:text-ink">
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
         ) : null}
       </div>
-      {expanded && todo.children.length ? (
+      {!bare && expanded && todo.children.length ? (
         <ul className="ml-7 mt-1">
           {todo.children.map((c) => (
             <PartLine key={c.id} todo={c} ctx={ctx} />
@@ -442,19 +457,19 @@ function LaneCard({ todo, ctx, kind, cardId, expanded, onToggleParts, line, onDr
 }
 
 /** "Todo hinzufügen" at the foot of a cell; it opens a one-line field. */
-function CellAdd({ ctx, onAdd }: { ctx: Ctx; onAdd: (title: string) => void }) {
+function CellAdd({ ctx, onAdd, label }: { ctx: Ctx; onAdd: (title: string) => void; label: string }) {
   const [on, setOn] = useState(false);
   if (on) {
     return (
       <div className="mt-1.5">
-        <AddLine compact autoFocus placeholder={ctx.t.todosAddInLane} onAdd={onAdd} onCancel={() => setOn(false)} />
+        <AddLine compact autoFocus placeholder={label} onAdd={onAdd} onCancel={() => setOn(false)} />
       </div>
     );
   }
   return (
     <button type="button" onClick={() => setOn(true)} className="mt-1 flex items-center gap-1 px-1 text-[12.5px] text-ink-3 hover:text-ink">
       <Plus size={13} aria-hidden />
-      {ctx.t.todosAddInLane}
+      {label}
     </button>
   );
 }
@@ -471,7 +486,7 @@ function continueWith(todos: Todo[]): Todo | undefined {
 }
 
 /** A lane per workbook or tag, a column per status. */
-function Board({ todos, ctx, lanes }: { todos: Todo[]; ctx: Ctx; lanes: Lane[] }) {
+function Board({ todos, ctx, lanes, bare }: { todos: Todo[]; ctx: Ctx; lanes: Lane[]; bare?: boolean }) {
   const { t } = ctx;
   const [drag, setDrag] = useState<{ id: string; lane: string } | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -541,8 +556,8 @@ function Board({ todos, ctx, lanes }: { todos: Todo[]; ctx: Ctx; lanes: Lane[] }
 
   if (lanes.length === 0) return <p className="py-6 text-[13px] text-ink-3">{t.todosEmpty}</p>;
   return (
-    <div className="mt-5 grid grid-cols-[170px_1.25fr_1fr_0.8fr] border-t border-line">
-      <div />
+    <div className={clsx('mt-5 grid border-t border-line', bare ? 'grid-cols-[1.25fr_1fr_0.8fr]' : 'grid-cols-[170px_1.25fr_1fr_0.8fr]')}>
+      {bare ? null : <div />}
       {TABS.map((status, i) => (
         <h3 key={status} className={clsx('px-2.5 pb-2 pt-2.5 text-[12.5px] font-semibold text-ink-2', i > 0 && 'border-l border-dashed border-line')}>
           {t.todosStatus[status]}
@@ -550,7 +565,7 @@ function Board({ todos, ctx, lanes }: { todos: Todo[]; ctx: Ctx; lanes: Lane[] }
       ))}
       {lanes.map((lane) => {
         const isCollapsed = collapsed.has(lane.id);
-        const head = (
+        const head = bare ? null : (
           <h2 className="flex items-start gap-1 border-t border-line py-3 pr-2.5 text-[14px] font-semibold">
             <button type="button" aria-expanded={!isCollapsed} aria-label={isCollapsed ? t.todosLaneExpand(lane.title) : t.todosLaneCollapse(lane.title)} onClick={() => toggleCollapsed(lane.id)} className="mt-0.5 grid size-5 shrink-0 place-items-center rounded text-ink-3 hover:bg-sunk hover:text-ink">
               {isCollapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
@@ -621,6 +636,7 @@ function Board({ todos, ctx, lanes }: { todos: Todo[]; ctx: Ctx; lanes: Lane[] }
                     kind={k}
                     cardId={cardId}
                     expanded={partsOpen.has(x.id)}
+                    bare={bare}
                     onToggleParts={() => setPartsOpen((s) => flip(s, x.id))}
                     line={line?.cardId === cardId ? (line.after ? 'after' : 'before') : null}
                     onDragStart={() => setDrag({ id: x.id, lane: lane.id })}
@@ -665,7 +681,7 @@ function Board({ todos, ctx, lanes }: { todos: Todo[]; ctx: Ctx; lanes: Lane[] }
                       {t.todosShowMore}
                     </button>
                   ) : null}
-                  <CellAdd ctx={ctx} onAdd={(title) => void addTodo({ title, course: lane.course, status, ...(lane.tag ? { tags: [lane.tag] } : {}) })} />
+                  <CellAdd ctx={ctx} label={bare ? t.todosAddPart : t.todosAddInLane} onAdd={(title) => void addTodo(lane.parent ? { title, parentId: lane.parent, status } : { title, course: lane.course, status, ...(lane.tag ? { tags: [lane.tag] } : {}) })} />
                 </div>
               );
             })}
@@ -680,8 +696,16 @@ const chip = (on: boolean) => clsx('h-[28px] rounded-full border px-3 text-[13px
 const select = 'h-[28px] rounded-full border border-line-strong bg-sheet px-2.5 text-[13px] text-ink-2';
 
 /** The student's own list: what to do next in an order they set, the rest by age. */
-export function TodosPage() {
+/** `/todos/:id`: one todo's parts as a small board. */
+export function TodoBoardPage() {
+  return <TodosPage rootId={useParams<{ id: string }>().id} />;
+}
+
+/** The student's own list: what to do next in an order they set, the rest by age. With `rootId`, one todo's parts as a board. */
+export function TodosPage({ rootId }: { rootId?: string } = {}) {
   const t = useT();
+  const [, navigate] = useLocation();
+  
   const lang = useLang();
   const todos = useTodos().data;
   const outline = useOutline().data;
@@ -822,7 +846,7 @@ export function TodosPage() {
   );
 
   const dialog = useTodoDialog();
-  const ctx: Ctx = { t, lang, outline, courseTitles, showCourse: course === 'all', marked, toggle, setStatus, remove, addingTo, setAddingTo, setNext, open: (x) => dialog.open(x.id) };
+  const ctx: Ctx = { t, lang, outline, courseTitles, showCourse: course === 'all', marked, toggle, setStatus, remove, addingTo, setAddingTo, setNext, open: (x) => dialog.open(x.id), openBoard: (x) => navigate(`/todos/${encodeURIComponent(x.id)}`) };
 
   const shown = useMemo(() => {
     const keep = (x: Todo) => {
@@ -878,6 +902,14 @@ export function TodosPage() {
     },
   });
 
+  const byId = new Map<string, Todo>();
+  const walkAll = (x: Todo) => {
+    byId.set(x.id, x);
+    x.children.forEach(walkAll);
+  };
+  (todos ?? []).forEach(walkAll);
+  const root = rootId ? byId.get(rootId) : undefined;
+
   if (!todos) {
     return (
       <div className="grid h-full place-items-center">
@@ -896,6 +928,43 @@ export function TodosPage() {
       setDrag(null);
     }
   };
+
+  if (root) {
+    const trail: Todo[] = [];
+    for (let p = root.parentId ? byId.get(root.parentId) : undefined; p; p = p.parentId ? byId.get(p.parentId) : undefined) trail.unshift(p);
+    const courseTitle = root.course ? courseTitles.get(root.course) : undefined;
+    const lane: Lane = { id: `todo:${root.id}`, title: root.title, todos: root.children, course: root.course, tag: null, parent: root.id, reorder: true };
+    return (
+      <div className="h-full overflow-y-auto">
+        <div className="settle wb-page mx-auto max-w-6xl px-6 pb-16 pt-8 sm:px-8">
+          <nav aria-label={t.todosTitle} className="flex flex-wrap items-center gap-1 text-[13px] text-ink-3">
+            <Link href="/todos" className="hover:text-ink hover:underline">{t.todosTitle}</Link>
+            {[...(courseTitle ? [{ id: '', title: courseTitle }] : []), ...trail].map((x) => (
+              <Fragment key={x.id || 'course'}>
+                <ChevronRight size={12} aria-hidden />
+                {x.id ? <Link href={`/todos/${encodeURIComponent(x.id)}`} className="hover:text-ink hover:underline">{x.title}</Link> : <span>{x.title}</span>}
+              </Fragment>
+            ))}
+          </nav>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <Circle todo={root} ctx={ctx} size={22} />
+            <h1 className="min-w-0 text-[1.75rem] font-semibold tracking-[-0.02em]">
+              <button type="button" onClick={() => dialog.open(root.id)} className="text-left hover:underline">{root.title}</button>
+            </h1>
+            {root.children.length ? <TodoSegments todo={root} /> : null}
+          </div>
+          <Board todos={root.children} ctx={ctx} lanes={[lane]} bare />
+        </div>
+        <TodoDialog todos={todos} id={dialog.id} courseTitles={courseTitles} onOpen={dialog.switchTo} onClose={dialog.close} onDelete={remove} />
+        {toast ? (
+          <div role="status" className="settle fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-line-strong bg-sheet px-3.5 py-2 text-sm shadow-[var(--shadow)]">
+            <span>{toast.msg}</span>
+            <button type="button" onClick={() => { toast.undo(); setToast(null); }} className="font-medium text-accent hover:underline">{t.todosUndo}</button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="h-full overflow-y-auto">
@@ -930,6 +999,8 @@ export function TodosPage() {
           </select>
           </div>
         </div>
+
+        {rootId ? <p role="status" className="mt-3 text-[13px] text-ink-3">{t.todosBoardGone}</p> : null}
 
         <div className="mt-4">
           <AddLine placeholder={t.todosAddPlaceholder} onAdd={(title) => void addTodo({ title, course: course !== 'all' && course !== 'own' ? course : null })} />

@@ -256,8 +256,13 @@ function Body({ todo, byId, todos, courseTitles, onOpen, onClose, onDelete }: { 
           </Label>
 
           <section aria-labelledby="td-parts">
-            <h3 id="td-parts" className="mb-1 text-[12.5px] text-ink-3">
+            <h3 id="td-parts" className="mb-1 flex items-baseline justify-between text-[12.5px] text-ink-3">
               {t.tdParts}
+              {parts.length ? (
+                <Link href={`/todos/${encodeURIComponent(todo.id)}`} className="text-accent hover:underline">
+                  {t.todosOpenBoard}
+                </Link>
+              ) : null}
             </h3>
             {parts.length === 0 ? <p className="py-1 text-[13px] text-ink-3">{t.tdNoParts}</p> : null}
             <ul>

@@ -15,6 +15,7 @@ export const NotesPage = lazyComponent(() => Promise.all([import('@/pages/NotesP
 export const HighlightsPage = lazyComponent(() => import('@/pages/HighlightsPage').then((m) => m.HighlightsPage));
 export const TicketsPage = lazyComponent(() => import('@/pages/TicketsPage').then((m) => m.TicketsPage));
 export const TodosPage = lazyComponent(() => import('@/pages/TodosPage').then((m) => m.TodosPage));
+export const TodoBoardPage = lazyComponent(() => import('@/pages/TodosPage').then((m) => m.TodoBoardPage));
 export const PdfPage = lazyComponent(() => import('@/pages/PdfPage').then((m) => m.PdfPage));
 export const LibraryPage = lazyComponent(() => import('@/pages/MaterialsPage').then((m) => m.LibraryPage));
 export const FlashcardsPage = lazyComponent(() => import('@/pages/FlashcardsPage').then((m) => m.FlashcardsPage));
