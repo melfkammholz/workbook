@@ -26,7 +26,9 @@ export class TodosPart {
     const rows = this.all('SELECT * FROM todos WHERE deleted_at IS NULL ORDER BY sort, created_at DESC, rowid');
     const byId = new Map<string, Todo>(rows.map((r) => [r.id as string, rowToTodo(r)]));
     const top: Todo[] = [];
+    const tags = this.tagLinks('todo');
     for (const t of byId.values()) {
+      t.tags = tags.get(t.id) ?? [];
       const parent = t.parentId ? byId.get(t.parentId) : undefined;
       if (parent) parent.children.push(t);
       else if (!t.parentId) top.push(t);
@@ -42,6 +44,7 @@ export class TodosPart {
     if (!r) return null;
     const build = (row: Row): Todo => {
       const t = rowToTodo(row);
+      t.tags = this.tagsOf('todo', t.id);
       t.children = this.all('SELECT * FROM todos WHERE parent_id = ? AND deleted_at IS NULL ORDER BY sort, rowid', t.id).map(build);
       return t;
     };

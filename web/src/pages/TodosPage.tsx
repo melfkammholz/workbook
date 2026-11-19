@@ -1,8 +1,10 @@
 import clsx from 'clsx';
-import { Calendar, Check, CircleDot, GripVertical, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Calendar, Check, CircleDot, GripVertical, Maximize2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { todoProgress, type Outline, type Todo, type TodoStatus } from '@wb/shared';
-import { Link, useSearch } from 'wouter';
+import { useSearch } from 'wouter';
+import { TodoDialog, useTodoDialog } from '@/components/TodoDialog';
+import { TodoSegments } from '@/components/TodoSegments';
 import { Spinner } from '@/components/ui';
 import { useCourses, useOutline } from '@/lib/api';
 import { useLang, useT, type Strings } from '@/lib/i18n';
@@ -37,14 +39,13 @@ function kindOf(t: Todo, outline: Outline | undefined): KindId | null {
   }
 }
 
-/** The title; a todo with a link opens it on click. A vanished target stays visible, greyed. */
-function TitleText({ todo, className, onEdit }: { todo: Todo; className: string; onEdit: () => void }) {
-  const href = todo.target?.href ?? null;
-  const gone = todo.target?.gone ?? false;
-  const cls = clsx(className, gone && 'text-ink-3');
-  if (!href) return <span className={cls} title={todo.title} onDoubleClick={onEdit}>{todo.title}</span>;
-  if (/^https?:/.test(href)) return <a href={href} target="_blank" rel="noreferrer" className={clsx(cls, 'hover:underline')} title={todo.title}>{todo.title}</a>;
-  return <Link href={href} className={clsx(cls, 'hover:underline')} title={todo.title}>{todo.title}</Link>;
+/** The title opens the todo's dialog; a double click edits it in the row. A vanished target stays visible, greyed. */
+function TitleText({ todo, className, onEdit, onOpen }: { todo: Todo; className: string; onEdit: () => void; onOpen: () => void }) {
+  return (
+    <button type="button" className={clsx(className, 'text-left hover:underline', todo.target?.gone && 'text-ink-3')} title={todo.title} onClick={onOpen} onDoubleClick={onEdit}>
+      {todo.title}
+    </button>
+  );
 }
 
 const dayOf = (iso: string) => new Date(`${iso}T12:00:00`);
@@ -80,27 +81,7 @@ interface Ctx {
   addingTo: string | null;
   setAddingTo: (id: string | null) => void;
   setNext: (id: string, next: boolean) => void;
-}
-
-/** One segment per direct part (done green, doing half, open empty); above 10 parts one continuous bar. */
-function TodoSegments({ todo }: { todo: Todo }) {
-  const { done, doing, total } = todoProgress(todo);
-  if (total === 0) return null;
-  if (total > 10) {
-    return (
-      <span aria-hidden className="relative h-1.5 w-[84px] shrink-0 overflow-hidden rounded-full bg-sunk">
-        <span className="absolute inset-y-0 left-0 bg-accent/40" style={{ width: `${((done + doing) / total) * 100}%` }} />
-        <span className="absolute inset-y-0 left-0 bg-done" style={{ width: `${(done / total) * 100}%` }} />
-      </span>
-    );
-  }
-  return (
-    <span aria-hidden className="flex shrink-0 gap-0.5">
-      {todo.children.map((c) => (
-        <span key={c.id} className={clsx('h-1.5 w-[13px] rounded-sm', c.status === 'done' ? 'bg-done' : c.status === 'doing' ? 'bg-gradient-to-r from-accent from-50% to-sunk to-50%' : 'bg-sunk')} />
-      ))}
-    </span>
-  );
+  open: (todo: Todo) => void;
 }
 
 function Circle({ todo, ctx, size = 18 }: { todo: Todo; ctx: Ctx; size?: number }) {
@@ -273,11 +254,14 @@ function Row({ todo, ctx, depth, top }: RowProps) {
           <EditFields todo={todo} onDone={() => setEditing(false)} courseTitles={depth === 0 ? ctx.courseTitles : undefined} />
         ) : (
           <>
-            <TitleText todo={todo} className={clsx('min-w-0 truncate', depth === 0 ? 'text-[14.5px]' : 'text-[13.5px]', done ? 'text-ink-3 line-through' : top?.inNext ? 'font-medium' : depth === 0 ? 'text-ink' : 'text-ink-2')} onEdit={() => setEditing(true)} />
+            <TitleText todo={todo} className={clsx('min-w-0 truncate', depth === 0 ? 'text-[14.5px]' : 'text-[13.5px]', done ? 'text-ink-3 line-through' : top?.inNext ? 'font-medium' : depth === 0 ? 'text-ink' : 'text-ink-2')} onEdit={() => setEditing(true)} onOpen={() => ctx.open(todo)} />
             {kind ? <span className={clsx('shrink-0 rounded px-1.5 text-[11.5px]', todo.target?.gone ? 'bg-sunk text-ink-3' : 'bg-accent-soft text-accent')} title={todo.target?.gone ? t.todosGone : undefined}>{t.todosKind[kind]}</span> : null}
             {ctx.showCourse && depth === 0 && todo.course && ctx.courseTitles.get(todo.course) ? <span className="shrink-0 rounded bg-sunk px-1.5 text-[11.5px] text-ink-2">{ctx.courseTitles.get(todo.course)}</span> : null}
             <span className="ml-auto flex shrink-0 items-center gap-2 pl-2">
               <span className="hidden items-center gap-0.5 group-hover:flex group-focus-within:flex">
+                <ActionButton label={t.todosOpen} onClick={() => ctx.open(todo)}>
+                  <Maximize2 size={13} />
+                </ActionButton>
                 <ActionButton label={t.todosEdit} onClick={() => setEditing(true)}>
                   <Pencil size={13} />
                 </ActionButton>
@@ -378,6 +362,7 @@ function LaneCard({
           done ? "text-ink-3 line-through" : kind === "slim" ? "text-ink-2" : "text-ink",
         )}
         onEdit={() => undefined}
+        onOpen={() => ctx.open(todo)}
       />
       {todo.children.length ? <TodoSegments todo={todo} /> : null}
       {!done && todo.due ? (
@@ -640,7 +625,8 @@ export function TodosPage() {
     [nextIds],
   );
 
-  const ctx: Ctx = { t, lang, outline, courseTitles, showCourse: course === 'all', marked, toggle, setStatus, remove, addingTo, setAddingTo, setNext };
+  const dialog = useTodoDialog();
+  const ctx: Ctx = { t, lang, outline, courseTitles, showCourse: course === 'all', marked, toggle, setStatus, remove, addingTo, setAddingTo, setNext, open: (x) => dialog.open(x.id) };
 
   const shown = useMemo(() => {
     const keep = (x: Todo) => {
@@ -795,6 +781,8 @@ export function TodosPage() {
         </section>
         ) : null}
       </div>
+
+      {todos ? <TodoDialog todos={todos} id={dialog.id} courseTitles={courseTitles} onOpen={dialog.switchTo} onClose={dialog.close} onDelete={remove} /> : null}
 
       {toast ? (
         <div role="status" className="settle fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-line-strong bg-sheet px-3.5 py-2 text-sm shadow-[var(--shadow)]">

@@ -4,6 +4,7 @@ import { api, askQuestion, keys, type QuestionPlace } from './api';
 import { showLineNote } from './lineToast';
 import type { Outline } from '@wb/shared';
 import { queryClient } from './queryClient';
+import { setTagsOn } from './tags';
 
 export const todosKey = ['todos'] as const;
 export const useTodos = () => useQuery({ queryKey: todosKey, queryFn: () => api.get<Todo[]>('/api/todos'), staleTime: 60_000 });
@@ -28,18 +29,25 @@ async function optimistic<T>(show: ((list: Todo[]) => Todo[]) | null, send: () =
   }
 }
 
-export type TodoPatch = Partial<Pick<Todo, 'title' | 'body' | 'status' | 'due' | 'minutes' | 'nextRank' | 'parentId' | 'course'>>;
+export type TodoPatch = Partial<Pick<Todo, 'title' | 'body' | 'status' | 'due' | 'minutes' | 'nextRank' | 'parentId' | 'course' | 'sort'>> & { manual?: false };
 
 export const patchTodo = (id: string, patch: TodoPatch) =>
   optimistic(
-    (l) => mapTree(l, id, (t) => ({ ...t, ...patch, ...(patch.status ? { doneAt: patch.status === 'done' ? Date.now() : null } : {}) })),
+    (l) => mapTree(l, id, (t) => ({ ...t, ...patch, ...(patch.status ? { manual: true } : {}), ...(patch.status ? { doneAt: patch.status === 'done' ? Date.now() : null } : {}) })),
     () => api.patch<Todo>(`/api/todos/${encodeURIComponent(id)}`, patch),
+  );
+
+/** Puts exactly these tags on a todo. */
+export const setTodoTags = (id: string, tags: string[]) =>
+  optimistic(
+    (l) => mapTree(l, id, (t) => ({ ...t, tags })),
+    () => setTagsOn('todo', id, tags),
   );
 
 export const addTodo = (a: { title: string; parentId?: string | null; course?: string | null; link?: TodoLink; minutes?: number; origin?: Todo['origin'] }) => {
   const id = crypto.randomUUID();
   const now = Date.now();
-  const fresh: Todo = { id, parentId: a.parentId ?? null, sort: 1_000_000, title: a.title, body: null, status: 'open', storedStatus: 'open', manual: false, follow: false, course: a.course ?? null, link: a.link ?? null, due: null, minutes: a.minutes ?? null, nextRank: null, origin: a.origin ?? 'manual', createdAt: now, updatedAt: now, doneAt: null, children: [] };
+  const fresh: Todo = { id, parentId: a.parentId ?? null, sort: 1_000_000, title: a.title, body: null, status: 'open', storedStatus: 'open', manual: false, follow: false, tags: [], course: a.course ?? null, link: a.link ?? null, due: null, minutes: a.minutes ?? null, nextRank: null, origin: a.origin ?? 'manual', createdAt: now, updatedAt: now, doneAt: null, children: [] };
   return optimistic(
     (l) => (a.parentId ? mapTree(l, a.parentId, (p) => ({ ...p, children: [...p.children, { ...fresh, course: p.course }] })) : [fresh, ...l]),
     () => api.post<Todo>('/api/todos', { id, ...a }),

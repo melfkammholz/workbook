@@ -103,6 +103,7 @@ export function rowToTodo(r: Row): Todo {
     due: (r.due as string | null) ?? null,
     minutes: r.minutes === null ? null : Number(r.minutes),
     nextRank: r.next_rank === null ? null : Number(r.next_rank),
+    tags: [],
     origin: r.origin as TodoOrigin,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),

@@ -52,6 +52,8 @@ export interface Todo {
   minutes: number | null;
   /** Only top-level todos: a number puts it in "Als Nächstes", in that order; null means "Danach". */
   nextRank: number | null;
+  /** Ids of the student's tags on it. */
+  tags: string[];
   origin: TodoOrigin;
   createdAt: number;
   updatedAt: number;

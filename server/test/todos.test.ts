@@ -120,4 +120,15 @@ describe('todos', () => {
     store.updateTodo(a.id, { manual: false });
     expect(store.getTodo(a.id)!.status).toBe('done');
   });
+
+  it('carries tags in the list and on one todo', () => {
+    const { store } = make();
+    const a = store.addTodo({ title: 'A' })!;
+    const b = store.addTodo({ title: 'B', parentId: a.id })!;
+    const tag = store.createTag('exam', '');
+    store.setTags('todo', b.id, [tag.id]);
+    expect(store.listTodos()[0]!.children[0]!.tags).toEqual([tag.id]);
+    expect(store.getTodo(b.id)!.tags).toEqual([tag.id]);
+    expect(store.getTodo(a.id)!.tags).toEqual([]);
+  });
 });
