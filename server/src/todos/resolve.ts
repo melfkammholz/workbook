@@ -11,6 +11,12 @@ export function resolveTodoLink(d: Deps, link: TodoLink, course: string | null):
     case 'item':
     case 'page': {
       const content = d.courses.active ? d.content.current : null;
+      if (link.ref.startsWith('thread/')) {
+        const thread = content?.outline.threads.find((x) => x.id === link.ref.slice(7));
+        if (thread) return { title: thread.title, kind: 'page', href: thread.adventure ? `/adventure/${encodeURIComponent(thread.id)}` : thread.kind ? `/kind/${thread.kind}` : '/', gone: false };
+        const there = content?.outline.id;
+        return { title: stored, kind: 'page', href: null, gone: !(course !== null && there !== undefined && course !== there) };
+      }
       const item = content?.get(link.ref);
       if (item) {
         const type = item.meta.type;

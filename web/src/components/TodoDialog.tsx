@@ -6,8 +6,11 @@ import type { Todo, TodoStatus } from '@wb/shared';
 import { TODO_STATUSES } from '@wb/shared';
 import { Link, useLocation, useSearch } from 'wouter';
 import { useT } from '@/lib/i18n';
+import { plainTitle } from './Title';
 import { addTodo, patchTodo, setTodoTags } from '@/lib/todos';
+import { useOutline } from '@/lib/api';
 import { TagPicker } from './TagPicker';
+import { LinkPicker, threadItemIds, threadRef } from './TodoPicker';
 import { TodoSegments } from './TodoSegments';
 
 /** Todos nest at most this deep in the interface (top level is 1). */
@@ -102,7 +105,7 @@ function Tick({ todo, label }: { todo: Todo; label: string }) {
       aria-checked={done}
       aria-label={label}
       onClick={() => void patchTodo(todo.id, { status: done ? 'open' : 'done', ...(done || todo.parentId ? {} : { nextRank: null }) })}
-      className={clsx('grid size-[15px] shrink-0 place-items-center rounded-full border-[1.5px]', done ? 'border-done bg-done text-white' : half ? 'border-accent text-accent' : 'border-line-strong text-transparent hover:border-ink-3')}
+      className={clsx('grid size-[15px] shrink-0 place-items-center rounded-full border-[1.5px]', done ? 'border-done bg-done text-white' : half ? 'border-accent text-accent' : 'border-line-strong text-transparent hover:border-ink-3', todo.follow && !todo.manual && 'border-dashed')}
     >
       {done ? <Check size={9} strokeWidth={3} aria-hidden /> : half ? <span aria-hidden className="size-[40%] rounded-full bg-accent" /> : null}
     </button>
@@ -162,6 +165,15 @@ function Body({ todo, byId, todos, courseTitles, onOpen, onClose, onDelete }: { 
   });
   const [asking, setAsking] = useState(false);
   const [newPart, setNewPart] = useState('');
+  const [linking, setLinking] = useState(false);
+  const outline = useOutline().data;
+  const thread = todo.link?.kind === 'item' && todo.link.ref.startsWith(threadRef('')) ? outline?.threads.find((x) => threadRef(x.id) === todo.link!.ref) : undefined;
+  const missing = useMemo(() => {
+    if (!thread || !outline) return [];
+    const have = new Set(todo.children.map((c) => c.link?.ref));
+    const byId = new Map(outline.chapters.flatMap((c) => c.items).map((i) => [i.id, i]));
+    return threadItemIds(thread).flatMap((id) => (!have.has(id) && byId.has(id) ? [byId.get(id)!] : []));
+  }, [thread, outline, todo.children]);
 
   const ancestors: Todo[] = [];
   for (let p = todo.parentId ? byId.get(todo.parentId) : undefined; p; p = p.parentId ? byId.get(p.parentId) : undefined) ancestors.unshift(p);
@@ -255,6 +267,11 @@ function Body({ todo, byId, todos, courseTitles, onOpen, onClose, onDelete }: { 
                   <button type="button" onClick={() => onOpen(p.id)} className={clsx('min-w-0 flex-1 truncate text-left text-[13.5px] hover:underline', p.status === 'done' ? 'text-ink-3 line-through' : 'text-ink')}>
                     {p.title}
                   </button>
+                  {p.follow ? (
+                    <button type="button" title={t.tdRuleTitle} onClick={() => void patchTodo(p.id, { manual: !p.manual })} className="rounded px-1.5 text-[12px] text-ink-3 hover:bg-sunk hover:text-ink">
+                      {p.manual ? t.tdRuleHand : t.tdRuleAuto}
+                    </button>
+                  ) : null}
                   <span className="flex items-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
                     <button type="button" disabled={i === 0} onClick={() => move(i, -1)} aria-label={t.tdMoveUp} title={t.tdMoveUp} className="grid size-6 place-items-center rounded text-ink-3 hover:bg-sunk hover:text-ink disabled:invisible">
                       <ArrowUp size={13} />
@@ -266,6 +283,23 @@ function Body({ todo, byId, todos, courseTitles, onOpen, onClose, onDelete }: { 
                 </li>
               ))}
             </ul>
+            {missing.length ? (
+              <p className="mt-1 flex items-center gap-2 text-[13px] text-ink-2">
+                {t.tdNewItems(missing.length)}
+                <button
+                  type="button"
+                  onClick={() => missing.forEach((i) => void addTodo({ title: plainTitle(i.title), parentId: todo.id, link: { kind: i.type === 'page' ? 'page' : 'item', ref: i.id, title: plainTitle(i.title) }, follow: i.type !== 'page', origin: 'item' }))}
+                  className="text-accent hover:underline"
+                >
+                  {t.tdNewItemsAdd}
+                </button>
+              </p>
+            ) : null}
+            {depth < MAX_DEPTH && outline ? (
+              <button type="button" onClick={() => setLinking(true)} className="mt-1 text-[13px] text-accent hover:underline">
+                {t.tdLinkFrom}
+              </button>
+            ) : null}
             {depth < MAX_DEPTH ? (
               <div className="mt-1 flex items-center gap-2">
                 <Plus size={14} className="text-ink-3" aria-hidden />
@@ -313,6 +347,12 @@ function Body({ todo, byId, todos, courseTitles, onOpen, onClose, onDelete }: { 
               <button type="button" onClick={() => void patchTodo(todo.id, { manual: false })} className="mt-1 text-[12px] text-accent hover:underline">
                 {t.tdFollowParts}
               </button>
+            ) : todo.follow && todo.manual ? (
+              <button type="button" onClick={() => void patchTodo(todo.id, { manual: false })} className="mt-1 text-[12px] text-accent hover:underline">
+                {t.tdFollowItem}
+              </button>
+            ) : todo.follow ? (
+              <p className="mt-1 text-[12px] text-ink-3">{t.tdFollowsItem}</p>
             ) : null}
           </div>
 
@@ -376,6 +416,7 @@ function Body({ todo, byId, todos, courseTitles, onOpen, onClose, onDelete }: { 
         </div>
       </div>
 
+      {linking ? <LinkPicker parent={todo} onClose={() => setLinking(false)} /> : null}
       <div className="flex flex-wrap items-center gap-3 border-t border-line px-6 py-3">
         {asking ? (
           <div className="min-w-0 flex-1 text-[13px]">

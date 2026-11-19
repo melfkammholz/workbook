@@ -8,17 +8,80 @@ import {
 import type { Store } from '../store.js';
 import { type Row, rowToTodo } from './shared.js';
 
-/** A todo with parts that is not manual takes its status from them: all done, all open, or in between. */
-function derive(t: Todo): void {
-  for (const c of t.children) derive(c);
-  if (t.manual || t.children.length === 0) return;
+/** What a followed part's item says now, or null when it says nothing (a page, or an item without work). */
+type Follower = (t: Todo) => { status: TodoStatus; at: number | null } | null;
+
+/** A todo with parts that is not manual takes its status from them (all done, all open, or in between), or from its item when it follows one. */
+function derive(t: Todo, follower: Follower): void {
+  for (const c of t.children) derive(c, follower);
+  if (t.manual) return;
+  if (t.follow && t.link) {
+    const f = follower(t);
+    if (f) {
+      t.status = f.status;
+      t.doneAt = f.status === 'done' ? f.at ?? t.doneAt : null;
+    }
+    return;
+  }
+  if (t.children.length === 0) return;
   const done = t.children.filter((c) => c.status === 'done').length;
   const open = t.children.filter((c) => c.status === 'open').length;
   t.status = done === t.children.length ? 'done' : open === t.children.length ? 'open' : 'doing';
   t.doneAt = t.status === 'done' ? Math.max(0, ...t.children.map((c) => c.doneAt ?? 0)) || t.doneAt : null;
 }
 
+export interface TodoTreeInput {
+  title: string;
+  course?: string | null;
+  link?: TodoLink | null;
+  follow?: boolean;
+  origin?: TodoOrigin;
+  parts?: TodoTreeInput[];
+}
+
 export class TodosPart {
+  /**
+   * Reads the student's work for every followed part in these trees: one query per workbook for items, one each for
+   * decks and resources, never one per todo. Item and lesson: its work status; deck: reviewed at least once since the
+   * part was made; resource: its reference is marked read.
+   */
+  private followerFor(this: Store, roots: Todo[]): Follower {
+    const followed: Todo[] = [];
+    const walk = (t: Todo) => {
+      if (t.follow && t.link && !t.manual) followed.push(t);
+      t.children.forEach(walk);
+    };
+    roots.forEach(walk);
+    if (followed.length === 0) return () => null;
+    const work = new Map<string, Map<string, TodoStatus>>();
+    for (const c of new Set(followed.filter((t) => t.link!.kind === 'item' && t.course).map((t) => t.course as string))) {
+      const m = new Map<string, TodoStatus>();
+      for (const r of this.all('SELECT exercise_id, status FROM progress WHERE course = ?', c))
+        m.set(r.exercise_id as string, r.status === 'done' || r.status === 'review' ? 'done' : r.status === 'in_progress' ? 'doing' : 'open');
+      work.set(c, m);
+    }
+    const reviewed = new Map<string, number[]>();
+    for (const r of this.all('SELECT deck_id, reviewed_at FROM card_reviews ORDER BY reviewed_at')) {
+      const l = reviewed.get(r.deck_id as string) ?? [];
+      l.push(Number(r.reviewed_at));
+      reviewed.set(r.deck_id as string, l);
+    }
+    const read = new Set(this.all("SELECT resource FROM works WHERE state = 'read' AND resource IS NOT NULL").map((r) => r.resource as string));
+    return (t) => {
+      const { kind, ref } = t.link!;
+      if (kind === 'item') {
+        const m = t.course ? work.get(t.course) : undefined;
+        return m ? { status: m.get(ref) ?? 'open', at: null } : null;
+      }
+      if (kind === 'deck') {
+        const at = (reviewed.get(ref) ?? []).find((x) => x >= t.createdAt);
+        return at === undefined ? { status: 'open', at: null } : { status: 'done', at };
+      }
+      if (kind === 'resource') return { status: read.has(ref) ? 'done' : 'open', at: null };
+      return null;
+    };
+  }
+
   // ───────────────────────── todos ─────────────────────────
 
   /** Todos are the student's, in every course. Top-level ones are filtered by status and course; parts come along. */
@@ -34,7 +97,8 @@ export class TodosPart {
       else if (!t.parentId) top.push(t);
     }
     // Next block by rank, the rest newest first.
-    for (const t of top) derive(t);
+    const follower = this.followerFor(top);
+    for (const t of top) derive(t, follower);
     top.sort((a, b) => (a.nextRank === null ? 1 : 0) - (b.nextRank === null ? 1 : 0) || (a.nextRank ?? 0) - (b.nextRank ?? 0) || b.createdAt - a.createdAt);
     return top.filter((t) => (filter.status === undefined || t.status === filter.status) && (filter.course === undefined || t.course === filter.course));
   }
@@ -49,22 +113,22 @@ export class TodosPart {
       return t;
     };
     const t = build(r);
-    derive(t);
+    derive(t, this.followerFor([t]));
     return t;
   }
 
   /** Null when the parent does not exist. A part takes its parent's course. */
-  addTodo(this: Store, a: { id?: string; parentId?: string | null; title: string; body?: string | null; course?: string | null; link?: TodoLink | null; due?: string | null; minutes?: number | null; origin?: TodoOrigin }): Todo | null {
+  addTodo(this: Store, a: { id?: string; parentId?: string | null; title: string; body?: string | null; course?: string | null; link?: TodoLink | null; follow?: boolean; due?: string | null; minutes?: number | null; origin?: TodoOrigin }): Todo | null {
     const parent = a.parentId ? this.get('SELECT course FROM todos WHERE id = ? AND deleted_at IS NULL', a.parentId) : undefined;
     if (a.parentId && !parent) return null;
     const id = a.id ?? randomUUID();
     const t = this.now();
     const sort = Number((this.get('SELECT COALESCE(MAX(sort) + 1, 0) AS n FROM todos WHERE parent_id IS ? AND deleted_at IS NULL', a.parentId ?? null) as Row).n);
     this.run(
-      'INSERT INTO todos (id, parent_id, sort, title, body, status, course, link_kind, link_ref, link_title, due, minutes, created_at, updated_at, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO todos (id, parent_id, sort, title, body, status, course, link_kind, link_ref, link_title, follow, due, minutes, created_at, updated_at, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       id, a.parentId ?? null, sort, a.title, a.body ?? null, 'open',
       parent ? ((parent.course as string | null) ?? null) : (a.course ?? null),
-      a.link?.kind ?? null, a.link?.ref ?? null, a.link?.title ?? null, a.due ?? null, a.minutes ?? null, t, t, a.origin ?? 'manual',
+      a.link?.kind ?? null, a.link?.ref ?? null, a.link?.title ?? null, a.follow && a.link ? 1 : 0, a.due ?? null, a.minutes ?? null, t, t, a.origin ?? 'manual',
     );
     return this.getTodo(id);
   }
@@ -75,7 +139,7 @@ export class TodosPart {
    */
   updateTodo(this: Store, 
     id: string,
-    p: { title?: string; body?: string | null; status?: TodoStatus; manual?: false; due?: string | null; minutes?: number | null; parentId?: string | null; course?: string | null; nextRank?: number | null; sort?: number },
+    p: { title?: string; body?: string | null; status?: TodoStatus; manual?: boolean; follow?: boolean; due?: string | null; minutes?: number | null; parentId?: string | null; course?: string | null; nextRank?: number | null; sort?: number },
   ): Todo | 'unknown' | 'cycle' | 'child' {
     const cur = this.get('SELECT * FROM todos WHERE id = ? AND deleted_at IS NULL', id);
     if (!cur) return 'unknown';
@@ -107,8 +171,28 @@ export class TodosPart {
         if (p.status !== cur.status) this.run('UPDATE todos SET status = ?, done_at = ? WHERE id = ?', p.status, p.status === 'done' ? t : null, id);
         this.run('UPDATE todos SET manual = 1 WHERE id = ?', id);
       } else if (p.manual === false) this.run('UPDATE todos SET manual = 0 WHERE id = ?', id);
+      else if (p.manual === true && Number(cur.manual) === 0) {
+        // "By hand" keeps what the part shows now.
+        const eff = this.getTodo(id)!;
+        this.run('UPDATE todos SET status = ?, done_at = ?, manual = 1 WHERE id = ?', eff.status, eff.status === 'done' ? eff.doneAt ?? t : null, id);
+      }
+      if (p.follow !== undefined && (!p.follow || cur.link_kind)) this.run('UPDATE todos SET follow = ? WHERE id = ?', p.follow ? 1 : 0, id);
       this.run('UPDATE todos SET updated_at = ? WHERE id = ?', t, id);
       return this.getTodo(id)!;
+    });
+  }
+
+  /** A parent and its parts (and their parts) in one go, all in "Als Nächstes" order handled by the caller. Null when the parent id is unknown. */
+  addTodoTree(this: Store, tree: TodoTreeInput, parentId: string | null = null): Todo | null {
+    return this.tx(() => {
+      const make = (n: TodoTreeInput, parent: string | null): string | null => {
+        const made = this.addTodo({ parentId: parent, title: n.title, course: n.course ?? null, link: n.link ?? null, follow: n.follow ?? false, origin: n.origin ?? 'item' });
+        if (!made) return null;
+        for (const c of n.parts ?? []) if (!make(c, made.id)) return null;
+        return made.id;
+      };
+      const id = make(tree, parentId);
+      return id ? this.getTodo(id) : null;
     });
   }
 

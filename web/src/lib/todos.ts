@@ -29,7 +29,7 @@ async function optimistic<T>(show: ((list: Todo[]) => Todo[]) | null, send: () =
   }
 }
 
-export type TodoPatch = Partial<Pick<Todo, 'title' | 'body' | 'status' | 'due' | 'minutes' | 'nextRank' | 'parentId' | 'course' | 'sort'>> & { manual?: false };
+export type TodoPatch = Partial<Pick<Todo, 'title' | 'body' | 'status' | 'due' | 'minutes' | 'nextRank' | 'parentId' | 'course' | 'sort'>> & { manual?: boolean };
 
 export const patchTodo = (id: string, patch: TodoPatch) =>
   optimistic(
@@ -44,10 +44,10 @@ export const setTodoTags = (id: string, tags: string[]) =>
     () => setTagsOn('todo', id, tags),
   );
 
-export const addTodo = (a: { title: string; parentId?: string | null; course?: string | null; link?: TodoLink; minutes?: number; origin?: Todo['origin'] }) => {
+export const addTodo = (a: { title: string; parentId?: string | null; course?: string | null; link?: TodoLink; follow?: boolean; minutes?: number; origin?: Todo['origin'] }) => {
   const id = crypto.randomUUID();
   const now = Date.now();
-  const fresh: Todo = { id, parentId: a.parentId ?? null, sort: 1_000_000, title: a.title, body: null, status: 'open', storedStatus: 'open', manual: false, follow: false, tags: [], course: a.course ?? null, link: a.link ?? null, due: null, minutes: a.minutes ?? null, nextRank: null, origin: a.origin ?? 'manual', createdAt: now, updatedAt: now, doneAt: null, children: [] };
+  const fresh: Todo = { id, parentId: a.parentId ?? null, sort: 1_000_000, title: a.title, body: null, status: 'open', storedStatus: 'open', manual: false, follow: a.follow ?? false, tags: [], course: a.course ?? null, link: a.link ?? null, due: null, minutes: a.minutes ?? null, nextRank: null, origin: a.origin ?? 'manual', createdAt: now, updatedAt: now, doneAt: null, children: [] };
   return optimistic(
     (l) => (a.parentId ? mapTree(l, a.parentId, (p) => ({ ...p, children: [...p.children, { ...fresh, course: p.course }] })) : [fresh, ...l]),
     () => api.post<Todo>('/api/todos', { id, ...a }),
@@ -93,3 +93,13 @@ export function askOrTodo(where: QuestionPlace, text: string) {
   if (m) showLineNote({ kind: 'unknown', cmd: m[1]! });
   return askQuestion(where, text);
 }
+
+export interface TodoTreeNode {
+  title: string;
+  link?: TodoLink;
+  follow?: boolean;
+  parts?: TodoTreeNode[];
+}
+
+/** A parent with its parts in one request; with `next` it goes to "Als Nächstes". */
+export const addTodoTree = (a: { title: string; course: string | null; link?: TodoLink; next?: boolean; parts: TodoTreeNode[] }) => optimistic(null, () => api.post<Todo>('/api/todos/tree', a));

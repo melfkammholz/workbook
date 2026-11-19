@@ -7,6 +7,11 @@ import type { Deps } from './deps.js';
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const link = z.object({ kind: z.enum(TODO_LINK_KINDS), ref: z.string().min(1).max(1000), title: z.string().max(300).nullable().default(null) });
 
+type TreePart = { title: string; link?: { kind: (typeof TODO_LINK_KINDS)[number]; ref: string; title: string | null } | null; follow?: boolean; parts?: TreePart[] };
+const treePart: z.ZodType<TreePart> = z.lazy(() =>
+  z.object({ title: z.string().trim().min(1).max(MAX_TODO_TITLE), link: link.nullable().optional(), follow: z.boolean().optional(), parts: z.array(treePart).max(50).optional() }),
+);
+
 const bodies = {
   add: z.object({
     id: z.string().uuid().optional(),
@@ -15,6 +20,7 @@ const bodies = {
     body: z.string().max(MAX_TODO_BODY).nullable().optional(),
     course: z.string().max(200).nullable().optional(),
     link: link.nullable().optional(),
+    follow: z.boolean().optional(),
     due: date.nullable().optional(),
     minutes: z.number().int().min(1).max(100_000).nullable().optional(),
     origin: z.enum(['manual', 'item', 'ticket-line']).optional(),
@@ -24,7 +30,8 @@ const bodies = {
       title: z.string().trim().min(1).max(MAX_TODO_TITLE),
       body: z.string().max(MAX_TODO_BODY).nullable(),
       status: z.enum(TODO_STATUSES as [string, ...string[]]),
-      manual: z.literal(false),
+      manual: z.boolean(),
+      follow: z.boolean(),
       due: date.nullable(),
       minutes: z.number().int().min(1).max(100_000).nullable(),
       parentId: z.string().max(100).nullable(),
@@ -33,6 +40,16 @@ const bodies = {
       sort: z.number().int().min(0).max(1_000_000),
     })
     .partial(),
+  tree: z.object({
+    parentId: z.string().max(100).nullable().optional(),
+    title: z.string().trim().min(1).max(MAX_TODO_TITLE),
+    course: z.string().max(200).nullable().optional(),
+    link: link.nullable().optional(),
+    /** Each part becomes a part of the new parent; a part may have parts (an exercise's sub-tasks). */
+    parts: z.array(treePart).max(200),
+    /** The new parent goes to "Als Nächstes". */
+    next: z.boolean().optional(),
+  }),
   reorder: z.object({ ids: z.array(z.string().max(100)).max(500) }),
 };
 
@@ -54,6 +71,16 @@ export function todoRoutes(app: FastifyInstance, d: Deps): void {
     const { link: l, ...rest } = r.data;
     const made = d.store.addTodo({ ...rest, ...(l !== undefined ? { link: l } : {}) });
     return made ? withTargets(d, [made])[0] : reply.code(404).send({ error: 'unknown parent' });
+  });
+
+  app.post('/api/todos/tree', async (req, reply) => {
+    const r = bodies.tree.safeParse(req.body);
+    if (!r.success) return fail(reply, r.error);
+    const { parentId, next, ...tree } = r.data;
+    const made = d.store.addTodoTree({ ...tree, origin: 'item' } as Parameters<typeof d.store.addTodoTree>[0], parentId ?? null);
+    if (!made) return reply.code(404).send({ error: 'unknown parent' });
+    if (next && !parentId) d.store.reorderTodoNext([...d.store.listTodos().filter((t) => t.nextRank !== null).map((t) => t.id), made.id]);
+    return withTargets(d, [d.store.getTodo(made.id)!])[0];
   });
 
   // Before `/:id`, so that "reorder" is not taken for an id.

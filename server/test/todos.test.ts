@@ -131,4 +131,49 @@ describe('todos', () => {
     expect(store.getTodo(b.id)!.tags).toEqual([tag.id]);
     expect(store.getTodo(a.id)!.tags).toEqual([]);
   });
+
+  it('a followed part takes its status from the item, the student\'s own tick wins, clearing re-follows', () => {
+    const { store, tick } = make();
+    const a = store.addTodo({ title: 'Thread', course: 'c1' })!;
+    const ex = store.addTodo({ title: 'Ex', parentId: a.id, link: { kind: 'item', ref: 'e1', title: null }, follow: true })!;
+    const les = store.addTodo({ title: 'Les', parentId: a.id, link: { kind: 'item', ref: 'l1', title: null }, follow: true })!;
+    const deck = store.addTodo({ title: 'Deck', parentId: a.id, link: { kind: 'deck', ref: 'd1', title: null }, follow: true })!;
+    const res = store.addTodo({ title: 'Res', parentId: a.id, link: { kind: 'resource', ref: 'r1', title: null }, follow: true })!;
+    const status = (id: string) => store.getTodo(id)!.status;
+    expect([ex, les, deck, res].map((t) => status(t.id))).toEqual(['open', 'open', 'open', 'open']);
+    const c1 = store.forCourse('c1');
+    c1.setStatus('e1', 'in_progress');
+    c1.setStatus('l1', 'done');
+    expect([status(ex.id), status(les.id)]).toEqual(['doing', 'done']);
+    expect(store.getTodo(a.id)!.status).toBe('doing');
+    // A deck counts once it was reviewed after the part was made.
+    tick(1000);
+    store.run('INSERT INTO card_reviews (key, deck_id, rating, was_new, state, stability, difficulty, due, reviewed_at) VALUES (?,?,?,?,?,?,?,?,?)', 'k', 'd1', 3, 1, 1, 1, 1, 1, store.now());
+    expect(status(deck.id)).toBe('done');
+    // A resource counts when its reference is marked read.
+    store.run("INSERT INTO resources (id, title, type, created_at, updated_at) VALUES ('r1', 'R', 'notes', 1, 1)");
+    store.run("INSERT INTO works (id, resource, state, created_at, updated_at) VALUES ('w1', 'r1', 'read', 1, 1)");
+    expect(status(res.id)).toBe('done');
+    // The student's own tick wins, and clearing it follows the item again.
+    store.updateTodo(ex.id, { status: 'done' });
+    expect(store.getTodo(ex.id)).toMatchObject({ status: 'done', manual: true });
+    c1.setStatus('e1', 'todo');
+    expect(status(ex.id)).toBe('done');
+    store.updateTodo(ex.id, { manual: false });
+    expect(status(ex.id)).toBe('open');
+    // "By hand" keeps what it shows now.
+    c1.setStatus('e1', 'done');
+    store.updateTodo(ex.id, { manual: true });
+    c1.setStatus('e1', 'todo');
+    expect(store.getTodo(ex.id)).toMatchObject({ status: 'done', manual: true });
+  });
+
+  it('makes a parent with parts and sub-parts in one go', () => {
+    const { store } = make();
+    const t = store.addTodoTree({ title: 'Path', course: 'c1', parts: [{ title: 'E', link: { kind: 'item', ref: 'e', title: 'E' }, follow: true, parts: [{ title: 'a)' }, { title: 'b)' }] }, { title: 'F' }] })!;
+    expect(t.children.map((c) => c.title)).toEqual(['E', 'F']);
+    expect(t.children[0]!.children).toHaveLength(2);
+    expect(t.children[0]!).toMatchObject({ follow: true, course: 'c1' });
+    expect(store.addTodoTree({ title: 'x' }, 'nope')).toBeNull();
+  });
 });

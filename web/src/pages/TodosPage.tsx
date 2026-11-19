@@ -96,7 +96,7 @@ function Circle({ todo, ctx, size = 18 }: { todo: Todo; ctx: Ctx; size?: number 
       aria-label={done ? t.todosUntick : t.todosTick}
       title={done ? t.todosUntick : t.todosTick}
       onClick={() => ctx.toggle(todo)}
-      className={clsx('grid shrink-0 place-items-center rounded-full border-[1.5px] transition-colors', done ? 'border-done bg-done text-white' : half ? 'border-accent text-accent' : 'border-line-strong text-transparent hover:border-ink-3')}
+      className={clsx('grid shrink-0 place-items-center rounded-full border-[1.5px] transition-colors', done ? 'border-done bg-done text-white' : half ? 'border-accent text-accent' : 'border-line-strong text-transparent hover:border-ink-3', todo.follow && !todo.manual && 'border-dashed')}
       style={{ width: size, height: size }}
     >
       {done ? <Check size={size - 6} strokeWidth={3} aria-hidden /> : half ? <span aria-hidden className="size-[40%] rounded-full bg-accent" /> : null}

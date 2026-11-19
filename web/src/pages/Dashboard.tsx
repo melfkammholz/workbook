@@ -1,3 +1,4 @@
+import { PathAsTodo } from '@/components/AddToTodos';
 import { ArrowRight, BookOpen, Compass, RotateCcw } from 'lucide-react';
 import { Fragment, useMemo } from 'react';
 import { Link } from 'wouter';
@@ -224,7 +225,10 @@ export function Dashboard() {
             <ul className="space-y-3">
               {paths.map((t) => (
                 <li key={t.id} className="rounded-lg border border-line bg-sheet px-4 py-3">
-                  <p className="font-medium"><Title text={t.title} /></p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-medium"><Title text={t.title} /></p>
+                    <PathAsTodo thread={t} className="shrink-0" />
+                  </div>
                   {t.description ? <p className="mt-0.5 text-[13.5px] text-ink-2">{t.description}</p> : null}
                   <ol className="mt-3 flex flex-wrap items-center gap-y-2">
                     {t.steps.map((step, i) => (
