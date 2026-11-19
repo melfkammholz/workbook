@@ -162,7 +162,7 @@ function dropBitmaps(doc: PDFDocumentProxy): void {
 export const isPdf = (filename: string) => /\.pdf$/i.test(filename);
 
 /** Title and author a PDF carries itself, for the upload dialog. Reads little of the file: `blobUrl` supports ranges. */
-export async function pdfMetadata(file: File): Promise<{ title: string; author: string }> {
+export async function pdfMetadata(file: File): Promise<{ title: string; author: string; doi: string }> {
   const pdfjs = await loadPdfjs();
   const url = URL.createObjectURL(file);
   const task = pdfjs.getDocument({ ...FONT_ASSETS, url, disableAutoFetch: true });
@@ -173,7 +173,15 @@ export async function pdfMetadata(file: File): Promise<{ title: string; author: 
     let title = clean(info.Title).replace(/^Microsoft Word - /i, '').trim();
     // Tools leave their own names behind; those say nothing.
     if (/^(untitled|unbenannt|document\d*)(\.\w+)?$/i.test(title) || /\.(tex|dvi|docx?|odt|pptx?|indd)$/i.test(title)) title = '';
-    return { title, author: clean(info.Author) };
+    // A DOI printed on the first page tells a paper from slides and notes.
+    let doi = '';
+    try {
+      const text = (await (await doc.getPage(1)).getTextContent()).items.map((i) => ('str' in i ? i.str : '')).join(' ');
+      doi = /\b(10\.\d{4,9}\/[^\s"<>]+)/i.exec(text)?.[1]?.replace(/[.,;)\]]+$/, '') ?? '';
+    } catch {
+      /* no text on page 1 */
+    }
+    return { title, author: clean(info.Author), doi };
   } finally {
     void task.destroy();
     URL.revokeObjectURL(url);

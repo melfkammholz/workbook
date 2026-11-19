@@ -12,6 +12,7 @@ import { PagesWithNotes, PdfPageNotes } from '@/components/PdfPageNotes';
 import { PdfUnplaced } from '@/components/PdfUnplaced';
 import { PdfQuestionBar, PdfTicketList, usePdfTickets } from '@/components/PdfTickets';
 import { PdfToc, type TocActions } from '@/components/PdfToc';
+import { AddDialog } from '@/components/AddDialog';
 import { useBibImport } from '@/components/BibImport';
 import { PdfReferences } from '@/components/PdfReferences';
 import { fixEntry, rereadBibliography, useBibliography, useBibliographyReader, type Fix } from '@/lib/bibliography';
@@ -203,7 +204,8 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   const bibliography = useBibliography(resource.id).data;
   useBibliographyReader(qc, resource.id, resource.file.sha256, doc, bibliography);
   const bibliographyCard = useMemo(() => (bibliography?.length ? { entries: bibliography } : undefined), [bibliography]);
-  const bibImport = useBibImport();
+  const [bibText, setBibText] = useState<string | null>(null);
+  const bibImport = useBibImport(setBibText);
   const settings = useSettings().data;
   const tagList = useTags().data ?? [];
   const cards = !!settings?.showFlashcards;
@@ -586,6 +588,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   return (
     <div className="flex h-full flex-col">
       {bibImport.node}
+      {bibText !== null ? <AddDialog initialText={bibText} courses={[]} series={[]} course={null} onClose={() => setBibText(null)} /> : null}
       <div className="flex h-11 shrink-0 flex-wrap items-center gap-1 border-b border-line bg-sheet px-2">
         <BackLink fallback="/materials" label={t.back} className="mr-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm text-ink-2 hover:bg-sunk hover:text-ink">
           {t.back}

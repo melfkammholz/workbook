@@ -1,4 +1,4 @@
-import { toBibtex, type LibraryWork, type Resource, type WorkState } from '@wb/shared';
+import { toBibtex, type LibraryWork, type Resource, type ResourceSeries, type ResourcesResponse, type WorkState } from '@wb/shared';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ChevronUp, Copy, Download, FileInput, FileText, Link2, Pencil, Plus, Trash2, Unlink, Upload } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -59,13 +59,22 @@ const inView = (r: LibraryRow, v: View) => {
  * The library: works with their material, and materials that are no work's, as one table. A rail on the left filters
  * by view, tag and file; in the "All" view what is relevant now sits on top.
  */
-export function WorksLibrary({ resources, onEditResource, onDeleteResource, onFiles }: { resources: Resource[]; onEditResource: (r: Resource) => void; onDeleteResource: (r: Resource) => void; onFiles: (files: File[]) => void }) {
+export function WorksLibrary({ resources, courses, series, activeCourse, dropped, onDroppedUsed, onEditResource, onDeleteResource }: { resources: Resource[]; courses: ResourcesResponse['courses']; series: ResourceSeries[]; activeCourse: string | null; dropped: File[] | null; onDroppedUsed: () => void; onEditResource: (r: Resource) => void; onDeleteResource: (r: Resource) => void }) {
   const t = useT();
   const qc = useQueryClient();
   const works = useWorks().data;
-  const bib = useBibImport();
   const tagMap = useTagMap();
   const [adding, setAdding] = useState<string | null>(null);
+  const [addFiles, setAddFiles] = useState<File[] | null>(null);
+  const bib = useBibImport((text) => setAdding(text));
+  // Files dropped onto the page open the add dialog on them.
+  useEffect(() => {
+    if (!dropped?.length) return;
+    setAddFiles(dropped);
+    setAdding('');
+    onDroppedUsed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dropped]);
   const [view, setView] = useState<View>('all');
   const [fileHave, setFileHave] = useState(false);
   const [fileMissing, setFileMissing] = useState(false);
@@ -194,7 +203,7 @@ export function WorksLibrary({ resources, onEditResource, onDeleteResource, onFi
         </MoreMenu>
       </div>
       {bib.node}
-      {adding !== null ? <AddDialog initialText={adding} onFiles={onFiles} onClose={() => setAdding(null)} /> : null}
+      {adding !== null ? <AddDialog initialText={adding} initialFiles={addFiles} courses={courses} series={series} course={activeCourse} onClose={() => { setAdding(null); setAddFiles(null); }} /> : null}
       {!works ? (
         <div className="mt-10 grid place-items-center">
           <Spinner />

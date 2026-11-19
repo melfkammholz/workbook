@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { createWork, editWork, lookupWork, removeWork } from '@/lib/bibliography';
 import { useSettings } from '@/lib/api';
 import { useT } from '@/lib/i18n';
-import { BibPasteDialog } from './BibImport';
 import { Button, Dialog } from './ui';
 
 const EMPTY: WorkEdit = { title: '', authors: '', year: null, venue: '', doi: '', url: '', volume: '', pages: '', arxiv: '' };
@@ -76,7 +75,6 @@ export function WorkEditDialog({ work, onClose }: { work?: Work; onClose: () => 
   const qc = useQueryClient();
   const [f, setF] = useState<WorkEdit>(work ? { title: work.title, authors: work.authors, year: work.year, venue: work.venue, doi: work.doi, url: work.url, volume: work.volume, pages: work.pages, arxiv: work.arxiv } : EMPTY);
   const [busy, setBusy] = useState(false);
-  const [pasting, setPasting] = useState(false);
   const [fetchId, setFetchId] = useState('');
   const [fetching, setFetching] = useState(false);
   const [fetchMiss, setFetchMiss] = useState(false);
@@ -100,7 +98,6 @@ export function WorkEditDialog({ work, onClose }: { work?: Work; onClose: () => 
     void (work ? editWork(qc, work.id, f) : createWork(qc, f)).then(onClose, () => setBusy(false));
   };
   const row = 'block text-[13px] text-ink-2';
-  if (pasting) return <BibPasteDialog onClose={onClose} />;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title={work ? t.workEditTitle : t.workNewTitle} description={work ? t.workEditHint : t.workNewHint} width="max-w-xl">
       <form
@@ -136,9 +133,6 @@ export function WorkEditDialog({ work, onClose }: { work?: Work; onClose: () => 
               </span>
             </label>
             <p className="mt-1 text-[12px] text-ink-3">{!lookupOn ? t.workFetchOff : fetchMiss ? t.workFetchMiss : t.workFetchHint}</p>
-            <button type="button" onClick={() => setPasting(true)} className="mt-1 text-[12px] font-medium text-accent hover:underline">
-              {t.workPasteBibtex}
-            </button>
           </div>
         )}
         <WorkFormFields f={f} setF={setF} autoFocusTitle={!!work} />

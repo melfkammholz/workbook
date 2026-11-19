@@ -253,8 +253,8 @@ export async function rereadBibliography(qc: QueryClient, resource: string, vers
 }
 
 /** Adds the works the student chose from a pasted or uploaded BibTeX/Hayagriva text. */
-export function importWorks(qc: QueryClient, works: ImportChoice[]): Promise<{ added: number; merged: number }> {
-  return api.post<{ added: number; merged: number }>('/api/works/import', { works }).then(
+export function importWorks(qc: QueryClient, works: ImportChoice[]): Promise<{ added: number; merged: number; addedIds: string[] }> {
+  return api.post<{ added: number; merged: number; addedIds: string[] }>('/api/works/import', { works }).then(
     (r) => {
       refreshWorks(qc);
       return r;
@@ -283,4 +283,21 @@ export function useCitedWorks(course: string | undefined, page: { id: string; ti
       return ids;
     },
   });
+}
+
+/** State and tags for works just made (waits for the server, then the library is read again). */
+export async function sortNewWorks(qc: QueryClient, ids: string[], state: WorkState | null, tags: string[]): Promise<void> {
+  try {
+    await Promise.all(
+      ids.flatMap((id) => [
+        ...(state ? [api.put(`/api/works/${encodeURIComponent(id)}/state`, { state })] : []),
+        ...(tags.length ? [api.put(`/api/tags/on/work/${encodeURIComponent(id)}`, { ids: tags })] : []),
+      ]),
+    );
+  } catch (e) {
+    reportSaveFailed();
+    throw e;
+  } finally {
+    refreshWorks(qc);
+  }
 }

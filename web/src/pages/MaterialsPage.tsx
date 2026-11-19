@@ -7,7 +7,8 @@ import { WorksLibrary } from '@/components/WorksLibrary';
 import { MenuItem, MenuRule, MoreMenu } from '@/components/Menu';
 import { useNewVersion } from '@/components/NewVersionButton';
 import { RowTags } from '@/components/RowTags';
-import { DeleteDialog, EditDialog, UploadDialog } from '@/components/ResourceDialogs';
+import { AddDialog } from '@/components/AddDialog';
+import { DeleteDialog, EditDialog } from '@/components/ResourceDialogs';
 import { Button, Empty, Spinner } from '@/components/ui';
 import { setTagsOn, useTags } from '@/lib/tags';
 import { useOutline } from '@/lib/api';
@@ -174,7 +175,8 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
     const files = [...e.dataTransfer.files].filter((_, i) => !items[i]?.webkitGetAsEntry?.()?.isDirectory);
     if (!files.length) return;
     setDropped(files);
-    setUploading(true);
+    // In the library the table opens the dialog; a workbook's list opens it here.
+    if (course) setUploading(true);
   };
   const empty = sections.every((s) => s.items.length === 0);
   return (
@@ -213,12 +215,13 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
         ) : null}
         {refs ? <WorksLibrary
             resources={data.resources}
+            courses={data.courses}
+            series={data.series}
+            activeCourse={activeCourse}
+            dropped={dropped}
+            onDroppedUsed={() => setDropped(null)}
             onEditResource={setEditing}
             onDeleteResource={setDeleting}
-            onFiles={(files) => {
-              setDropped(files);
-              setUploading(true);
-            }}
           /> : null}
         {!refs && usedLabels.length ? (
           <div className="mt-4 flex flex-wrap items-center gap-1.5" role="group" aria-label={t.resourceLabelFilter}>
@@ -254,15 +257,18 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
             ))
         )}
       </div>
-      <UploadDialog open={uploading} onClose={() => {
-          setUploading(false);
-          setDropped(null);
-        }}
-        courses={data.courses}
-        series={data.series}
-        course={activeCourse}
-        initial={dropped}
-      />
+      {uploading && course ? (
+        <AddDialog
+          initialFiles={dropped}
+          courses={data.courses}
+          series={data.series}
+          course={activeCourse}
+          onClose={() => {
+            setUploading(false);
+            setDropped(null);
+          }}
+        />
+      ) : null}
       <EditDialog resource={editing} onClose={() => setEditing(null)} courses={data.courses} series={data.series} />
       <DeleteDialog resource={deleting} onClose={() => setDeleting(null)} />
     </div>

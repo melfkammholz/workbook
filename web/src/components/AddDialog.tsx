@@ -1,14 +1,17 @@
-import type { LibraryWork, WorkEdit } from '@wb/shared';
+import type { LibraryWork, ResourceSeries, ResourcesResponse, WorkEdit } from '@wb/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createWork, lookupWork, useWorks } from '@/lib/bibliography';
 import { useSettings } from '@/lib/api';
 import { useT } from '@/lib/i18n';
-import { BibImportDialog, looksLikeBibliography } from './BibImport';
+import { AddBib } from './AddBib';
+import { AddFiles } from './AddFiles';
+import { looksLikeBibliography } from './BibImport';
 import { ARXIV_ID, WorkFormFields, yearValid } from './WorkEditDialog';
 import { Button, Dialog, Spinner, clsx } from './ui';
 
 const EMPTY: WorkEdit = { title: '', authors: '', year: null, venue: '', doi: '', url: '', volume: '', pages: '', arxiv: '' };
+type Course = ResourcesResponse['courses'][number];
 const DOI = /\b(10\.\d{4,9}\/[^\s"<>]+)/i;
 
 type Kind = { kind: 'doi'; id: string } | { kind: 'arxiv'; id: string } | { kind: 'bibtex' } | { kind: 'title'; text: string } | null;
@@ -31,9 +34,9 @@ const isDuplicate = (works: LibraryWork[] | undefined, f: WorkEdit) =>
 
 /**
  * One dialog to add to the library: a field that takes a DOI, arXiv id, BibTeX or a title, files by drop or choice
- * (handed to `onFiles`), or "by hand". Details are editable before adding; "add another" keeps the dialog open.
+ * (a row each), or "by hand". Details are editable before adding; "add another" keeps the dialog open.
  */
-export function AddDialog({ onClose, onFiles, initialText = '' }: { onClose: () => void; onFiles: (files: File[]) => void; initialText?: string }) {
+export function AddDialog({ onClose, initialText = '', initialFiles = null, courses, series, course }: { onClose: () => void; initialText?: string; initialFiles?: File[] | null; courses: Course[]; series: ResourceSeries[]; course: string | null }) {
   const t = useT();
   const qc = useQueryClient();
   const works = useWorks().data;
@@ -47,6 +50,7 @@ export function AddDialog({ onClose, onFiles, initialText = '' }: { onClose: () 
   const [busy, setBusy] = useState(false);
   const [over, setOver] = useState(false);
   const [bibtex, setBibtex] = useState<string | null>(null);
+  const [picked, setPicked] = useState<File[] | null>(initialFiles?.length ? initialFiles : null);
 
   const go = (value = text) => {
     const d = detect(value);
@@ -71,11 +75,14 @@ export function AddDialog({ onClose, onFiles, initialText = '' }: { onClose: () 
     });
   };
   const files = (list: FileList | File[] | null) => {
-    const picked = list ? [...list] : [];
-    if (!picked.length) return;
-    onFiles(picked);
-    onClose();
+    const got = list ? [...list] : [];
+    if (got.length) setPicked(got);
   };
+  // Something pasted on the page that is a DOI, an arXiv id or BibTeX is looked at right away.
+  useEffect(() => {
+    if (initialText && detect(initialText)?.kind !== 'title') go(initialText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const yearOk = yearValid(f);
   const save = () => {
     if (busy || !yearOk || !f.title.trim()) return;
@@ -93,10 +100,13 @@ export function AddDialog({ onClose, onFiles, initialText = '' }: { onClose: () 
     );
   };
 
-  if (bibtex !== null) return <BibImportDialog text={bibtex} onClose={onClose} />;
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()} title={t.addTitle} width="max-w-xl">
-      {step === 'start' ? (
+    <Dialog open onOpenChange={(o) => !o && onClose()} title={t.addTitle} width={picked || bibtex !== null ? 'max-w-2xl' : 'max-w-xl'}>
+      {picked ? (
+        <AddFiles files={picked} courses={courses} series={series} course={course} onBack={() => (initialFiles?.length ? onClose() : setPicked(null))} onClose={onClose} />
+      ) : bibtex !== null ? (
+        <AddBib text={bibtex} onBack={() => setBibtex(null)} onClose={onClose} />
+      ) : step === 'start' ? (
         <div className="space-y-3">
           <div
             onDragOver={(e) => {

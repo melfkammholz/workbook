@@ -737,8 +737,9 @@ export class Resources {
    * Adds the chosen works to the library (they stay with no PDF citing them). A choice with `into` adds nothing new:
    * it fills the fields the library's work lacks. Returns how many were added and how many were merged into others.
    */
-  importWorks(choices: ImportChoice[]): { added: number; merged: number } {
+  importWorks(choices: ImportChoice[]): { added: number; merged: number; addedIds: string[] } {
     const t = this.now();
+    const addedIds: string[] = [];
     let added = 0;
     let merged = 0;
     this.sql.tx(() => {
@@ -753,12 +754,14 @@ export class Resources {
           );
           merged++;
         } else {
-          this.sql.run('INSERT INTO works (id, title, authors, year, venue, doi, url, raw, imported, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,1,?,?)', crypto.randomUUID(), w.title, w.authors, w.year, w.venue, w.doi, w.url, w.raw, t, t);
+          const id = crypto.randomUUID();
+          this.sql.run('INSERT INTO works (id, title, authors, year, venue, doi, url, raw, imported, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,1,?,?)', id, w.title, w.authors, w.year, w.venue, w.doi, w.url, w.raw, t, t);
+          addedIds.push(id);
           added++;
         }
       }
     });
-    return { added, merged };
+    return { added, merged, addedIds };
   }
 
   /**
