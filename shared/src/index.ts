@@ -380,6 +380,8 @@ export interface Settings {
   editorKeys: 'default' | 'vim';
   /** The prompt the AI review tab copies. Empty means the default for the app's language. */
   aiPromptTemplate: string;
+  /** Tag ids that make the lanes of the todo board in tag mode, in order. */
+  todoLaneTags: string[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -410,6 +412,7 @@ export const DEFAULT_SETTINGS: Settings = {
   editorFontSize: 13.5,
   editorKeys: 'default',
   aiPromptTemplate: '',
+  todoLaneTags: [],
 };
 
 // ───────────────────────── materials ─────────────────────────

@@ -57,6 +57,7 @@ const bodies = {
       editorFontSize: z.number().min(10).max(24),
       editorKeys: z.enum(['default', 'vim']),
       aiPromptTemplate: z.string().max(20_000),
+      todoLaneTags: z.array(z.string().max(100)).max(50),
     })
     .partial(),
 };
