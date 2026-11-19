@@ -35,6 +35,8 @@ const bodies = {
       due: date.nullable(),
       minutes: z.number().int().min(1).max(100_000).nullable(),
       parentId: z.string().max(100).nullable(),
+      before: z.string().max(100),
+      after: z.string().max(100),
       course: z.string().max(200).nullable(),
       nextRank: z.number().int().min(0).max(1_000_000).nullable(),
       sort: z.number().int().min(0).max(1_000_000),

@@ -34,6 +34,33 @@ describe('todos', () => {
     expect(store.updateTodo('nope', { title: 'x' })).toBe('unknown');
   });
 
+  it('places a part before or after a sibling, across parents, and promotes', () => {
+    const { store } = make();
+    const a = store.addTodo({ title: 'A' })!;
+    const x = store.addTodo({ title: 'X', parentId: a.id })!;
+    const y = store.addTodo({ title: 'Y', parentId: a.id })!;
+    const z = store.addTodo({ title: 'Z', parentId: a.id })!;
+    const names = (id: string) => store.getTodo(id)!.children.map((c) => c.title).join('');
+    store.updateTodo(z.id, { parentId: a.id, before: x.id });
+    expect(names(a.id)).toBe('ZXY');
+    store.updateTodo(z.id, { parentId: a.id, after: y.id });
+    expect(names(a.id)).toBe('XYZ');
+    const b = store.addTodo({ title: 'B' })!;
+    const w = store.addTodo({ title: 'W', parentId: b.id })!;
+    store.updateTodo(y.id, { parentId: b.id, before: w.id });
+    expect(names(b.id)).toBe('YW');
+    expect(names(a.id)).toBe('XZ');
+    // The last part leaving makes the parent plain: it keeps its shown status.
+    store.updateTodo(x.id, { status: 'done' });
+    store.updateTodo(z.id, { status: 'done' });
+    expect(store.getTodo(a.id)!.status).toBe('done');
+    store.updateTodo(x.id, { parentId: null });
+    store.updateTodo(z.id, { parentId: null });
+    expect(store.getTodo(a.id)).toMatchObject({ status: 'done', manual: true, children: [] });
+    expect(store.getTodo(x.id)!.parentId).toBeNull();
+    expect(store.updateTodo(a.id, { parentId: b.id, before: 'nope' })).toMatchObject({ parentId: b.id });
+  });
+
   it('done sets and clears done_at; a parent does not touch its parts', () => {
     const { store, tick } = make();
     const a = store.addTodo({ title: 'A' })!;

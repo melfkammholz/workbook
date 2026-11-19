@@ -139,23 +139,37 @@ export class TodosPart {
    */
   updateTodo(this: Store, 
     id: string,
-    p: { title?: string; body?: string | null; status?: TodoStatus; manual?: boolean; follow?: boolean; due?: string | null; minutes?: number | null; parentId?: string | null; course?: string | null; nextRank?: number | null; sort?: number },
+    p: { title?: string; body?: string | null; status?: TodoStatus; manual?: boolean; follow?: boolean; due?: string | null; minutes?: number | null; parentId?: string | null; before?: string; after?: string; course?: string | null; nextRank?: number | null; sort?: number },
   ): Todo | 'unknown' | 'cycle' | 'child' {
     const cur = this.get('SELECT * FROM todos WHERE id = ? AND deleted_at IS NULL', id);
     if (!cur) return 'unknown';
     return this.tx(() => {
       const t = this.now();
       let parentId = (cur.parent_id as string | null) ?? null;
-      if (p.parentId !== undefined && p.parentId !== parentId) {
+      const place = p.before ?? p.after;
+      if (p.parentId !== undefined && (p.parentId !== parentId || place)) {
         if (p.parentId !== null) {
           if (!this.get('SELECT 1 FROM todos WHERE id = ? AND deleted_at IS NULL', p.parentId)) return 'unknown' as const;
           for (let a: string | null = p.parentId; a; a = ((this.get('SELECT parent_id FROM todos WHERE id = ?', a)?.parent_id as string | null) ?? null)) {
             if (a === id) return 'cycle' as const;
           }
         }
+        const from = parentId;
         parentId = p.parentId;
-        const sort = Number((this.get('SELECT COALESCE(MAX(sort) + 1, 0) AS n FROM todos WHERE parent_id IS ? AND deleted_at IS NULL', parentId) as Row).n);
-        this.run('UPDATE todos SET parent_id = ?, sort = ?, next_rank = NULL WHERE id = ?', parentId, sort, id);
+        const moved = parentId !== from;
+        if (moved) {
+          // A parent that loses its last part becomes a plain todo and keeps what it showed.
+          const old = from ? this.getTodo(from) : null;
+          if (old && old.children.length === 1 && !old.manual) {
+            this.run('UPDATE todos SET status = ?, done_at = ?, manual = 1 WHERE id = ?', old.status, old.status === 'done' ? old.doneAt ?? t : null, from);
+          }
+          this.run('UPDATE todos SET parent_id = ?, next_rank = NULL WHERE id = ?', parentId, id);
+        }
+        // Land next to a sibling (or at the end): renumber the siblings so the order is explicit.
+        const sibs = (this.all('SELECT id FROM todos WHERE parent_id IS ? AND deleted_at IS NULL AND id <> ? ORDER BY sort, rowid', parentId, id) as Row[]).map((r) => r.id as string);
+        const at = place ? sibs.indexOf(place) : -1;
+        sibs.splice(at < 0 ? sibs.length : p.before ? at : at + 1, 0, id);
+        sibs.forEach((sid, i) => this.run('UPDATE todos SET sort = ? WHERE id = ?', i, sid));
         // Under a parent the course is the parent's; to the top it keeps what it had.
         if (parentId !== null) this.setTodoCourse(id, (this.get('SELECT course FROM todos WHERE id = ?', parentId)!.course as string | null) ?? null);
       }

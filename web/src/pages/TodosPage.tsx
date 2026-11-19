@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { Calendar, Check, ChevronDown, ChevronRight, CircleDot, GripVertical, LayoutGrid, Maximize2, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { ArrowUpToLine, Calendar, Check, ChevronDown, ChevronRight, CircleDot, FolderInput, GripVertical, LayoutGrid, Maximize2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { todoProgress, type Outline, type Todo, type TodoStatus } from '@wb/shared';
 import { Link, useLocation, useParams, useSearch } from 'wouter';
@@ -92,6 +92,13 @@ interface Ctx {
   nestOver: string | null;
   setNestOver: (id: string | null) => void;
   nest: (id: string, targetId: string) => void;
+  /** The part being dragged (state: it shows the "Nach oben" strip) and the part edge a drag is over. */
+  partDrag: string | null;
+  setPartDrag: (id: string | null) => void;
+  partOver: { id: string; after: boolean } | null;
+  setPartOver: (o: { id: string; after: boolean } | null) => void;
+  /** Moves a todo under `parentId` (null: to the top), next to a sibling when `rel` names one. */
+  movePart: (id: string, parentId: string | null, rel?: { before: string } | { after: string }) => void;
 }
 
 /** Middle band of an element: a drop there nests, the edges reorder. */
@@ -237,7 +244,7 @@ function Parts({ todo, ctx, depth }: { todo: Todo; ctx: Ctx; depth: number }) {
       {todo.children.length ? (
         <ul className="ml-[2.6rem] border-l border-line pl-3">
           {todo.children.map((c) => (
-            <Row key={c.id} todo={c} ctx={ctx} depth={depth + 1} />
+            <Row key={c.id} todo={c} ctx={ctx} depth={depth + 1} sibs={todo.children} />
           ))}
         </ul>
       ) : null}
@@ -254,10 +261,12 @@ interface RowProps {
   todo: Todo;
   ctx: Ctx;
   depth: number;
+  /** The siblings of a part, for alt+arrow moves. */
+  sibs?: Todo[];
   top?: { inNext: boolean; draggable: boolean; onDragStart: () => void; onDragEnd: () => void; onDragOver: (after: boolean) => void; onDrop: (after: boolean) => void; moveKey: (dir: -1 | 1) => void; showAge: boolean };
 }
 
-function Row({ todo, ctx, depth, top }: RowProps) {
+function Row({ todo, ctx, depth, top, sibs }: RowProps) {
   const { t, lang } = ctx;
   const [editing, setEditing] = useState(false);
   const done = allDone(todo);
@@ -271,6 +280,11 @@ function Row({ todo, ctx, depth, top }: RowProps) {
     } else if (top && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault();
       top.moveKey(e.key === 'ArrowUp' ? -1 : 1);
+    } else if (!top && sibs && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      const at = sibs.findIndex((x) => x.id === todo.id);
+      const to = sibs[at + (e.key === 'ArrowUp' ? -1 : 1)];
+      if (to && todo.parentId) ctx.movePart(todo.id, todo.parentId, e.key === 'ArrowUp' ? { before: to.id } : { after: to.id });
     }
   };
   const nh = nestHandlers(todo, ctx);
@@ -278,23 +292,45 @@ function Row({ todo, ctx, depth, top }: RowProps) {
     <li
       data-todo={todo.id}
       onDragOver={top ? (e) => { e.preventDefault(); e.stopPropagation(); top.onDragOver(e.clientY > e.currentTarget.getBoundingClientRect().top + e.currentTarget.getBoundingClientRect().height / 2); } : undefined}
-      onDrop={top ? (e) => { e.preventDefault(); e.stopPropagation(); top.onDrop(e.clientY > e.currentTarget.getBoundingClientRect().top + e.currentTarget.getBoundingClientRect().height / 2); } : undefined}
+      onDrop={top ? (e) => { e.preventDefault(); e.stopPropagation(); if (ctx.partDrag) { const id = ctx.partDrag; ctx.setPartDrag(null); ctx.dragId.current = null; ctx.movePart(id, null); return; } top.onDrop(e.clientY > e.currentTarget.getBoundingClientRect().top + e.currentTarget.getBoundingClientRect().height / 2); } : undefined}
     >
       <div
         tabIndex={editing ? -1 : 0}
         onKeyDown={key}
-        draggable={!!top?.draggable && !editing}
-        onDragStart={top ? (e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', todo.id); ctx.dragId.current = todo.id; top.onDragStart(); } : undefined}
-        onDragEnd={top ? () => { ctx.dragId.current = null; ctx.setNestOver(null); top.onDragEnd(); } : undefined}
-        onDragOver={(e) => { nh.over(e); }}
-        onDrop={(e) => { nh.drop(e); }}
+        draggable={(top ? !!top.draggable : !!sibs) && !editing}
+        onDragStart={top ? (e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', todo.id); ctx.dragId.current = todo.id; top.onDragStart(); } : sibs ? (e) => { e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', todo.id); ctx.dragId.current = todo.id; ctx.setPartDrag(todo.id); } : undefined}
+        onDragEnd={top ? () => { ctx.dragId.current = null; ctx.setNestOver(null); top.onDragEnd(); } : sibs ? () => { ctx.dragId.current = null; ctx.setNestOver(null); ctx.setPartDrag(null); ctx.setPartOver(null); } : undefined}
+        onDragOver={(e) => {
+          if (nh.over(e)) return;
+          if (!top && ctx.partDrag && ctx.partDrag !== todo.id) {
+            e.preventDefault();
+            e.stopPropagation();
+            const r = e.currentTarget.getBoundingClientRect();
+            const after = e.clientY > r.top + r.height / 2;
+            if (ctx.partOver?.id !== todo.id || ctx.partOver.after !== after) ctx.setPartOver({ id: todo.id, after });
+          }
+        }}
+        onDrop={(e) => {
+          if (nh.drop(e)) return;
+          if (!top && ctx.partDrag && ctx.partOver?.id === todo.id && todo.parentId) {
+            e.preventDefault();
+            e.stopPropagation();
+            const id = ctx.partDrag;
+            const after = ctx.partOver.after;
+            ctx.setPartDrag(null);
+            ctx.setPartOver(null);
+            ctx.dragId.current = null;
+            ctx.movePart(id, todo.parentId, after ? { after: todo.id } : { before: todo.id });
+          }
+        }}
         className={clsx('group relative flex items-center gap-2.5 rounded-md py-1.5 pr-1 outline-none transition-colors focus-visible:bg-sunk focus-visible:ring-2 focus-visible:ring-accent/50', (ctx.marked === todo.id || ctx.nestOver === todo.id) && 'bg-accent-soft', ctx.nestOver === todo.id && 'ring-2 ring-accent', depth === 0 ? 'pl-0' : 'pl-0.5')}
       >
-        {top ? (
-          <span title={t.todosDrag} className={clsx('w-3.5 shrink-0 cursor-grab text-ink-3 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100', !top.draggable && 'invisible')}>
+        {top || sibs ? (
+          <span title={t.todosDrag} className={clsx('w-3.5 shrink-0 cursor-grab text-ink-3 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100', top && !top.draggable && 'invisible')}>
             <GripVertical size={14} aria-hidden />
           </span>
         ) : null}
+        {ctx.partOver?.id === todo.id ? <span aria-hidden className={clsx('pointer-events-none absolute inset-x-0 h-0.5 bg-accent', ctx.partOver.after ? 'bottom-0' : 'top-0')} /> : null}
         <Circle todo={todo} ctx={ctx} size={depth === 0 ? 18 : 15} />
         {editing ? (
           <EditFields todo={todo} onDone={() => setEditing(false)} courseTitles={depth === 0 ? ctx.courseTitles : undefined} />
@@ -326,6 +362,16 @@ function Row({ todo, ctx, depth, top }: RowProps) {
                   <ActionButton label={todo.status === 'doing' ? t.todosMakeOpen : t.todosMakeDoing} onClick={() => ctx.setStatus(todo, todo.status === 'doing' ? 'open' : 'doing')}>
                     <CircleDot size={13} />
                   </ActionButton>
+                ) : null}
+                {sibs && todo.parentId ? (
+                  <>
+                    <ActionButton label={t.todosToTop} onClick={() => ctx.movePart(todo.id, null)}>
+                      <ArrowUpToLine size={13} />
+                    </ActionButton>
+                    <ActionButton label={t.todosMoveTo} onClick={() => ctx.open(todo)}>
+                      <FolderInput size={13} />
+                    </ActionButton>
+                  </>
                 ) : null}
                 {top && !done ? (
                   <ActionButton label={top.inNext ? t.todosMoveLater : t.todosMoveNext} onClick={() => ctx.setNext(todo.id, !top.inNext)}>
@@ -451,9 +497,10 @@ function LaneCard({ todo, ctx, kind, cardId, expanded, bare, onToggleParts, line
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', todo.id);
         ctx.dragId.current = todo.id;
+        if (todo.parentId) ctx.setPartDrag(todo.id);
         onDragStart();
       }}
-      onDragEnd={() => { ctx.dragId.current = null; ctx.setNestOver(null); onDragEnd(); }}
+      onDragEnd={() => { ctx.dragId.current = null; ctx.setNestOver(null); ctx.setPartDrag(null); onDragEnd(); }}
       onDragOver={(e) => { if (nh.over(e)) return; if (onDragOver) { e.preventDefault(); e.stopPropagation(); onDragOver(half(e)); } }}
       onDrop={(e) => { if (nh.drop(e)) return; if (onDrop) { e.preventDefault(); e.stopPropagation(); onDrop(half(e)); } }}
       className={clsx(
@@ -912,8 +959,33 @@ export function TodosPage({ rootId }: { rootId?: string } = {}) {
     },
     [todos, showToast, t],
   );
+  const [partDrag, setPartDrag] = useState<string | null>(null);
+  const [partOver, setPartOver] = useState<{ id: string; after: boolean } | null>(null);
+  const movePart = useCallback(
+    (id: string, parentId: string | null, rel?: { before: string } | { after: string }) => {
+      const all = new Map<string, Todo>();
+      const walk = (x: Todo) => {
+        all.set(x.id, x);
+        x.children.forEach(walk);
+      };
+      (todos ?? []).forEach(walk);
+      const mine = all.get(id);
+      if (!mine) return;
+      const from = mine.parentId;
+      const sibs = from ? (all.get(from)?.children ?? []) : [];
+      const prev = sibs[sibs.findIndex((x) => x.id === id) - 1];
+      const next = sibs[sibs.findIndex((x) => x.id === id) + 1];
+      const rank = mine.nextRank;
+      focusId.current = id;
+      void patchTodo(id, { parentId, ...(rel ?? {}) });
+      showToast(parentId === null ? t.todosPromotedToast : t.todosMovedToast, () => {
+        void patchTodo(id, { parentId: from, ...(prev ? { after: prev.id } : next ? { before: next.id } : {}) }).then(() => (rank !== null && from === null ? patchTodo(id, { nextRank: rank }) : undefined));
+      });
+    },
+    [todos, showToast, t],
+  );
   const dialog = useTodoDialog();
-  const ctx: Ctx = { dragId, nestOver, setNestOver, nest, t, lang, outline, courseTitles, showCourse: course === 'all', marked, toggle, setStatus, remove, addingTo, setAddingTo, setNext, open: (x) => dialog.open(x.id), openBoard: (x) => navigate(`/todos/${encodeURIComponent(x.id)}`) };
+  const ctx: Ctx = { partDrag, setPartDrag, partOver, setPartOver, movePart, dragId, nestOver, setNestOver, nest, t, lang, outline, courseTitles, showCourse: course === 'all', marked, toggle, setStatus, remove, addingTo, setAddingTo, setNext, open: (x) => dialog.open(x.id), openBoard: (x) => navigate(`/todos/${encodeURIComponent(x.id)}`) };
 
   const shown = useMemo(() => {
     const keep = (x: Todo) => {
@@ -987,7 +1059,27 @@ export function TodosPage({ rootId }: { rootId?: string } = {}) {
 
   const withNext = tab !== 'done';
   const visibleLater = showAll || tab === 'done' ? laterRows : laterRows.slice(0, LATER_ROWS);
+  /** A part dropped on the strip or the list background becomes a top-level todo. */
+  const promoteDrop = (e: React.DragEvent) => {
+    if (!partDrag) return false;
+    e.preventDefault();
+    if (e.type === 'drop') {
+      e.stopPropagation();
+      const id = partDrag;
+      setPartDrag(null);
+      setPartOver(null);
+      dragId.current = null;
+      movePart(id, null);
+    }
+    return true;
+  };
+  const strip = partDrag ? (
+    <div onDragOver={promoteDrop} onDrop={promoteDrop} className="mt-4 grid h-10 place-items-center rounded-lg border border-dashed border-accent bg-accent-soft/40 text-[13px] text-accent">
+      {t.todosToTop}
+    </div>
+  ) : null;
   const dropHere = (e: React.DragEvent, index: number | null) => {
+    if (promoteDrop(e)) return;
     if (!drag) return;
     e.preventDefault();
     if (e.type === 'drop') {
@@ -1020,6 +1112,7 @@ export function TodosPage({ rootId }: { rootId?: string } = {}) {
             </h1>
             {root.children.length ? <TodoSegments todo={root} /> : null}
           </div>
+          {strip}
           <Board todos={root.children} ctx={ctx} lanes={[lane]} bare />
         </div>
         <TodoDialog todos={todos} id={dialog.id} courseTitles={courseTitles} onOpen={dialog.switchTo} onClose={dialog.close} onDelete={remove} />
@@ -1101,6 +1194,8 @@ export function TodosPage({ rootId }: { rootId?: string } = {}) {
         ) : null}
 
         {view === 'board' ? <Board todos={todos} ctx={ctx} lanes={lanes} /> : null}
+
+        {strip}
 
         {view === 'list' && withNext ? (
           <section className="mt-6 border-l-2 border-accent pl-4" onDragOver={(e) => dropHere(e, null)} onDrop={(e) => dropHere(e, nextIds.length)}>

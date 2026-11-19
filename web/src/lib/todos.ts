@@ -29,7 +29,7 @@ async function optimistic<T>(show: ((list: Todo[]) => Todo[]) | null, send: () =
   }
 }
 
-export type TodoPatch = Partial<Pick<Todo, 'title' | 'body' | 'status' | 'due' | 'minutes' | 'nextRank' | 'parentId' | 'course' | 'sort'>> & { manual?: boolean };
+export type TodoPatch = Partial<Pick<Todo, 'title' | 'body' | 'status' | 'due' | 'minutes' | 'nextRank' | 'parentId' | 'course' | 'sort'>> & { manual?: boolean; before?: string; after?: string };
 
 export const patchTodo = (id: string, patch: TodoPatch) =>
   optimistic(
