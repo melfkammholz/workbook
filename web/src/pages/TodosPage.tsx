@@ -95,50 +95,75 @@ interface Ctx {
   openBoard: (todo: Todo) => void;
   /** The todo being dragged (a ref: it changes without re-rendering). */
   dragId: { current: string | null };
-  /** The todo a drag is over the middle of: dropping makes the dragged one a part of it. */
-  nestOver: string | null;
-  setNestOver: (id: string | null) => void;
-  nest: (id: string, targetId: string) => void;
-  /** The part being dragged (state: it shows the "Nach oben" strip) and the part edge a drag is over. */
+  /** Where a drop would go right now; the one indicator on screen shows exactly this, and a drop does exactly this. */
+  target: DropTarget | null;
+  aim: (t: DropTarget | null) => void;
+  /** Carries out `target` for the dragged todo and ends the drag. */
+  commitDrop: () => void;
+  /** Ends a drag without doing anything (Escape, or a drop outside). */
+  endDrag: () => void;
+  /** Since when the drag has been over the middle of this todo (nesting needs a short pause there). */
+  nestCand: { current: { id: string; since: number } | null };
+  find: (id: string) => Todo | undefined;
+  /** True when `targetId` is `id` or lies below it (a todo cannot go into itself). */
+  isInside: (id: string, targetId: string) => boolean;
+  /** The part being dragged (state: it shows the "Nach oben" strip). */
   partDrag: string | null;
   setPartDrag: (id: string | null) => void;
-  partOver: { id: string; after: boolean } | null;
-  setPartOver: (o: { id: string; after: boolean } | null) => void;
   /** Moves a todo under `parentId` (null: to the top), next to a sibling when `rel` names one. */
-  movePart: (id: string, parentId: string | null, rel?: { before: string } | { after: string }) => void;
+  movePart: (id: string, parentId: string | null, rel?: { before: string } | { after: string }, then?: () => void) => void;
 }
 
-/** Middle band of an element: a drop there nests, the edges reorder. */
+/**
+ * Where a dragged todo lands: into a todo (`nest`), next to a part (`part`), next to a top-level row of the next or
+ * later block (`id` null: the block itself), or to the top level through the strip (`top`).
+ */
+type DropTarget =
+  | { kind: 'nest'; id: string }
+  | { kind: 'part'; id: string; after: boolean }
+  | { kind: 'next' | 'later'; id: string | null; after: boolean }
+  | { kind: 'top' };
+
+const sameTarget = (a: DropTarget | null, b: DropTarget | null) => JSON.stringify(a) === JSON.stringify(b);
+
+/** True when the drop would put a line next to `id` (on the edge `after` says). */
+function lineAt(t: DropTarget | null, id: string): 'before' | 'after' | null {
+  if (!t || t.kind === 'nest' || t.kind === 'top' || t.id !== id) return null;
+  return t.after ? 'after' : 'before';
+}
+
+/** Middle band of an element: a drop there (after a short pause) nests, the edges reorder. */
 function inMiddle(e: React.DragEvent<HTMLElement>): boolean {
   const r = e.currentTarget.getBoundingClientRect();
-  return e.clientY > r.top + r.height * 0.25 && e.clientY < r.bottom - r.height * 0.25;
+  return e.clientY > r.top + r.height * 0.2 && e.clientY < r.bottom - r.height * 0.2;
 }
 
-/** Drag handlers that make a drop on the middle of `todo` nest the dragged todo into it. */
-function nestHandlers(todo: Todo, ctx: Ctx) {
-  const ok = () => ctx.dragId.current !== null && ctx.dragId.current !== todo.id;
-  return {
-    over: (e: React.DragEvent<HTMLElement>): boolean => {
-      if (ok() && inMiddle(e)) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (ctx.nestOver !== todo.id) ctx.setNestOver(todo.id);
-        return true;
-      }
-      if (ctx.nestOver === todo.id) ctx.setNestOver(null);
-      return false;
-    },
-    drop: (e: React.DragEvent<HTMLElement>): boolean => {
-      if (ctx.nestOver !== todo.id || !ok()) return false;
-      e.preventDefault();
-      e.stopPropagation();
-      const id = ctx.dragId.current!;
-      ctx.setNestOver(null);
-      ctx.dragId.current = null;
-      ctx.nest(id, todo.id);
-      return true;
-    },
-  };
+const NEST_PAUSE_MS = 350;
+
+/**
+ * Aims a drag over the middle of `todo` at nesting into it, once the pointer has rested there. Returns false (and aims
+ * at nothing) while it has not, so the caller can show an edge line meanwhile. Not into itself, its own parts, or the
+ * todo it already belongs to.
+ */
+function nestOver(todo: Todo, ctx: Ctx, e: React.DragEvent<HTMLElement>): boolean {
+  const id = ctx.dragId.current;
+  const ok = id !== null && !ctx.isInside(id, todo.id) && ctx.find(id)?.parentId !== todo.id;
+  if (!ok || !inMiddle(e)) {
+    if (ctx.nestCand.current?.id === todo.id) ctx.nestCand.current = null;
+    return false;
+  }
+  if (ctx.nestCand.current?.id !== todo.id) ctx.nestCand.current = { id: todo.id, since: Date.now() };
+  if (Date.now() - ctx.nestCand.current.since < NEST_PAUSE_MS) return false;
+  e.preventDefault();
+  e.stopPropagation();
+  ctx.aim({ kind: 'nest', id: todo.id });
+  return true;
+}
+
+/** Insertion line on the top or bottom edge of a `relative` element; it takes no space and no pointer. */
+function EdgeLine({ at }: { at: 'before' | 'after' | null }) {
+  if (!at) return null;
+  return <span aria-hidden className={clsx('pointer-events-none absolute inset-x-0 z-20 h-0.5 rounded-full bg-accent', at === 'before' ? '-top-px' : '-bottom-px')} />;
 }
 
 function Circle({ todo, ctx, size = 18 }: { todo: Todo; ctx: Ctx; size?: number }) {
@@ -270,7 +295,8 @@ interface RowProps {
   depth: number;
   /** The siblings of a part, for alt+arrow moves. */
   sibs?: Todo[];
-  top?: { inNext: boolean; draggable: boolean; onDragStart: () => void; onDragEnd: () => void; onDragOver: (after: boolean) => void; onDrop: (after: boolean) => void; moveKey: (dir: -1 | 1) => void; showAge: boolean };
+  /** A top-level row: `slot` is where a drop above or below it goes (null: nowhere, e.g. it would not move). */
+  top?: { inNext: boolean; draggable: boolean; slot: (after: boolean) => DropTarget | null; moveKey: (dir: -1 | 1) => void; showAge: boolean };
 }
 
 function Row({ todo, ctx, depth, top, sibs }: RowProps) {
@@ -294,50 +320,67 @@ function Row({ todo, ctx, depth, top, sibs }: RowProps) {
       if (to && todo.parentId) ctx.movePart(todo.id, todo.parentId, e.key === 'ArrowUp' ? { before: to.id } : { after: to.id });
     }
   };
-  const nh = nestHandlers(todo, ctx);
+  const nesting = ctx.target?.kind === 'nest' && ctx.target.id === todo.id;
+  /** Above or below this row; below a row with parts means "first part of it", which is where the line then shows. */
+  const slot = (id: string, after: boolean): DropTarget | null => {
+    const first = todo.children[0];
+    if (after && first) return first.id === id ? null : { kind: 'part', id: first.id, after: false };
+    if (!todo.parentId) return top ? top.slot(after) : null;
+    const at = sibs?.findIndex((x) => x.id === todo.id) ?? -1;
+    if (at !== -1 && sibs?.[at + (after ? 1 : -1)]?.id === id) return null;
+    return { kind: 'part', id: todo.id, after };
+  };
+  const draggable = (top ? top.draggable : !!sibs) && !editing;
   return (
     <li
       data-todo={todo.id}
-      onDragOver={top ? (e) => { e.preventDefault(); e.stopPropagation(); top.onDragOver(e.clientY > e.currentTarget.getBoundingClientRect().top + e.currentTarget.getBoundingClientRect().height / 2); } : undefined}
-      onDrop={top ? (e) => { e.preventDefault(); e.stopPropagation(); if (ctx.partDrag) { const id = ctx.partDrag; ctx.setPartDrag(null); ctx.dragId.current = null; ctx.movePart(id, null); return; } top.onDrop(e.clientY > e.currentTarget.getBoundingClientRect().top + e.currentTarget.getBoundingClientRect().height / 2); } : undefined}
+      className="relative"
+      onDragOver={
+        top
+          ? (e) => {
+              // Between parts or beside them: keep what the rows aimed at, so nothing flickers.
+              if (!ctx.dragId.current) return;
+              e.stopPropagation();
+              if (ctx.target) e.preventDefault();
+            }
+          : undefined
+      }
     >
+      <EdgeLine at={lineAt(ctx.target, todo.id)} />
       <div
         tabIndex={editing ? -1 : 0}
         onKeyDown={key}
-        draggable={(top ? !!top.draggable : !!sibs) && !editing}
-        onDragStart={top ? (e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', todo.id); ctx.dragId.current = todo.id; top.onDragStart(); } : sibs ? (e) => { e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', todo.id); ctx.dragId.current = todo.id; ctx.setPartDrag(todo.id); } : undefined}
-        onDragEnd={top ? () => { ctx.dragId.current = null; ctx.setNestOver(null); top.onDragEnd(); } : sibs ? () => { ctx.dragId.current = null; ctx.setNestOver(null); ctx.setPartDrag(null); ctx.setPartOver(null); } : undefined}
+        draggable={draggable}
+        onDragStart={
+          draggable
+            ? (e) => {
+                e.stopPropagation();
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', todo.id);
+                ctx.dragId.current = todo.id;
+                if (todo.parentId) ctx.setPartDrag(todo.id);
+              }
+            : undefined
+        }
+        onDragEnd={draggable ? () => ctx.endDrag() : undefined}
         onDragOver={(e) => {
-          if (nh.over(e)) return;
-          if (!top && ctx.partDrag && ctx.partDrag !== todo.id) {
-            e.preventDefault();
-            e.stopPropagation();
-            const r = e.currentTarget.getBoundingClientRect();
-            const after = e.clientY > r.top + r.height / 2;
-            if (ctx.partOver?.id !== todo.id || ctx.partOver.after !== after) ctx.setPartOver({ id: todo.id, after });
-          }
+          const id = ctx.dragId.current;
+          if (!id) return;
+          e.stopPropagation();
+          if (ctx.isInside(id, todo.id)) return ctx.aim(null);
+          if (nestOver(todo, ctx, e)) return;
+          const r = e.currentTarget.getBoundingClientRect();
+          const to = slot(id, e.clientY > r.top + r.height / 2);
+          ctx.aim(to);
+          if (to) e.preventDefault();
         }}
-        onDrop={(e) => {
-          if (nh.drop(e)) return;
-          if (!top && ctx.partDrag && ctx.partOver?.id === todo.id && todo.parentId) {
-            e.preventDefault();
-            e.stopPropagation();
-            const id = ctx.partDrag;
-            const after = ctx.partOver.after;
-            ctx.setPartDrag(null);
-            ctx.setPartOver(null);
-            ctx.dragId.current = null;
-            ctx.movePart(id, todo.parentId, after ? { after: todo.id } : { before: todo.id });
-          }
-        }}
-        className={clsx('group relative flex items-center gap-2.5 rounded-md py-1.5 pr-1 outline-none transition-colors focus-visible:bg-sunk focus-visible:ring-2 focus-visible:ring-accent/50', (ctx.marked === todo.id || ctx.nestOver === todo.id) && 'bg-accent-soft', ctx.nestOver === todo.id && 'ring-2 ring-accent', depth === 0 ? 'pl-0' : 'pl-0.5')}
+        className={clsx('group relative flex items-center gap-2.5 rounded-md py-1.5 pr-1 outline-none transition-colors focus-visible:bg-sunk focus-visible:ring-2 focus-visible:ring-accent/50', (ctx.marked === todo.id || nesting) && 'bg-accent-soft', nesting && 'ring-2 ring-accent', depth === 0 ? 'pl-0' : 'pl-0.5')}
       >
         {top || sibs ? (
           <span title={t.todosDrag} className={clsx('w-3.5 shrink-0 cursor-grab text-ink-3 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100', top && !top.draggable && 'invisible')}>
             <GripVertical size={14} aria-hidden />
           </span>
         ) : null}
-        {ctx.partOver?.id === todo.id ? <span aria-hidden className={clsx('pointer-events-none absolute inset-x-0 h-0.5 bg-accent', ctx.partOver.after ? 'bottom-0' : 'top-0')} /> : null}
         <Circle todo={todo} ctx={ctx} size={depth === 0 ? 18 : 15} />
         {editing ? (
           <EditFields todo={todo} onDone={() => setEditing(false)} courseTitles={depth === 0 ? ctx.courseTitles : undefined} />
@@ -485,8 +528,8 @@ interface CardProps {
 function LaneCard({ todo, ctx, kind, cardId, expanded, bare, onToggleParts, line, onDragStart, onDragEnd, onDragOver, onDrop, moveKey }: CardProps) {
   const { t } = ctx;
   const done = allDone(todo);
-  const nh = nestHandlers(todo, ctx);
-  const half = (e: React.DragEvent<HTMLLIElement>) => e.clientY > e.currentTarget.getBoundingClientRect().top + e.currentTarget.getBoundingClientRect().height / 2;
+  const nesting = ctx.target?.kind === 'nest' && ctx.target.id === todo.id;
+  const half =(e: React.DragEvent<HTMLLIElement>) => e.clientY > e.currentTarget.getBoundingClientRect().top + e.currentTarget.getBoundingClientRect().height / 2;
   return (
     <li
       data-card={cardId}
@@ -507,12 +550,19 @@ function LaneCard({ todo, ctx, kind, cardId, expanded, bare, onToggleParts, line
         if (todo.parentId) ctx.setPartDrag(todo.id);
         onDragStart();
       }}
-      onDragEnd={() => { ctx.dragId.current = null; ctx.setNestOver(null); ctx.setPartDrag(null); onDragEnd(); }}
-      onDragOver={(e) => { if (nh.over(e)) return; if (onDragOver) { e.preventDefault(); e.stopPropagation(); onDragOver(half(e)); } }}
-      onDrop={(e) => { if (nh.drop(e)) return; if (onDrop) { e.preventDefault(); e.stopPropagation(); onDrop(half(e)); } }}
+      onDragEnd={() => { ctx.endDrag(); onDragEnd(); }}
+      onDragOver={(e) => {
+        if (nestOver(todo, ctx, e)) return;
+        if (ctx.target?.kind === 'nest') ctx.aim(null);
+        if (onDragOver) { e.preventDefault(); e.stopPropagation(); onDragOver(half(e)); }
+      }}
+      onDrop={(e) => {
+        if (nesting) { e.preventDefault(); e.stopPropagation(); onDragEnd(); ctx.commitDrop(); return; }
+        if (onDrop) { e.preventDefault(); e.stopPropagation(); onDrop(half(e)); }
+      }}
       className={clsx(
         'group rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent/50',
-        ctx.nestOver === todo.id && 'ring-2 ring-accent bg-accent-soft',
+        nesting && 'ring-2 ring-accent bg-accent-soft',
         kind === 'next' && 'bg-sheet px-2 py-2 shadow-sm',
         kind === 'card' && (done ? 'border border-dashed border-line-strong px-2 py-2' : 'border border-line-strong bg-sheet px-2 py-2'),
         kind === 'slim' && 'px-1 py-1',
@@ -738,7 +788,7 @@ function Board({ todos, ctx, lanes, bare }: { todos: Todo[]; ctx: Ctx; lanes: La
                     expanded={partsOpen.has(x.id)}
                     bare={bare}
                     onToggleParts={() => setPartsOpen((s) => flip(s, x.id))}
-                    line={line?.cardId === cardId ? (line.after ? 'after' : 'before') : null}
+                    line={line?.cardId === cardId && ctx.target?.kind !== 'nest' ? (line.after ? 'after' : 'before') : null}
                     onDragStart={() => setDrag({ id: x.id, lane: lane.id })}
                     onDragEnd={end}
                     onDragOver={k === 'next' ? (after) => { if (drag?.lane === lane.id && lane.reorder) { setOver(cid); setLine({ cardId, after }); } } : undefined}
@@ -751,6 +801,7 @@ function Board({ todos, ctx, lanes, bare }: { todos: Todo[]; ctx: Ctx; lanes: La
                 <div
                   key={status}
                   onDragOver={(e) => {
+                    if (ctx.target?.kind === 'nest') ctx.aim(null);
                     if (!drag) return;
                     e.preventDefault();
                     setOver(cid);
@@ -851,7 +902,13 @@ export function TodosPage({ rootId }: { rootId?: string } = {}) {
   const [lingering, setLingering] = useState<ReadonlySet<string>>(new Set());
   const [toast, setToast] = useState<Toast | null>(null);
   const [addingTo, setAddingTo] = useState<string | null>(null);
-  const [drag, setDrag] = useState<{ id: string; over: number | null } | null>(null);
+  const [target, setTarget] = useState<DropTarget | null>(null);
+  const targetRef = useRef<DropTarget | null>(null);
+  const aim = useCallback((to: DropTarget | null) => {
+    if (sameTarget(targetRef.current, to)) return;
+    targetRef.current = to;
+    setTarget(to);
+  }, []);
   const focusId = useRef<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
 
@@ -946,37 +1003,26 @@ export function TodosPage({ rootId }: { rootId?: string } = {}) {
   );
 
   const dragId = useRef<string | null>(null);
-  const [nestOver, setNestOver] = useState<string | null>(null);
-  const nest = useCallback(
+  const all = useMemo(() => {
+    const m = new Map<string, Todo>();
+    const walk = (x: Todo) => {
+      m.set(x.id, x);
+      x.children.forEach(walk);
+    };
+    (todos ?? []).forEach(walk);
+    return m;
+  }, [todos]);
+  const find = useCallback((id: string) => all.get(id), [all]);
+  const isInside = useCallback(
     (id: string, targetId: string) => {
-      const all = new Map<string, Todo>();
-      const walk = (x: Todo) => {
-        all.set(x.id, x);
-        x.children.forEach(walk);
-      };
-      (todos ?? []).forEach(walk);
-      const mine = all.get(id);
-      const target = all.get(targetId);
-      if (!mine || !target) return;
-      const rank = mine.nextRank;
-      const from = mine.parentId;
-      void patchTodo(id, { parentId: targetId });
-      showToast(t.todosNestedToast(target.title), () => {
-        void patchTodo(id, { parentId: from }).then(() => (rank !== null && from === null ? patchTodo(id, { nextRank: rank }) : undefined));
-      });
+      for (let c = all.get(targetId); c; c = c.parentId ? all.get(c.parentId) : undefined) if (c.id === id) return true;
+      return false;
     },
-    [todos, showToast, t],
+    [all],
   );
-  const [partDrag, setPartDrag] = useState<string | null>(null);
-  const [partOver, setPartOver] = useState<{ id: string; after: boolean } | null>(null);
+  /** Moves a todo under `parentId` (null: to the top), next to a sibling when `rel` names one; the toast puts it back where it was. */
   const movePart = useCallback(
-    (id: string, parentId: string | null, rel?: { before: string } | { after: string }) => {
-      const all = new Map<string, Todo>();
-      const walk = (x: Todo) => {
-        all.set(x.id, x);
-        x.children.forEach(walk);
-      };
-      (todos ?? []).forEach(walk);
+    (id: string, parentId: string | null, rel?: { before: string } | { after: string }, then?: () => void, msg?: string) => {
       const mine = all.get(id);
       if (!mine) return;
       const from = mine.parentId;
@@ -985,15 +1031,65 @@ export function TodosPage({ rootId }: { rootId?: string } = {}) {
       const next = sibs[sibs.findIndex((x) => x.id === id) + 1];
       const rank = mine.nextRank;
       focusId.current = id;
-      void patchTodo(id, { parentId, ...(rel ?? {}) });
-      showToast(parentId === null ? t.todosPromotedToast : t.todosMovedToast, () => {
+      void patchTodo(id, { parentId, ...(rel ?? {}) }).then(then);
+      showToast(msg ?? (parentId === null ? t.todosPromotedToast : t.todosMovedToast), () => {
         void patchTodo(id, { parentId: from, ...(prev ? { after: prev.id } : next ? { before: next.id } : {}) }).then(() => (rank !== null && from === null ? patchTodo(id, { nextRank: rank }) : undefined));
       });
     },
-    [todos, showToast, t],
+    [all, showToast, t],
   );
+  const nestCand = useRef<{ id: string; since: number } | null>(null);
+  const [partDrag, setPartDrag] = useState<string | null>(null);
+  const endDrag = useCallback(() => {
+    dragId.current = null;
+    nestCand.current = null;
+    setPartDrag(null);
+    aim(null);
+  }, [aim]);
+  const commitDrop = () => {
+    const id = dragId.current;
+    const to = targetRef.current;
+    endDrag();
+    const mine = id ? all.get(id) : undefined;
+    if (!id || !mine || !to) return;
+    /** Into the next block next to `near` (null: at its end). */
+    const intoNext = (near: string | null, after: boolean) => {
+      const rest = nextIds.filter((x) => x !== id);
+      const at = near ? rest.indexOf(near) : -1;
+      rest.splice(at === -1 ? rest.length : at + (after ? 1 : 0), 0, id);
+      focusId.current = id;
+      void reorderNext(rest);
+    };
+    // The later block shows the newest (highest sort) first, so "below" is "before" in sort order.
+    const laterRel = to.kind === 'later' && to.id ? (to.after ? { before: to.id } : { after: to.id }) : undefined;
+    switch (to.kind) {
+      case 'nest':
+        movePart(id, to.id, undefined, undefined, t.todosNestedToast(all.get(to.id)?.title ?? ''));
+        break;
+      case 'top':
+        movePart(id, null);
+        break;
+      case 'part': {
+        const sib = all.get(to.id);
+        if (sib?.parentId) movePart(id, sib.parentId, to.after ? { after: to.id } : { before: to.id });
+        break;
+      }
+      case 'next':
+        if (mine.parentId) movePart(id, null, undefined, () => intoNext(to.id, to.after));
+        else intoNext(to.id, to.after);
+        break;
+      case 'later':
+        if (mine.parentId) movePart(id, null, laterRel);
+        else {
+          if (nextIds.includes(id)) void reorderNext(nextIds.filter((n) => n !== id));
+          focusId.current = id;
+          if (laterRel) void patchTodo(id, { parentId: null, ...laterRel });
+        }
+        break;
+    }
+  };
   const dialog = useTodoDialog();
-  const ctx: Ctx = { partDrag, setPartDrag, partOver, setPartOver, movePart, dragId, nestOver, setNestOver, nest, t, lang, outline, courseTitles, showCourse: course === 'all', marked, toggle, setStatus, remove, addingTo, setAddingTo, setNext, open: (x) => dialog.open(x.id), openBoard: (x) => navigate(`/todos/${encodeURIComponent(x.id)}`) };
+  const ctx: Ctx = { partDrag, setPartDrag, movePart, target, aim, commitDrop, endDrag, dragId, nestCand, find, isInside, t, lang, outline, courseTitles, showCourse: course === 'all', marked, toggle, setStatus, remove, addingTo, setAddingTo, setNext, open: (x) => dialog.open(x.id), openBoard: (x) => navigate(`/todos/${encodeURIComponent(x.id)}`) };
 
   const shown = useMemo(() => {
     const keep = (x: Todo) => {
@@ -1018,7 +1114,7 @@ export function TodosPage({ rootId }: { rootId?: string } = {}) {
   }, [todos, kind, course, courses, courseTitles, outline, t, group, laneTags, tagMap]);
 
   const nextRows = shown.filter((x) => x.nextRank !== null && x.status !== 'done').sort((a, b) => a.nextRank! - b.nextRank!);
-  const laterRows = shown.filter((x) => !(x.nextRank !== null && x.status !== 'done')).sort((a, b) => (tab === 'done' ? (b.doneAt ?? 0) - (a.doneAt ?? 0) : b.createdAt - a.createdAt));
+  const laterRows = shown.filter((x) => !(x.nextRank !== null && x.status !== 'done')).sort((a, b) => (tab === 'done' ? (b.doneAt ?? 0) - (a.doneAt ?? 0) : b.sort - a.sort || b.createdAt - a.createdAt));
 
   /** Puts `id` into the next block at `index` (clamped), or out of it with `null`. */
   const place = (id: string, index: number | null) => {
@@ -1032,12 +1128,12 @@ export function TodosPage({ rootId }: { rootId?: string } = {}) {
     inNext,
     draggable: tab !== 'done',
     showAge: !inNext && tab !== 'done',
-    onDragStart: () => setDrag({ id: x.id, over: null }),
-    onDragEnd: () => setDrag(null),
-    onDragOver: (after) => inNext && setDrag((d) => (d ? { ...d, over: index + (after ? 1 : 0) } : d)),
-    onDrop: (after) => {
-      if (drag) place(drag.id, inNext ? index + (after ? 1 : 0) - (nextIds.indexOf(drag.id) !== -1 && nextIds.indexOf(drag.id) < index ? 1 : 0) : null);
-      setDrag(null);
+    slot: (after) => {
+      if (tab === 'done') return null;
+      // Right next to the dragged todo itself: nothing would move, so nothing is shown.
+      const rows = inNext ? nextRows : visibleLater;
+      if (rows[index + (after ? 1 : -1)]?.id === dragId.current) return null;
+      return { kind: inNext ? 'next' : 'later', id: x.id, after };
     },
     moveKey: (dir) => {
       if (tab === 'done') return;
@@ -1049,12 +1145,7 @@ export function TodosPage({ rootId }: { rootId?: string } = {}) {
     },
   });
 
-  const byId = new Map<string, Todo>();
-  const walkAll = (x: Todo) => {
-    byId.set(x.id, x);
-    x.children.forEach(walkAll);
-  };
-  (todos ?? []).forEach(walkAll);
+  const byId = all;
   const root = rootId ? byId.get(rootId) : undefined;
 
   if (!todos) {
@@ -1067,34 +1158,53 @@ export function TodosPage({ rootId }: { rootId?: string } = {}) {
 
   const withNext = tab !== 'done';
   const visibleLater = showAll || tab === 'done' ? laterRows : laterRows.slice(0, LATER_ROWS);
-  /** A part dropped on the strip or the list background becomes a top-level todo. */
-  const promoteDrop = (e: React.DragEvent) => {
-    if (!partDrag) return false;
-    e.preventDefault();
-    if (e.type === 'drop') {
-      e.stopPropagation();
-      const id = partDrag;
-      setPartDrag(null);
-      setPartOver(null);
-      dragId.current = null;
-      movePart(id, null);
-    }
-    return true;
-  };
+  const stripOver = target?.kind === 'top';
   const strip = partDrag ? (
-    <div onDragOver={promoteDrop} onDrop={promoteDrop} className="mt-4 grid h-10 place-items-center rounded-lg border border-dashed border-accent bg-accent-soft/40 text-[13px] text-accent">
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        aim({ kind: 'top' });
+      }}
+      onDragLeave={() => stripOver && aim(null)}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        commitDrop();
+      }}
+      className={clsx('fixed inset-x-0 bottom-6 z-30 mx-auto grid h-12 w-[min(28rem,90vw)] place-items-center rounded-lg border border-dashed border-accent text-[13px] text-accent shadow-lg', stripOver ? 'border-solid bg-accent-soft ring-2 ring-accent' : 'bg-paper')}
+    >
       {t.todosToTop}
     </div>
   ) : null;
-  const dropHere = (e: React.DragEvent, index: number | null) => {
-    if (promoteDrop(e)) return;
-    if (!drag) return;
-    e.preventDefault();
-    if (e.type === 'drop') {
-      place(drag.id, index);
-      setDrag(null);
+  /**
+   * A drag over a block but not over a row: above the rows of the next block is before its first row, below the rows
+   * of either block is after its last row, and an empty block (or the heading of the later one) takes it as a whole.
+   */
+  const blockOver = (block: 'next' | 'later') => (e: React.DragEvent<HTMLElement>) => {
+    const id = dragId.current;
+    if (!id) return;
+    const rows = block === 'next' ? nextRows : visibleLater;
+    const list = e.currentTarget.querySelector(':scope > ul')?.getBoundingClientRect();
+    let to: DropTarget | null = null;
+    if (tab === 'done') to = null;
+    else if (!rows.length || !list) to = { kind: block, id: null, after: true };
+    else if (e.clientY > list.bottom) to = rows[rows.length - 1]!.id === id ? null : { kind: block, id: rows[rows.length - 1]!.id, after: true };
+    else if (e.clientY < list.top) {
+      // The heading of the later block: out of the next block (a part: to the top level); for a todo already there, nothing.
+      const moves = !!all.get(id)?.parentId || nextIds.includes(id);
+      to = block === 'next' ? (rows[0]!.id === id ? null : { kind: 'next', id: rows[0]!.id, after: false }) : moves ? { kind: 'later', id: null, after: true } : null;
     }
+    else return; // between rows: keep what they aimed at
+    aim(to);
+    if (to) e.preventDefault();
   };
+  const blockDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    commitDrop();
+  };
+  /** A whole block as the target: no row to draw a line on, so the block is outlined. */
+  const blockAimed = (block: 'next' | 'later') => target?.kind === block && target.id === null;
 
   if (root) {
     const trail: Todo[] = [];
@@ -1206,23 +1316,21 @@ export function TodosPage({ rootId }: { rootId?: string } = {}) {
         {strip}
 
         {view === 'list' && withNext ? (
-          <section className="mt-6 border-l-2 border-accent pl-4" onDragOver={(e) => dropHere(e, null)} onDrop={(e) => dropHere(e, nextIds.length)}>
+          <section className={clsx('mt-6 rounded-r-md border-l-2 border-accent pl-4', blockAimed('next') && 'bg-accent-soft/40 outline-dashed outline-1 outline-accent')} onDragOver={blockOver('next')} onDrop={blockDrop}>
             <h2 className="flex items-baseline gap-2 text-[15px] font-semibold">
               {t.todosNext} <span className="text-[12.5px] font-normal text-ink-3">{t.todosNextHint}</span>
             </h2>
             {nextRows.length === 0 ? <p className="py-3 text-[13px] text-ink-3">{t.todosNextEmpty}</p> : null}
             <ul className="mt-1">
               {nextRows.map((x, i) => (
-                <div key={x.id} className={clsx(drag?.over === i && 'border-t-2 border-accent', drag?.over === nextRows.length && i === nextRows.length - 1 && 'border-b-2 border-accent')}>
-                  <Row todo={x} ctx={ctx} depth={0} top={rowProps(x, true, i)} />
-                </div>
+                <Row key={x.id} todo={x} ctx={ctx} depth={0} top={rowProps(x, true, i)} />
               ))}
             </ul>
           </section>
         ) : null}
 
         {view === 'list' ? (
-        <section className={clsx(withNext && 'mt-6 border-t border-line pt-5')} onDragOver={(e) => dropHere(e, null)} onDrop={(e) => dropHere(e, null)}>
+        <section className={clsx(withNext && 'mt-6 border-t border-line pt-5', blockAimed('later') && 'rounded-b-md bg-accent-soft/40 outline-dashed outline-1 outline-accent')} onDragOver={blockOver('later')} onDrop={blockDrop}>
           {withNext ? (
             <h2 className="flex items-baseline gap-2 text-[15px] font-semibold">
               {t.todosLater} <span className="text-[12.5px] font-normal text-ink-3">{t.todosLaterHint}</span>
