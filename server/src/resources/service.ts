@@ -684,24 +684,31 @@ export class Resources {
   }
 
   /**
-   * Two works that are one: the citations of `from` move to `into`, which keeps its own link to a material (or takes
-   * the other's) and the reading wish of either. Two works cited by one PDF are two entries, never one.
+   * Two works that are one: the citations, tags and reading state (the more advanced one) of `from` move to `into`,
+   * which keeps its own fields and takes the ones it lacks. If both are linked to different materials, `keep` names
+   * the one that stays linked (default: into's); the other is no longer a reference's file but stays a material of its
+   * own. Two works cited by one PDF are two entries, never one.
    */
-  mergeWorks(from: string, into: string): void {
+  mergeWorks(from: string, into: string, keep?: string | null): void {
     if (from === into) throw new ResourceError('bad-merge');
     const a = this.sql.get('SELECT * FROM works WHERE id = ?', from);
     const b = this.sql.get('SELECT * FROM works WHERE id = ?', into);
     if (!a || !b) throw new ResourceError('unknown-item');
     if (this.sql.get('SELECT 1 AS x FROM work_citations x JOIN work_citations y ON y.resource = x.resource WHERE x.work = ? AND y.work = ?', from, into)) throw new ResourceError('bad-merge');
+    const ra = a.resource as string | null;
+    const rb = b.resource as string | null;
+    if (keep != null && keep !== ra && keep !== rb) throw new ResourceError('bad-merge');
+    const resource = keep ?? rb ?? ra;
+    const rank = (s: unknown) => (s ? (['skip', 'later', 'read', 'know'] as const).indexOf(s as WorkState) + 1 : 0);
+    const state = rank(a.state) > rank(b.state) ? (a.state as string | null) : (b.state as string | null);
+    const fill = (f: string) => ((b[f] === null || b[f] === '' || b[f] === undefined ? a[f] : b[f]) as string | number | null);
     this.sql.tx(() => {
       this.sql.run('UPDATE work_citations SET work = ? WHERE work = ?', into, from);
+      // The material that loses its reference's link is the work's file no more; `from` goes next, so free it first.
+      this.sql.run('UPDATE works SET resource = NULL WHERE id = ?', from);
       this.sql.run(
-        'UPDATE works SET state = ?, resource = ?, doi = ?, updated_at = ? WHERE id = ?',
-        (b.state as string | null) ?? (a.state as string | null),
-        (b.resource as string | null) ?? (a.resource as string | null),
-        (b.doi as string) || (a.doi as string),
-        this.now(),
-        into,
+        'UPDATE works SET state = ?, resource = ?, title = ?, authors = ?, year = ?, venue = ?, doi = ?, url = ?, volume = ?, pages = ?, arxiv = ?, updated_at = ? WHERE id = ?',
+        state, resource, fill('title'), fill('authors'), fill('year'), fill('venue'), fill('doi'), fill('url'), fill('volume'), fill('pages'), fill('arxiv'), this.now(), into,
       );
       this.store.setTags('work', into, [...new Set([...this.store.tagsOf('work', into), ...this.store.tagsOf('work', from)])]);
       this.store.unlinkAll('work', from);
@@ -874,14 +881,18 @@ export class Resources {
    * and digits), else a new one made from what is known. Nothing in an existing reference is overwritten. Other
    * works that look like a new one (`similarWorks`) are not linked; the library shows them as similar.
    */
-  ensureReference(resource: string, found: Partial<WorkEdit> = {}): Work {
+  ensureReference(resource: string, found: Partial<WorkEdit> = {}, choice: { into?: string; separate?: boolean } = {}): Work {
     const res = this.get(resource);
+    // The student decided in the add dialog: this reference (if it has no file), or none of the ones that look alike.
+    const into = choice.into ? (this.sql.get('SELECT id, resource FROM works WHERE id = ?', choice.into) as Row | undefined) : undefined;
+    if (into && into.resource === null) return this.linkWork(into.id as string, resource);
     const open = this.sql.all('SELECT * FROM works WHERE resource IS NULL ORDER BY created_at, id') as Row[];
     const doi = normalizeDoi(found.doi ?? '');
     const key = normalizeTitle(res.title);
     const sure = (w: Row) => w.title !== '' && (w.confidence === null || w.confidence === undefined || Number(w.confidence) >= MIN_CONFIDENCE);
-    const twin =
-      (doi ? open.find((w) => normalizeDoi(w.doi as string) === doi) : undefined) ??
+    const twin = choice.separate
+      ? undefined
+      : (doi ? open.find((w) => normalizeDoi(w.doi as string) === doi) : undefined) ??
       (key.length >= 8 ? open.find((w) => sure(w) && normalizeTitle(w.title as string) === key) : undefined);
     if (twin) return this.linkWork(twin.id as string, resource);
     const year = found.year ?? (/^\d{4}/.test(res.date) ? Number(res.date.slice(0, 4)) : null);

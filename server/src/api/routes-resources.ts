@@ -36,6 +36,8 @@ const upload = z.object({
   refYear: z.coerce.number().int().min(0).max(3000).optional(),
   refVenue: z.string().max(300).default(''),
   refUrl: z.string().max(500).default(''),
+  refInto: z.string().max(100).optional(),
+  refSeparate: z.coerce.boolean().optional(),
 });
 
 const color = z.string().transform((c) => c.toLowerCase()).refine(isAnnotationColor, 'a palette color or #rrggbb');
@@ -276,10 +278,10 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
     return r().citeWorks(content.outline.id, { id: b.page, title: b.title, href: b.href }, works);
   });
   app.post<{ Params: { wid: string } }>('/api/works/:wid/merge', async (req, reply) => {
-    const b = parse(z.object({ into: z.string() }), req.body, reply);
+    const b = parse(z.object({ into: z.string(), keep: z.string().nullable().optional() }), req.body, reply);
     if (!b) return;
     try {
-      r().mergeWorks(req.params.wid, b.into);
+      r().mergeWorks(req.params.wid, b.into, b.keep);
       return { ok: true };
     } catch (e) {
       return fail(e, reply);
@@ -465,10 +467,10 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
       const got = await receive(req, reply);
       if (!got) return;
       try {
-        const { filename, refDoi, refAuthors, refYear, refVenue, refUrl, ...rest } = q;
+        const { filename, refDoi, refAuthors, refYear, refVenue, refUrl, refInto, refSeparate, ...rest } = q;
         const res = r().create(rest, { sha256: got.sha256, filename, size: got.size });
         // A paper always has its reference; the answer names it so the browser can sort it.
-        const work = res.type === 'paper' ? r().ensureReference(res.id, { doi: refDoi, authors: refAuthors, year: refYear ?? null, venue: refVenue, url: refUrl }).id : null;
+        const work = res.type === 'paper' ? r().ensureReference(res.id, { doi: refDoi, authors: refAuthors, year: refYear ?? null, venue: refVenue, url: refUrl }, { ...(refInto ? { into: refInto } : {}), separate: refSeparate === true }).id : null;
         return { ...res, work };
       } catch (e) {
         r().removeIfUnused(got.sha256);

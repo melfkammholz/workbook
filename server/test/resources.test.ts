@@ -233,4 +233,20 @@ describe('a reference for every paper', () => {
     const notes = (await up({ filename: 'n.txt', title: 'Notes', type: 'notes' }, Buffer.from('x'))).json() as { work: string | null };
     expect(notes.work).toBeNull();
   });
+  it('follows the add dialog (join this reference, or keep apart) and merges two files with the one kept', async () => {
+    const open = (await work({ title: 'Choice paper about lenses' })).json() as { id: string };
+    const sep = (await up({ filename: 's.pdf', title: 'Choice paper about lenses', type: 'paper', refSeparate: '1' }, Buffer.from('%PDF s1'))).json() as Resource & { work: string };
+    expect(sep.work).not.toBe(open.id);
+    const into = (await up({ filename: 'i.pdf', title: 'Whatever', type: 'paper', refInto: open.id }, Buffer.from('%PDF i1'))).json() as Resource & { work: string };
+    expect(into.work).toBe(open.id);
+    // Both have files now: merge keeps the chosen file, the other stays a material of its own.
+    await app.inject({ method: 'PUT', url: `/api/works/${sep.work}/state`, payload: { state: 'read' } });
+    await app.inject({ method: 'PUT', url: `/api/works/${open.id}/state`, payload: { state: 'later' } });
+    const res = await app.inject({ method: 'POST', url: `/api/works/${sep.work}/merge`, payload: { into: open.id, keep: sep.id } });
+    expect(res.statusCode).toBe(200);
+    const all = await worksList();
+    expect(all.find((w) => w.id === sep.work)).toBeUndefined();
+    expect(all.find((w) => w.id === open.id)).toMatchObject({ resource: sep.id, state: 'read' });
+    expect((await app.inject({ method: 'POST', url: `/api/works/${sep.work}/merge`, payload: { into: open.id, keep: 'r-other' } })).statusCode).toBeGreaterThanOrEqual(400);
+  });
 });

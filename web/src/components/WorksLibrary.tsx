@@ -1,5 +1,5 @@
 import { toBibtex, type Resource, type ResourceSeries, type ResourcesResponse, type WorkState } from '@wb/shared';
-import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Bookmark, Check, ChevronDown, ChevronUp, Copy, Download, ExternalLink, FileInput, FileText, Lightbulb, Link2, Pencil, Plus, Search, Trash2, Unlink, Upload } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Bookmark, Check, ChevronDown, ChevronUp, Copy, Download, ExternalLink, FileInput, FileText, Lightbulb, Link2, Merge, Pencil, Plus, Search, Trash2, Unlink, Upload } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'wouter';
@@ -17,6 +17,7 @@ import { MenuItem, MenuRule, MoreMenu } from './Menu';
 import { useNewVersion } from './NewVersionButton';
 import { RowTags } from './RowTags';
 import { TagDot } from './TagPicker';
+import { MergeDialog, MergeIntoDialog } from './MergeWorks';
 import { SimilarWorks, WorkLinkPicker, WorkStateButtons, sure } from './WorkBits';
 import { AddDialog, detect } from './AddDialog';
 import { WorkEditDialog } from './WorkEditDialog';
@@ -111,6 +112,7 @@ export function WorksLibrary({ resources, courses, series, activeCourse, dropped
   const [descending, setDescending] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [mergingTwo, setMergingTwo] = useState(false);
   const [copied, setCopied] = useState(false);
   const [widths, setWidths] = useState(readWidths);
   const [active, setActive] = useState<string | null>(null);
@@ -307,6 +309,7 @@ export function WorksLibrary({ resources, courses, series, activeCourse, dropped
   const dialogs = (
     <>
       {bib.node}
+      {mergingTwo && chosen.length === 2 ? <MergeDialog a={chosen[0]!} b={chosen[1]!} onClose={() => { setMergingTwo(false); stopExport(); }} /> : null}
       {adding !== null ? <AddDialog initialText={adding} initialFiles={addFiles} courses={courses} series={series} course={activeCourse} onClose={() => { setAdding(null); setAddFiles(null); }} /> : null}
       {removing?.work ? (
         <Dialog open onOpenChange={(o) => !o && setRemoving(null)} title={t.libDeleteTitle(removing.title)}>
@@ -419,6 +422,12 @@ export function WorksLibrary({ resources, courses, series, activeCourse, dropped
                 <Copy size={13} />
                 {copied ? t.workCopied : t.workCopyBibtex}
               </Button>
+              {chosen.length === 2 ? (
+                <Button size="sm" variant="ghost" onClick={() => setMergingTwo(true)}>
+                  <Merge size={13} />
+                  {t.workMergeTwo}
+                </Button>
+              ) : null}
               <button type="button" onClick={() => setSelected(new Set([...selected, ...inThisView.flatMap((r) => (r.work ? [r.work.id] : []))]))} className="text-[13px] text-ink-2 hover:underline">
                 {t.workSelectShown}
               </button>
@@ -578,8 +587,9 @@ function Row({ row: r, template, exporting, selected, onToggle, active, onSelect
         style={{ gridTemplateColumns: template }}
       >
         <StateDot row={r} />
-        <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-1.5">
           <span className={titleClass}>{r.title}</span>
+          {w && w.similar.length ? <Merge size={13} aria-label={t.workSimilarNote} data-tip={t.workSimilarNote} className="shrink-0 text-accent" /> : null}
         </div>
         <div className="min-w-0 text-[13px] leading-snug text-ink-3">
           <span className="line-clamp-2 break-words">{r.authors}</span>
@@ -624,9 +634,15 @@ function RowMenu({ row: r, ops }: { row: LibraryRow; ops: Ops }) {
   const res = r.resource;
   const version = useNewVersion(res ?? ({} as Resource));
   const [editing, setEditing] = useState(false);
+  const [merging, setMerging] = useState(false);
   return (
     <>
       <MoreMenu label={t.moreActions} pinned width="w-56" className="size-6">
+        {w ? (
+          <MenuItem icon={<Merge size={15} />} onSelect={() => setMerging(true)}>
+            {t.workMergeInto}
+          </MenuItem>
+        ) : null}
         {w ? (
           <MenuItem icon={<Lightbulb size={15} />} onSelect={() => setWorkState(qc, w.id, r.state === 'know' ? null : 'know')}>
             {t.workStateKnow}
@@ -657,6 +673,7 @@ function RowMenu({ row: r, ops }: { row: LibraryRow; ops: Ops }) {
         </MenuItem>
       </MoreMenu>
       {editing && w ? <WorkEditDialog work={w} onClose={() => setEditing(false)} /> : null}
+      {merging && w ? <MergeIntoDialog work={w} onClose={() => setMerging(false)} /> : null}
       {version.node}
     </>
   );

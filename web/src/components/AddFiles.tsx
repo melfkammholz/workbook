@@ -1,8 +1,8 @@
-import { RESOURCE_TYPES, type ResourceSeries, type ResourceType, type ResourcesResponse, type WorkEdit, type WorkState } from '@wb/shared';
+import { RESOURCE_TYPES, normalizeDoi, normalizeTitle, workKeys, type LibraryWork, type ResourceSeries, type ResourceType, type ResourcesResponse, type WorkEdit, type WorkState } from '@wb/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useSettings } from '@/lib/api';
-import { lookupWork, sortNewWorks } from '@/lib/bibliography';
+import { keepWorksSeparate, lookupWork, sortNewWorks, useWorks } from '@/lib/bibliography';
 import { useT } from '@/lib/i18n';
 import { isPdf, pdfMetadata } from '@/lib/pdf';
 import { MAX_FILE_BYTES, formatSize, naturalCompare, refreshResources, titleFromFilename, uploadResource } from '@/lib/resources';
@@ -20,10 +20,46 @@ interface FileRow {
   type: ResourceType;
   /** What was read from the PDF: shown as the row's note and used for the work of a paper. */
   found: { doi: string; author: string; fields: Partial<WorkEdit> | null } | null;
+  /** The student's answer to "looks like X": the reference the file joins, or none. Unset: the default. */
+  merge?: boolean;
+}
+
+/** The references of the library a paper row may be the same as (same DOI or title, or title and year), the sure ones first. */
+function lookalikes(r: FileRow, works: LibraryWork[]): { work: LibraryWork; sure: boolean }[] {
+  const doi = normalizeDoi(r.found?.doi ?? '');
+  const title = normalizeTitle(r.title);
+  const keys = workKeys({ title: r.title, year: r.found?.fields?.year ?? null, doi });
+  return works.flatMap((w) => {
+    const byDoi = !!doi && normalizeDoi(w.doi) === doi;
+    const byTitle = title.length >= 8 && normalizeTitle(w.title) === title;
+    if (!byDoi && !byTitle && !workKeys(w).some((k) => keys.includes(k))) return [];
+    return [{ work: w, sure: byDoi || byTitle }];
+  }).sort((x, y) => Number(y.sure) - Number(x.sure));
 }
 
 /** The guess: a PDF with a DOI is a paper, slides by their name, else notes. */
 const guess = (name: string, doi: string): ResourceType => (doi ? 'paper' : SLIDES.test(name) ? 'slides' : 'notes');
+
+/** "Looks like X in your library": merge (the file becomes the reference's file) or keep separate; a reference that has a file is only mentioned. */
+function LooksLike({ row, onChoose }: { row: { work: LibraryWork; free: boolean; merge: boolean }; onChoose: (merge: boolean) => void }) {
+  const t = useT();
+  const btn = (on: boolean) => clsx('rounded px-1.5 py-px text-[12px]', on ? 'bg-accent text-white' : 'text-accent hover:underline');
+  return (
+    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md bg-accent-soft px-2 py-1 text-[12px] text-ink-2">
+      <span className="min-w-0 break-words">{t.addLooksLike(row.work.title || row.work.authors)}</span>
+      {row.free ? (
+        <button type="button" aria-pressed={row.merge} onClick={() => onChoose(true)} className={btn(row.merge)}>
+          {t.addMergeFile}
+        </button>
+      ) : (
+        <span className="text-ink-3">{t.addHasFile}</span>
+      )}
+      <button type="button" aria-pressed={!row.merge} onClick={() => onChoose(false)} className={btn(!row.merge)}>
+        {t.addKeepSeparate}
+      </button>
+    </span>
+  );
+}
 
 /**
  * Files in the add dialog: a row per file (title and kind guessed), what they share once underneath. A paper also
@@ -33,6 +69,7 @@ export function AddFiles({ files, courses, series, course, onBack, onClose }: { 
   const t = useT();
   const qc = useQueryClient();
   const lookupOn = !!useSettings().data?.lookupReferences;
+  const works = useWorks().data;
   const [rows, setRows] = useState<FileRow[]>(() =>
     [...files].sort((a, b) => naturalCompare(a.name, b.name)).map((file) => ({ file, on: file.size <= MAX_FILE_BYTES, title: titleFromFilename(file.name), type: guess(file.name, ''), found: null })),
   );
@@ -74,6 +111,13 @@ export function AddFiles({ files, courses, series, course, onBack, onClose }: { 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** For a paper row: the reference it looks like (if any) and whether it joins it (a reference with a file is only mentioned). */
+  const looks = (r: FileRow) => {
+    const first = r.type === 'paper' && works ? lookalikes(r, works)[0] : undefined;
+    if (!first) return null;
+    const free = !first.work.resource;
+    return { work: first.work, free, merge: free && (r.merge ?? first.sure) };
+  };
   const chosen = rows.filter((r) => r.on);
   const papers = chosen.filter((r) => r.type === 'paper').length;
   const bad = chosen.some((r) => !r.title.trim()) || (newSeries !== undefined && !newSeries.trim());
@@ -91,13 +135,17 @@ export function AddFiles({ files, courses, series, course, onBack, onClose }: { 
         const r = chosen[i]!;
         const f = r.found?.fields;
         const year = f?.year ?? (/^\d{4}/.test(date) ? Number(date.slice(0, 4)) : null);
-        const res = await uploadResource(r.file, { title: r.title.trim(), type: r.type, author: author || r.found?.author || '', date, courses: inCourses, labels: tags, series: sid, newSeries: fresh }, { doi: f?.doi || r.found?.doi || '', authors: f?.authors ?? '', year, venue: f?.venue ?? '', url: f?.url ?? '' });
+        const lk = looks(r);
+        const choice = lk ? (lk.merge ? { into: lk.work.id } : { separate: true }) : {};
+        const res = await uploadResource(r.file, { title: r.title.trim(), type: r.type, author: author || r.found?.author || '', date, courses: inCourses, labels: tags, series: sid, newSeries: fresh }, { doi: f?.doi || r.found?.doi || '', authors: f?.authors ?? '', year, venue: f?.venue ?? '', url: f?.url ?? '', ...choice });
         if (fresh) {
           sid = res.series;
           fresh = undefined;
         }
         // The server made or found the paper's reference; it gets the state and the tags.
         if (res.work) await sortNewWorks(qc, [res.work], state, tags);
+        // Kept apart on purpose: the pair is not suggested again.
+        if (res.work && lk && !lk.merge) await keepWorksSeparate(qc, res.work, lk.work.id);
       }
       void refreshResources(qc);
       onClose();
@@ -121,6 +169,7 @@ export function AddFiles({ files, courses, series, course, onBack, onClose }: { 
               <small className={clsx('mt-0.5 block text-[12px]', r.found?.doi ? 'text-done' : 'text-ink-3')}>
                 {r.file.size > MAX_FILE_BYTES ? t.resourceTooLarge : r.found?.doi ? (r.found.fields ? t.addDoiTaken : t.addDoiFound) : t.addFromName}
               </small>
+              {r.on && looks(r) ? <LooksLike row={looks(r)!} onChoose={(merge) => patch(i, { merge })} /> : null}
             </div>
             <select aria-label={t.resourceType} value={r.type} onChange={(e) => patch(i, { type: e.target.value as ResourceType })} className={clsx(field, 'w-28 shrink-0')}>
               {RESOURCE_TYPES.map((x) => (

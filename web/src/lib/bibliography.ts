@@ -155,8 +155,16 @@ const failed = (qc: QueryClient) => () => {
   reportSaveFailed();
 };
 
-/** "Same work": the citations of `from` go to `into`. */
-export const mergeWork = (qc: QueryClient, from: string, into: string) => api.post(`/api/works/${encodeURIComponent(from)}/merge`, { into }).then(done(qc), failed(qc));
+/** "Same work": the citations, tags and state of `from` go to `into`; `keep` is the material that stays its file. */
+export const mergeWork = (qc: QueryClient, from: string, into: string, keep?: string | null) =>
+  api.post(`/api/works/${encodeURIComponent(from)}/merge`, { into, ...(keep !== undefined ? { keep } : {}) }).then(
+    (r) => {
+      void qc.invalidateQueries({ queryKey: ['resources'] });
+      done(qc)();
+      return r;
+    },
+    failed(qc),
+  );
 /** "Not the same": the pair is not suggested again. */
 export const keepWorksSeparate = (qc: QueryClient, a: string, b: string) => api.post(`/api/works/${encodeURIComponent(a)}/separate`, { other: b }).then(done(qc), failed(qc));
 /** "I have this": the work is that material, or none. */

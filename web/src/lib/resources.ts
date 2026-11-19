@@ -27,13 +27,15 @@ export const MAX_FILE_BYTES = 500 * 1024 * 1024;
 
 /** Uploads one file as the raw body; its details go in the query. */
 /** `ref` is what is known of a paper's reference; the answer's `work` is the id of the reference the server made or found. */
-export async function uploadResource(file: File, f: ResourceFields, ref?: Partial<WorkEdit>): Promise<Resource & { work: string | null }> {
+export async function uploadResource(file: File, f: ResourceFields, ref?: Partial<WorkEdit> & { into?: string; separate?: boolean }): Promise<Resource & { work: string | null }> {
   const q = new URLSearchParams({ filename: file.name, title: f.title, type: f.type, author: f.author, date: f.date, courses: f.courses.join(','), labels: f.labels.join(',') });
   if (ref?.doi) q.set('refDoi', ref.doi);
   if (ref?.authors) q.set('refAuthors', ref.authors);
   if (ref?.year) q.set('refYear', String(ref.year));
   if (ref?.venue) q.set('refVenue', ref.venue);
   if (ref?.url) q.set('refUrl', ref.url);
+  if (ref?.into) q.set('refInto', ref.into);
+  if (ref?.separate) q.set('refSeparate', '1');
   if (f.newSeries) q.set('newSeries', f.newSeries);
   else if (f.series) q.set('series', f.series);
   const res = await fetch(`/api/resources/upload?${q}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: file });

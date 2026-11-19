@@ -3,11 +3,12 @@ import * as Popover from '@radix-ui/react-popover';
 import { Bookmark, Check, EyeOff, Lightbulb, Link2, Pencil, Unlink } from 'lucide-react';
 import { Fragment, useState, type ReactNode } from 'react';
 import { Link } from 'wouter';
-import { keepWorksSeparate, linkWork, mergeWork, setWorkState } from '@/lib/bibliography';
+import { keepWorksSeparate, linkWork, mergeWork, setWorkState, useWorks } from '@/lib/bibliography';
 import { useT } from '@/lib/i18n';
 import { useResources } from '@/lib/resources';
 import { useQueryClient } from '@tanstack/react-query';
 import { IconButton, clsx } from './ui';
+import { MergeDialog, mergeNeedsDialog } from './MergeWorks';
 import { WorkEditDialog } from './WorkEditDialog';
 
 /** Whether the fields read from a reference's text can be shown; if not, the raw text is. */
@@ -17,14 +18,24 @@ export const sure = (w: Pick<Work, 'confidence' | 'title'>) => !!w.title && w.co
 export function SimilarWorks({ work, similar }: { work: Work; similar: SimilarWork[] }) {
   const t = useT();
   const qc = useQueryClient();
+  const works = useWorks().data;
+  const [merging, setMerging] = useState<string | null>(null);
   if (similar.length === 0) return null;
+  const mine = works?.find((w) => w.id === work.id);
+  const other = works?.find((w) => w.id === merging);
+  const merge = (id: string) => {
+    const o = works?.find((w) => w.id === id);
+    if (mine && o && mergeNeedsDialog(o, mine)) setMerging(id);
+    else void mergeWork(qc, id, work.id);
+  };
   return (
     <ul className="mt-1 space-y-1">
+      {mine && other ? <MergeDialog a={other} b={mine} onClose={() => setMerging(null)} /> : null}
       {similar.map((s) => (
         <li key={s.id} className="rounded-md bg-accent-soft px-2 py-1 text-[12px]">
           <span className="block break-words">{t.workLooksLike(s.title || s.authors, s.year, s.cited)}</span>
           <span className="mt-0.5 flex gap-2">
-            <button type="button" onClick={() => void mergeWork(qc, s.id, work.id)} className="font-medium text-accent hover:underline">
+            <button type="button" onClick={() => merge(s.id)} className="font-medium text-accent hover:underline">
               {t.workMerge}
             </button>
             <button type="button" onClick={() => void keepWorksSeparate(qc, work.id, s.id)} className="text-ink-2 hover:underline">
