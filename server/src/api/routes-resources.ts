@@ -131,6 +131,15 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
     }
   });
 
+  app.post<{ Params: { id: string } }>('/api/resources/:id/open', async (req, reply) => {
+    try {
+      r().recordOpen(req.params.id);
+      return reply.code(204).send();
+    } catch (e) {
+      return fail(e, reply);
+    }
+  });
+
   // Highlights in PDFs: one request loads all of a resource's; the list of every one feeds the highlights page.
   app.get('/api/pdf-annotations', async () => r().listHighlights());
   app.get<{ Params: { id: string } }>('/api/resources/:id/annotations', async (req, reply) => {

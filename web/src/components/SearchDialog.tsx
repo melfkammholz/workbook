@@ -5,7 +5,7 @@ import { useTags } from '@/lib/tags';
 import { indexItems, search, useCourseAction, useCourses, useOutline, useSettings, useState_, type SearchResponse } from '@/lib/api';
 import { focusOf, itemInFocus } from '@/lib/focus';
 import { useT } from '@/lib/i18n';
-import { fileUrl, useResources } from '@/lib/resources';
+import { fileUrl, recordOpen, useResources } from '@/lib/resources';
 import { Dialog } from './ui';
 import { Title } from '@/components/Title';
 
@@ -157,7 +157,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
             <ul>
               {materials.map((m) => (
                 <li key={m.id}>
-                  <a href={fileUrl(m)} target="_blank" rel="noreferrer" onClick={onClose} className="block w-full rounded-md px-2 py-2 text-left hover:bg-sunk">
+                  <a href={fileUrl(m)} target="_blank" rel="noreferrer" onClick={() => { recordOpen(m.id); onClose(); }} className="block w-full rounded-md px-2 py-2 text-left hover:bg-sunk">
                     <span className="flex items-baseline gap-3">
                       <span className="min-w-0 flex-1 truncate text-sm font-medium">{m.title}</span>
                       <span className="shrink-0 text-[12px] text-ink-3">{t.resourceTypes[m.type]}</span>

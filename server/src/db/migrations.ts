@@ -998,6 +998,17 @@ export const MIGRATIONS: Migration[] = [
       UPDATE todos SET title = title;
     `);
   },
+  /*
+   * One row per time the student opened a material (viewer or file link). Only the library's "Gerade relevant"
+   * reads it: opened 3+ times in the last 14 days. Never shown, no weighting.
+   */
+  `
+  CREATE TABLE resource_opens (
+    resource TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+    at       INTEGER NOT NULL
+  );
+  CREATE INDEX resource_opens_resource_at ON resource_opens(resource, at);
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

@@ -14,7 +14,7 @@ import { useOutline } from '@/lib/api';
 import { BackLink } from '@/lib/history';
 import { useT } from '@/lib/i18n';
 import { isPdf, preloadPdf } from '@/lib/pdf';
-import { fileUrl, formatSize, refreshResources, useResources } from '@/lib/resources';
+import { fileUrl, formatSize, recordOpen, refreshResources, useResources } from '@/lib/resources';
 import { useSettings } from '@/lib/api';
 
 const TYPES: ResourceType[] = ['notes', 'slides', 'paper', 'other'];
@@ -54,7 +54,7 @@ function FileRow({ r, label, details, onEdit, onDelete }: { r: Resource; label?:
             {r.title}
           </Link>
         ) : (
-          <a href={fileUrl(r)} target="_blank" rel="noreferrer" className="block truncate text-[15px] font-medium hover:underline">
+          <a href={fileUrl(r)} target="_blank" rel="noreferrer" onClick={() => recordOpen(r.id)} className="block truncate text-[15px] font-medium hover:underline">
             {label ? <span className="mr-2 text-ink-3">{label}</span> : null}
             {r.title}
           </a>
@@ -102,8 +102,8 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
   const [deleting, setDeleting] = useState<Resource | null>(null);
   const data = list.data;
   const labelDefs = useTags().data ?? [];
-  const [tab, setTab] = useState<'files' | 'references'>('files');
-  const refs = !course && tab === 'references';
+  // The library (no course) is one table of works and materials; a course lists its materials by type.
+  const refs = !course;
   const [labelFilter, setLabelFilter] = useState<string[]>([]);
   const usedLabels = labelDefs.filter((l) => data?.resources.some((r) => r.labels.includes(l.id)));
   const matches = (r: Resource) => labelFilter.every((l) => r.labels.includes(l));
@@ -193,7 +193,7 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
       }}
       onDrop={drop}
     >
-      <div className="settle wb-page mx-auto max-w-3xl px-6 pb-12 pt-8 sm:px-8">
+      <div className={`settle wb-page mx-auto px-6 ${course ? 'max-w-3xl' : 'max-w-6xl'} pb-12 pt-8 sm:px-8`}>
         <BackLink fallback="/" label={t.back} className="mb-3">
           {t.back}
         </BackLink>
@@ -209,16 +209,7 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
             {otherLink.label}
           </Link>
         ) : null}
-        {!course ? (
-          <div className="mt-4 flex gap-4 border-b border-line" role="tablist">
-            {(['files', 'references'] as const).map((k) => (
-              <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`-mb-px border-b-2 px-0.5 pb-1.5 text-[14px] ${tab === k ? 'border-accent font-medium' : 'border-transparent text-ink-2 hover:text-ink'}`}>
-                {k === 'files' ? t.workTabFiles : t.workTabReferences}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {refs ? <WorksLibrary /> : null}
+        {refs ? <WorksLibrary resources={data.resources} onEditResource={setEditing} onDeleteResource={setDeleting} /> : null}
         {!refs && usedLabels.length ? (
           <div className="mt-4 flex flex-wrap items-center gap-1.5" role="group" aria-label={t.resourceLabelFilter}>
             {usedLabels.map((l) => {

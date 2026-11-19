@@ -27,7 +27,7 @@ import { swatchProps } from '@/lib/annotations';
 import { usePdfAnnotations, usePdfAnnotationsOn } from '@/lib/pdfAnnotations';
 import { pdfPageRefText, savePdfPage, usePdfPages, type PagePatch } from '@/lib/pdfPages';
 import { deleteTocEdit, readOutline, saveTocEdit, usePdfToc } from '@/lib/pdfToc';
-import { fileUrl, formatSize, refreshResources, resourceKeys, updateResource, useResources } from '@/lib/resources';
+import { fileUrl, formatSize, recordOpen, refreshResources, resourceKeys, updateResource, useResources } from '@/lib/resources';
 import { placeStale } from '@/lib/pdfVersions';
 import { NewVersionButton } from '@/components/NewVersionButton';
 import { useTags } from '@/lib/tags';
@@ -214,6 +214,11 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   useEffect(() => {
     if (doc && resource.stale > 0) void placeStale(qc, resource, doc).catch(() => undefined);
   }, [doc, resource, qc]);
+
+  // One open per visit to the viewer (feeds "Gerade relevant" in the library).
+  useEffect(() => {
+    recordOpen(resource.id);
+  }, [resource.id]);
 
   // The PDF stays open after leaving (`keepPdf`), the last few of them; this only marks it as used when it was open.
   useEffect(() => {

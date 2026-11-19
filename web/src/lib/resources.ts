@@ -20,6 +20,9 @@ export const useResources = (course: string | null, enabled = true) =>
 /** The hash is in the URL: the browser keeps a file for good, so a replaced file needs another address. */
 export const fileUrl = (r: Resource) => `/api/resources/${encodeURIComponent(r.id)}/file?v=${r.file.sha256.slice(0, 16)}`;
 
+/** Counts one open of the material for the library's "Gerade relevant". Fire and forget. */
+export const recordOpen = (id: string) => void api.post(`/api/resources/${encodeURIComponent(id)}/open`, {}).catch(() => undefined);
+
 export const MAX_FILE_BYTES = 500 * 1024 * 1024;
 
 /** Uploads one file as the raw body; its details go in the query. */

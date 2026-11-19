@@ -437,6 +437,8 @@ export interface Resource {
   file: { sha256: string; filename: string; mime: string; size: number; uploadedAt: number };
   /** How many files it has had (1: never replaced). */
   versions: number;
+  /** Times it was opened in the last 14 days. Internal: decides "Gerade relevant" in the library, never shown. */
+  recentOpens: number;
   /** Highlights and page items still on an older file: the viewer places them on the new one. */
   stale: number;
   /** Highlights and page items the new file could not place: the student fixes or drops them. */
