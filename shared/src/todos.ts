@@ -33,7 +33,14 @@ export interface Todo {
   title: string;
   /** Plain free text, shown on expand. */
   body: string | null;
+  /** Effective: derived from the parts unless `manual`. */
   status: TodoStatus;
+  /** What is stored; differs from `status` only when the parts decide. */
+  storedStatus: TodoStatus;
+  /** The stored status is the student's own choice and wins over the parts. */
+  manual: boolean;
+  /** The status follows the linked item (used from TV3). */
+  follow: boolean;
   /** The workbook it belongs to; null is global. Children always have their parent's. */
   course: string | null;
   link: TodoLink | null;
@@ -55,3 +62,14 @@ export interface Todo {
 
 export const MAX_TODO_TITLE = 300;
 export const MAX_TODO_BODY = 10_000;
+
+/** Direct parts: how many are done, doing, and in all. Deeper levels are not counted. */
+export function todoProgress(todo: Pick<Todo, 'children'>): { done: number; doing: number; total: number } {
+  let done = 0;
+  let doing = 0;
+  for (const c of todo.children) {
+    if (c.status === 'done') done++;
+    else if (c.status === 'doing') doing++;
+  }
+  return { done, doing, total: todo.children.length };
+}

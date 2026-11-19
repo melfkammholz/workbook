@@ -1055,6 +1055,16 @@ export const MIGRATIONS: Migration[] = [
       db.prepare("DELETE FROM tag_links WHERE kind = 'resource' AND ref = ?").run(r.id);
     }
   },
+  /*
+   * Todo progress: `manual` says the stored status is the student's own choice (it wins over the one derived from the
+   * parts); `follow` makes a part take its status from the linked item. Every existing row is manual, so nothing
+   * changes by itself.
+   */
+  `
+  ALTER TABLE todos ADD COLUMN manual INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE todos ADD COLUMN follow INTEGER NOT NULL DEFAULT 0;
+  UPDATE todos SET manual = 1;
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

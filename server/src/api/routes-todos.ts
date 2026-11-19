@@ -24,6 +24,7 @@ const bodies = {
       title: z.string().trim().min(1).max(MAX_TODO_TITLE),
       body: z.string().max(MAX_TODO_BODY).nullable(),
       status: z.enum(TODO_STATUSES as [string, ...string[]]),
+      manual: z.literal(false),
       due: date.nullable(),
       minutes: z.number().int().min(1).max(100_000).nullable(),
       parentId: z.string().max(100).nullable(),

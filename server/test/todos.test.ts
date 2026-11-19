@@ -104,4 +104,20 @@ describe('todos', () => {
     expect(find('funktoren')).toEqual([a.id]);
     expect(find('teil')).toEqual([b.id]);
   });
+
+  it('a parent follows its parts until the student sets it', () => {
+    const { store } = make();
+    const a = store.addTodo({ title: 'A' })!;
+    const b = store.addTodo({ title: 'B', parentId: a.id })!;
+    const c = store.addTodo({ title: 'C', parentId: a.id })!;
+    expect(store.getTodo(a.id)!.status).toBe('open');
+    store.updateTodo(b.id, { status: 'done' });
+    expect(store.getTodo(a.id)).toMatchObject({ status: 'doing', storedStatus: 'open' });
+    store.updateTodo(c.id, { status: 'done' });
+    expect(store.listTodos({ status: 'done' }).map((x) => x.id)).toEqual([a.id]);
+    store.updateTodo(a.id, { status: 'open' });
+    expect(store.getTodo(a.id)).toMatchObject({ status: 'open', manual: true });
+    store.updateTodo(a.id, { manual: false });
+    expect(store.getTodo(a.id)!.status).toBe('done');
+  });
 });

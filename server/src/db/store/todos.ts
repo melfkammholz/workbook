@@ -8,6 +8,16 @@ import {
 import type { Store } from '../store.js';
 import { type Row, rowToTodo } from './shared.js';
 
+/** A todo with parts that is not manual takes its status from them: all done, all open, or in between. */
+function derive(t: Todo): void {
+  for (const c of t.children) derive(c);
+  if (t.manual || t.children.length === 0) return;
+  const done = t.children.filter((c) => c.status === 'done').length;
+  const open = t.children.filter((c) => c.status === 'open').length;
+  t.status = done === t.children.length ? 'done' : open === t.children.length ? 'open' : 'doing';
+  t.doneAt = t.status === 'done' ? Math.max(0, ...t.children.map((c) => c.doneAt ?? 0)) || t.doneAt : null;
+}
+
 export class TodosPart {
   // ───────────────────────── todos ─────────────────────────
 
@@ -22,6 +32,7 @@ export class TodosPart {
       else if (!t.parentId) top.push(t);
     }
     // Next block by rank, the rest newest first.
+    for (const t of top) derive(t);
     top.sort((a, b) => (a.nextRank === null ? 1 : 0) - (b.nextRank === null ? 1 : 0) || (a.nextRank ?? 0) - (b.nextRank ?? 0) || b.createdAt - a.createdAt);
     return top.filter((t) => (filter.status === undefined || t.status === filter.status) && (filter.course === undefined || t.course === filter.course));
   }
@@ -29,8 +40,13 @@ export class TodosPart {
   getTodo(this: Store, id: string): Todo | null {
     const r = this.get('SELECT * FROM todos WHERE id = ? AND deleted_at IS NULL', id);
     if (!r) return null;
-    const t = rowToTodo(r);
-    t.children = this.all('SELECT * FROM todos WHERE parent_id = ? AND deleted_at IS NULL ORDER BY sort, rowid', id).map(rowToTodo);
+    const build = (row: Row): Todo => {
+      const t = rowToTodo(row);
+      t.children = this.all('SELECT * FROM todos WHERE parent_id = ? AND deleted_at IS NULL ORDER BY sort, rowid', t.id).map(build);
+      return t;
+    };
+    const t = build(r);
+    derive(t);
     return t;
   }
 
@@ -56,7 +72,7 @@ export class TodosPart {
    */
   updateTodo(this: Store, 
     id: string,
-    p: { title?: string; body?: string | null; status?: TodoStatus; due?: string | null; minutes?: number | null; parentId?: string | null; course?: string | null; nextRank?: number | null; sort?: number },
+    p: { title?: string; body?: string | null; status?: TodoStatus; manual?: false; due?: string | null; minutes?: number | null; parentId?: string | null; course?: string | null; nextRank?: number | null; sort?: number },
   ): Todo | 'unknown' | 'cycle' | 'child' {
     const cur = this.get('SELECT * FROM todos WHERE id = ? AND deleted_at IS NULL', id);
     if (!cur) return 'unknown';
@@ -84,9 +100,10 @@ export class TodosPart {
       if (p.body !== undefined) this.run('UPDATE todos SET body = ? WHERE id = ?', p.body, id);
       if (p.due !== undefined) this.run('UPDATE todos SET due = ? WHERE id = ?', p.due, id);
       if (p.minutes !== undefined) this.run('UPDATE todos SET minutes = ? WHERE id = ?', p.minutes, id);
-      if (p.status !== undefined && p.status !== cur.status) {
-        this.run('UPDATE todos SET status = ?, done_at = ? WHERE id = ?', p.status, p.status === 'done' ? t : null, id);
-      }
+      if (p.status !== undefined) {
+        if (p.status !== cur.status) this.run('UPDATE todos SET status = ?, done_at = ? WHERE id = ?', p.status, p.status === 'done' ? t : null, id);
+        this.run('UPDATE todos SET manual = 1 WHERE id = ?', id);
+      } else if (p.manual === false) this.run('UPDATE todos SET manual = 0 WHERE id = ?', id);
       this.run('UPDATE todos SET updated_at = ? WHERE id = ?', t, id);
       return this.getTodo(id)!;
     });

@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import { Calendar, Check, CircleDot, GripVertical, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import type { Outline, Todo, TodoStatus } from '@wb/shared';
+import { todoProgress, type Outline, type Todo, type TodoStatus } from '@wb/shared';
 import { Link, useSearch } from 'wouter';
 import { Spinner } from '@/components/ui';
 import { useCourses, useOutline } from '@/lib/api';
@@ -82,10 +82,31 @@ interface Ctx {
   setNext: (id: string, next: boolean) => void;
 }
 
+/** One segment per direct part (done green, doing half, open empty); above 10 parts one continuous bar. */
+function TodoSegments({ todo }: { todo: Todo }) {
+  const { done, doing, total } = todoProgress(todo);
+  if (total === 0) return null;
+  if (total > 10) {
+    return (
+      <span aria-hidden className="relative h-1.5 w-[84px] shrink-0 overflow-hidden rounded-full bg-sunk">
+        <span className="absolute inset-y-0 left-0 bg-accent/40" style={{ width: `${((done + doing) / total) * 100}%` }} />
+        <span className="absolute inset-y-0 left-0 bg-done" style={{ width: `${(done / total) * 100}%` }} />
+      </span>
+    );
+  }
+  return (
+    <span aria-hidden className="flex shrink-0 gap-0.5">
+      {todo.children.map((c) => (
+        <span key={c.id} className={clsx('h-1.5 w-[13px] rounded-sm', c.status === 'done' ? 'bg-done' : c.status === 'doing' ? 'bg-gradient-to-r from-accent from-50% to-sunk to-50%' : 'bg-sunk')} />
+      ))}
+    </span>
+  );
+}
+
 function Circle({ todo, ctx, size = 18 }: { todo: Todo; ctx: Ctx; size?: number }) {
   const { t } = ctx;
   const done = allDone(todo);
-  const half = !done && (todo.status === 'doing' || todo.children.some(allDone));
+  const half = !done && todo.status === 'doing';
   return (
     <button
       type="button"
@@ -217,7 +238,7 @@ function Row({ todo, ctx, depth, top }: RowProps) {
   const [editing, setEditing] = useState(false);
   const done = allDone(todo);
   const kind = kindOf(todo, ctx.outline);
-  const doneParts = todo.children.filter(allDone).length;
+  const progress = todoProgress(todo);
   const key = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return;
     if (e.key === ' ' || e.key === 'Enter') {
@@ -280,7 +301,12 @@ function Row({ todo, ctx, depth, top }: RowProps) {
                   <Trash2 size={13} />
                 </ActionButton>
               </span>
-              {todo.children.length ? <span className="text-[12px] text-ink-3">{t.todosParts(doneParts, todo.children.length)}</span> : null}
+              {progress.total ? (
+                <span className="flex items-center gap-1.5">
+                  <TodoSegments todo={todo} />
+                  <span className="text-[12px] text-ink-3">{t.todosParts(progress.done, progress.total)}</span>
+                </span>
+              ) : null}
               {!done && todo.minutes ? <span className="text-[12px] text-ink-3">{todo.minutes} min</span> : null}
               {!done && todo.due ? <span className="text-[12px] text-ink-3">{t.todosDue(dueText(todo.due, lang))}</span> : null}
               {top?.showAge ? <span className="w-24 text-right text-[12px] text-ink-3">{t.todosAge(ageDays(todo))}</span> : null}
@@ -353,6 +379,7 @@ function LaneCard({
         )}
         onEdit={() => undefined}
       />
+      {todo.children.length ? <TodoSegments todo={todo} /> : null}
       {!done && todo.due ? (
         <span className="shrink-0 text-[11.5px] text-ink-3">
           {ctx.t.todosDue(dueText(todo.due, ctx.lang))}

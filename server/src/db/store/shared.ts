@@ -87,13 +87,17 @@ export function rowToChange(r: Row): Change {
 }
 
 export function rowToTodo(r: Row): Todo {
+  const stored: TodoStatus = TODO_STATUSES.includes(r.status as TodoStatus) ? (r.status as TodoStatus) : 'open';
   return {
     id: r.id as string,
     parentId: (r.parent_id as string | null) ?? null,
     sort: Number(r.sort),
     title: r.title as string,
     body: (r.body as string | null) ?? null,
-    status: TODO_STATUSES.includes(r.status as TodoStatus) ? (r.status as TodoStatus) : 'open',
+    status: stored,
+    storedStatus: stored,
+    manual: Number(r.manual) === 1,
+    follow: Number(r.follow) === 1,
     course: (r.course as string | null) ?? null,
     link: r.link_kind ? { kind: r.link_kind as TodoLink['kind'], ref: r.link_ref as string, title: (r.link_title as string | null) ?? null } : null,
     due: (r.due as string | null) ?? null,
