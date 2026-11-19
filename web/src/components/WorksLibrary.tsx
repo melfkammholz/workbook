@@ -1,6 +1,6 @@
 import { toBibtex, type LibraryWork, type Resource, type WorkState } from '@wb/shared';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, Download, FileInput, FileText, GitMerge, Link2, Pencil, Plus, Trash2, Unlink, Upload } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ChevronUp, Copy, Download, FileInput, FileText, Link2, Pencil, Plus, Trash2, Unlink, Upload } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'wouter';
 import { isTyping } from '@/lib/keys';
@@ -8,6 +8,7 @@ import { linkWork, setWorkState, setWorkTags, useWorks } from '@/lib/bibliograph
 import { useT } from '@/lib/i18n';
 import { buildRows, type LibraryRow } from '@/lib/libraryRows';
 import { isPdf } from '@/lib/pdf';
+import { usePdfAnnotations } from '@/lib/pdfAnnotations';
 import { fileUrl, recordOpen, refreshResources } from '@/lib/resources';
 import { Button, Empty, Spinner, clsx } from './ui';
 import { ensureTag, setTagsOn, useTagMap } from '@/lib/tags';
@@ -16,7 +17,7 @@ import { MenuItem, MenuRule, MoreMenu } from './Menu';
 import { useNewVersion } from './NewVersionButton';
 import { RowTags } from './RowTags';
 import { TagDot } from './TagPicker';
-import { SimilarWorks, WorkEntry, WorkLinkPicker, WorkSortStrip, WorkStateMenu, WorkEditButton, sure } from './WorkBits';
+import { SimilarWorks, WorkEntry, WorkLinkPicker, WorkSortStrip, WorkStateButtons, WorkStateMenu, WorkEditButton, sure } from './WorkBits';
 import { WorkEditDialog } from './WorkEditDialog';
 
 type View = 'all' | 'relevant' | 'later' | 'read' | 'know' | 'skip' | 'unsorted';
@@ -30,7 +31,8 @@ const COLS: { id: ColId; width: number; min: number }[] = [
 ];
 const STATE_W = 44;
 const FILE_W = 44;
-const MENU_W = 36;
+const PANE_KEY = 'wb.library.pane';
+const PANE_OPEN_KEY = 'wb.library.paneOpen';
 const WIDTHS_KEY = 'wb.library.columns';
 
 const readWidths = (): Record<ColId, number> => {
@@ -72,6 +74,15 @@ export function WorksLibrary({ resources, onEditResource, onDeleteResource }: { 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
   const [widths, setWidths] = useState(readWidths);
+  const [active, setActive] = useState<string | null>(null);
+  const [paneOpen, setPaneOpen] = useState(() => {
+    try {
+      return localStorage.getItem(PANE_OPEN_KEY) !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const openRef = useRef<HTMLElement | null>(null);
 
   const rows = useMemo(() => (works ? buildRows(works, resources) : []), [works, resources]);
   const usedTags = [...tagMap.values()].filter((g) => rows.some((r) => r.tags.includes(g.id)));
@@ -82,6 +93,37 @@ export function WorksLibrary({ resources, onEditResource, onDeleteResource }: { 
   const relevant = view === 'all' ? sorted(inThisView.filter((r) => r.relevant)) : [];
   const rest = sorted(view === 'all' ? inThisView.filter((r) => !r.relevant) : inThisView);
   const shownCount = inThisView.length;
+  const order = useMemo(() => [...relevant, ...rest], [relevant, rest]);
+  const activeRow = view === 'unsorted' ? undefined : order.find((r) => r.key === active);
+  const togglePane = () =>
+    setPaneOpen((o) => {
+      try {
+        localStorage.setItem(PANE_OPEN_KEY, o ? '0' : '1');
+      } catch {
+        /* not remembered */
+      }
+      return !o;
+    });
+
+  // Arrows change the selection, Enter opens the file; the detail pane follows.
+  useEffect(() => {
+    if (view === 'unsorted' || exporting) return;
+    const on = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || isTyping(e.target) || document.querySelector('[role=dialog]')) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (!order.length) return;
+        const at = order.findIndex((r) => r.key === active);
+        const next = e.key === 'ArrowDown' ? Math.min(at + 1, order.length - 1) : at < 0 ? 0 : Math.max(at - 1, 0);
+        setActive(order[next]!.key);
+        document.querySelector(`[data-row-key="${order[next]!.key}"]`)?.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter' && openRef.current && !(e.target instanceof HTMLButtonElement || e.target instanceof HTMLAnchorElement)) {
+        openRef.current.click();
+      } else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  }, [order, active, view, exporting]);
 
   const views: [View, string][] = [['all', t.libViewAll], ['relevant', t.libViewRelevant], ['later', t.libViewLater], ['read', t.libViewRead], ['know', t.libViewKnow], ['unsorted', t.libViewUnsorted], ['skip', t.libViewSkip]];
   // "Relevant now" shows no count: how often something was opened is not for showing.
@@ -112,11 +154,11 @@ export function WorksLibrary({ resources, onEditResource, onDeleteResource }: { 
       }
       return next;
     });
-  const template = `${STATE_W}px ${COLS.map((c) => `${widths[c.id]}px`).join(' ')} ${FILE_W}px ${MENU_W}px`;
-  const tableWidth = STATE_W + COLS.reduce((n, c) => n + widths[c.id], 0) + FILE_W + MENU_W;
+  const template = `${STATE_W}px ${COLS.map((c) => `${widths[c.id]}px`).join(' ')} ${FILE_W}px`;
+  const tableWidth = STATE_W + COLS.reduce((n, c) => n + widths[c.id], 0) + FILE_W;
 
   const renderRow = (r: LibraryRow) => (
-    <Row key={r.key} row={r} template={template} exporting={exporting} selected={r.work ? selected.has(r.work.id) : false} onToggle={() => r.work && toggle(r.work.id)} onEditResource={onEditResource} onDeleteResource={onDeleteResource} />
+    <Row key={r.key} row={r} template={template} exporting={exporting} active={r.key === active} onSelect={() => setActive(r.key)} selected={r.work ? selected.has(r.work.id) : false} onToggle={() => r.work && toggle(r.work.id)} />
   );
 
   return (
@@ -190,7 +232,6 @@ export function WorksLibrary({ resources, onEditResource, onDeleteResource }: { 
                       </div>
                     ))}
                     <span className="px-2 text-center">{t.libColFile}</span>
-                    <span />
                   </div>
                   {shownCount === 0 ? (
                     <p className="p-4 text-ink-2">{t.workNoneFilter}</p>
@@ -211,6 +252,7 @@ export function WorksLibrary({ resources, onEditResource, onDeleteResource }: { 
                 </div>
               </div>
             )}
+            {activeRow && !exporting ? <DetailPane key={activeRow.key} row={activeRow} open={paneOpen} onToggle={togglePane} openRef={openRef} onEditResource={onEditResource} onDeleteResource={onDeleteResource} /> : null}
           </div>
         </div>
       )}
@@ -318,13 +360,11 @@ function Rail({
   );
 }
 
-function Row({ row: r, template, exporting, selected, onToggle, onEditResource, onDeleteResource }: { row: LibraryRow; template: string; exporting: boolean; selected: boolean; onToggle: () => void; onEditResource: (r: Resource) => void; onDeleteResource: (r: Resource) => void }) {
+function Row({ row: r, template, exporting, selected, onToggle, active, onSelect }: { row: LibraryRow; template: string; exporting: boolean; selected: boolean; onToggle: () => void; active: boolean; onSelect: () => void }) {
   const t = useT();
   const qc = useQueryClient();
   const w = r.work;
   const res = r.resource;
-  const [editing, setEditing] = useState(false);
-  const [panel, setPanel] = useState<'similar' | 'link' | null>(null);
   const setTags = (ids: string[]) => {
     if (w) setWorkTags(qc, w.id, ids);
     else if (res) void setTagsOn('resource', res.id, ids).then(() => refreshResources(qc));
@@ -332,9 +372,16 @@ function Row({ row: r, template, exporting, selected, onToggle, onEditResource, 
   const viewer = res && isPdf(res.file.filename) ? `/resources/${encodeURIComponent(res.id)}` : null;
   const plain = res && !viewer ? fileUrl(res) : null;
   const titleClass = clsx('line-clamp-2 break-words text-[14px] leading-snug', w && sure(w) ? 'font-medium' : r.kind === 'work' && 'italic text-ink-2');
+  const click = (e: React.MouseEvent) => {
+    if (exporting) {
+      if (w) onToggle();
+      return;
+    }
+    if (!(e.target as HTMLElement).closest('a,button,input,[role=menu],[role=dialog]')) onSelect();
+  };
   return (
-    <div className="group/row border-b border-line last:border-b-0">
-      <div role="row" onClick={exporting && w ? onToggle : undefined} className={clsx('grid items-start', exporting && w && 'cursor-pointer hover:bg-sunk')} style={{ gridTemplateColumns: template }}>
+    <div data-row-key={r.key} className="group/row border-b border-line last:border-b-0">
+      <div role="row" aria-selected={active} onClick={click} className={clsx('grid cursor-pointer items-start hover:bg-sunk', active && 'bg-accent-soft hover:bg-accent-soft')} style={{ gridTemplateColumns: template }}>
         <div className="grid h-9 place-items-center">
           {exporting && w ? (
             <input type="checkbox" checked={selected} onChange={onToggle} onClick={(e) => e.stopPropagation()} aria-label={t.workSelectOne(r.title)} className="wb-check" />
@@ -377,83 +424,228 @@ function Row({ row: r, template, exporting, selected, onToggle, onEditResource, 
             <span aria-label={t.libNoFile} data-tip={t.libNoFile} className="text-ink-3/50">–</span>
           )}
         </div>
-        <div className="grid h-9 place-items-center">
-          {exporting ? null : w ? (
-            <WorkMenu work={w} onEdit={() => setEditing(true)} onPanel={setPanel} />
-          ) : res ? (
-            <MaterialMenu resource={res} onEdit={() => onEditResource(res)} onDelete={() => onDeleteResource(res)} />
-          ) : null}
-        </div>
       </div>
-      {w && panel === 'similar' ? (
-        <div className="px-3 pb-2">
-          <SimilarWorks work={w} similar={w.similar} />
-        </div>
-      ) : null}
-      {w && panel === 'link' ? (
-        <div className="px-3 pb-2">
-          <WorkLinkPicker work={w} onDone={() => setPanel(null)} />
-        </div>
-      ) : null}
-      {editing && w ? <WorkEditDialog work={w} onClose={() => setEditing(false)} /> : null}
     </div>
   );
 }
 
-function WorkMenu({ work: w, onEdit, onPanel }: { work: LibraryWork; onEdit: () => void; onPanel: (p: 'similar' | 'link') => void }) {
+/** The selected row's details at the bottom of the table: collapsed to one line, or open with everything about it. */
+function DetailPane({ row: r, open, onToggle, openRef, onEditResource, onDeleteResource }: { row: LibraryRow; open: boolean; onToggle: () => void; openRef: { current: HTMLElement | null }; onEditResource: (r: Resource) => void; onDeleteResource: (r: Resource) => void }) {
   const t = useT();
   const qc = useQueryClient();
-  return (
-    <MoreMenu label={t.moreActions} pinned={w.similar.length > 0} dot={w.similar.length > 0}>
-      <MenuItem icon={<Pencil size={15} />} onSelect={onEdit}>
-        {t.resourceEdit}
-      </MenuItem>
-      {w.resource ? (
-        <>
-          <MenuItem icon={<FileText size={15} />} to={`/resources/${encodeURIComponent(w.resource)}`}>
-            {t.workMenuOpen}
-          </MenuItem>
-          <MenuItem icon={<Unlink size={15} />} onSelect={() => void linkWork(qc, w.id, null)}>
-            {t.workMenuUnlink}
-          </MenuItem>
-        </>
-      ) : (
-        <MenuItem icon={<Link2 size={15} />} onSelect={() => onPanel('link')}>
-          {t.workMenuLink}
-        </MenuItem>
-      )}
-      {w.similar.length ? (
-        <MenuItem icon={<GitMerge size={15} />} onSelect={() => onPanel('similar')} trailing={w.similar.length}>
-          {t.workMenuSimilar}
-        </MenuItem>
-      ) : null}
-    </MoreMenu>
-  );
-}
+  const tagMap = useTagMap();
+  const w = r.work;
+  const res = r.resource;
+  const version = useNewVersion(res ?? ({} as Resource));
+  const marks = usePdfAnnotations(res?.id ?? '');
+  const [editing, setEditing] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const [newTag, setNewTag] = useState<string | null>(null);
+  const [height, setHeight] = useState(() => {
+    try {
+      return Math.min(600, Math.max(140, Number(localStorage.getItem(PANE_KEY)) || 260));
+    } catch {
+      return 260;
+    }
+  });
+  const drag = useRef<{ y: number; h: number } | null>(null);
+  const keep = (h: number) => {
+    try {
+      localStorage.setItem(PANE_KEY, String(h));
+    } catch {
+      /* not remembered */
+    }
+  };
+  const setTags = (ids: string[]) => {
+    if (w) setWorkTags(qc, w.id, ids);
+    else if (res) void setTagsOn('resource', res.id, ids).then(() => refreshResources(qc));
+  };
+  const viewer = res && isPdf(res.file.filename) ? `/resources/${encodeURIComponent(res.id)}` : null;
+  const plain = res && !viewer ? fileUrl(res) : null;
+  const openLabel = t.libPaneOpen;
+  const openButton = (cls: string): ReactNode =>
+    viewer ? (
+      <Link href={viewer} ref={(el: HTMLAnchorElement | null) => void (openRef.current = el)} className={cls}>
+        {openLabel}
+      </Link>
+    ) : plain ? (
+      <a href={plain} ref={(el) => void (openRef.current = el)} target="_blank" rel="noreferrer" onClick={() => res && recordOpen(res.id)} className={cls}>
+        {openLabel}
+      </a>
+    ) : null;
+  useEffect(() => () => void (openRef.current = null), [openRef]);
+  const btn = 'rounded-md border border-line px-2 py-0.5 text-[12.5px] font-medium hover:bg-sunk';
+  const head = 'mb-1 text-[12px] font-semibold text-ink-3';
+  const tags = [...tagMap.values()];
+  const tagNames = r.tags.map((id) => tagMap.get(id)?.name).filter(Boolean).join(', ');
 
-/** What the Files list offered per material, until the detail pane (L2) takes it over. */
-function MaterialMenu({ resource: r, onEdit, onDelete }: { resource: Resource; onEdit: () => void; onDelete: () => void }) {
-  const t = useT();
-  const version = useNewVersion(r);
   return (
-    <>
-      <MoreMenu label={t.moreActions} width="w-56">
-        <MenuItem icon={<Download size={15} />} href={fileUrl(r)} download={r.file.filename}>
-          {t.resourceDownload}
-        </MenuItem>
-        <MenuItem icon={<Upload size={15} />} onSelect={version.choose}>
-          {t.resourceNewVersion}
-        </MenuItem>
-        <MenuItem icon={<Pencil size={15} />} onSelect={onEdit}>
-          {t.resourceEdit}
-        </MenuItem>
-        <MenuRule />
-        <MenuItem icon={<Trash2 size={15} />} danger onSelect={onDelete}>
-          {t.resourceDelete}
-        </MenuItem>
-      </MoreMenu>
-      {version.node}
-    </>
+    <section aria-label={t.libPaneLabel} className="sticky bottom-0 z-10 mt-2 rounded-t-lg border border-line-strong bg-sheet shadow-[var(--shadow)]">
+      {open ? (
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          data-tip={t.libPaneResize}
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            drag.current = { y: e.clientY, h: height };
+          }}
+          onPointerMove={(e) => drag.current && setHeight(Math.min(600, Math.max(140, drag.current.h - (e.clientY - drag.current.y))))}
+          onPointerUp={() => {
+            drag.current = null;
+            keep(height);
+          }}
+          className="h-2 cursor-row-resize touch-none rounded-t-lg after:mx-auto after:mt-0.5 after:block after:h-0.5 after:w-10 after:rounded after:bg-line-strong hover:after:bg-accent"
+        />
+      ) : null}
+      <div className="flex items-center gap-3 px-3 py-1.5">
+        {w ? <WorkStateButtons work={w} size="sm" /> : null}
+        <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{r.title}</span>
+        <span className="hidden min-w-0 max-w-[30%] truncate text-[13px] text-ink-2 md:block">{r.authors}</span>
+        {!open && tagNames ? <span className="hidden max-w-[20%] truncate text-[13px] text-ink-3 lg:block">{tagNames}</span> : null}
+        {!open ? openButton(btn) : null}
+        {!open && res ? <FileText size={15} aria-label={t.libOpenFile} className="shrink-0 text-ink-3" /> : null}
+        <button type="button" onClick={onToggle} aria-expanded={open} aria-label={t.libPaneToggle} data-tip={t.libPaneToggle} className="rounded p-1 text-ink-3 hover:bg-sunk hover:text-ink">
+          {open ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+        </button>
+      </div>
+      {open ? (
+        <div className="overflow-y-auto border-t border-line px-4 py-3 text-[13px]" style={{ height }}>
+          <div className="grid gap-x-8 gap-y-4 md:grid-cols-2">
+            <div className="min-w-0">
+              {w ? <WorkEntry work={w} fallback={w.raw} /> : <p className="break-words text-[14px] font-medium">{r.title}{r.authors ? <span className="font-normal text-ink-2"> · {r.authors}</span> : null}</p>}
+              <div className="mt-2 flex flex-wrap gap-2">
+                {w ? (
+                  <button type="button" className={btn} onClick={() => setEditing(true)}>
+                    <Pencil size={12} className="mr-1 inline" />
+                    {t.resourceEdit}
+                  </button>
+                ) : res ? (
+                  <button type="button" className={btn} onClick={() => onEditResource(res)}>
+                    <Pencil size={12} className="mr-1 inline" />
+                    {t.resourceEdit}
+                  </button>
+                ) : null}
+              </div>
+              {w ? (
+                <>
+                  <h4 className={clsx(head, 'mt-4')}>{t.libPaneState}</h4>
+                  <WorkStateButtons work={w} labels />
+                </>
+              ) : null}
+              <h4 className={clsx(head, 'mt-4')}>{t.libTags}</h4>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                {tags.map((g) => (
+                  <label key={g.id} className="inline-flex cursor-pointer items-center gap-1.5">
+                    <input type="checkbox" className="wb-check" checked={r.tags.includes(g.id)} onChange={(e) => setTags(e.target.checked ? [...r.tags, g.id] : r.tags.filter((x) => x !== g.id))} />
+                    <TagDot color={g.color} />
+                    {g.name}
+                  </label>
+                ))}
+                {newTag === null ? (
+                  <button type="button" onClick={() => setNewTag('')} className="inline-flex items-center gap-1 text-ink-3 hover:text-ink">
+                    <Plus size={12} /> {t.libPaneNewTag}
+                  </button>
+                ) : (
+                  <input
+                    autoFocus
+                    value={newTag}
+                    onChange={(e) => setNewTag(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') setNewTag(null);
+                      if (e.key === 'Enter' && newTag.trim()) {
+                        e.preventDefault();
+                        void ensureTag(qc, newTag).then((g) => {
+                          setTags(r.tags.includes(g.id) ? r.tags : [...r.tags, g.id]);
+                          setNewTag(null);
+                        });
+                      }
+                    }}
+                    placeholder={t.libNewTagName}
+                    aria-label={t.libNewTagName}
+                    className="h-6 w-32 rounded-md border border-line-strong bg-sheet px-2 text-[12.5px]"
+                  />
+                )}
+              </div>
+            </div>
+            <div className="min-w-0">
+              <h4 className={head}>{t.libFile}</h4>
+              {res ? (
+                <>
+                  <p className="break-words text-ink-2">
+                    {res.file.filename}
+                    {res.lastPage !== null ? ` · ${t.libPaneLastPage(res.lastPage + 1)}` : ''}
+                    {marks.data ? ` · ${t.libPaneMarks(marks.data.length)}` : ''}
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap gap-2">
+                    {openButton(clsx(btn, 'text-accent'))}
+                    <a href={fileUrl(res)} download={res.file.filename} className={btn}>
+                      <Download size={12} className="mr-1 inline" />
+                      {t.resourceDownload}
+                    </a>
+                    <button type="button" className={btn} onClick={version.choose}>
+                      <Upload size={12} className="mr-1 inline" />
+                      {t.resourceNewVersion}
+                    </button>
+                    {w ? (
+                      <button type="button" className={btn} onClick={() => void linkWork(qc, w.id, null)}>
+                        <Unlink size={12} className="mr-1 inline" />
+                        {t.workMenuUnlink}
+                      </button>
+                    ) : null}
+                    <button type="button" className={clsx(btn, 'text-danger')} onClick={() => onDeleteResource(res)}>
+                      <Trash2 size={12} className="mr-1 inline" />
+                      {t.resourceDelete}
+                    </button>
+                  </div>
+                  {version.node}
+                </>
+              ) : (
+                <>
+                  <p className="text-ink-2">{t.libNoFile}</p>
+                  {w && !linking ? (
+                    <button type="button" className={clsx(btn, 'mt-1.5')} onClick={() => setLinking(true)}>
+                      <Link2 size={12} className="mr-1 inline" />
+                      {t.workMenuLink}
+                    </button>
+                  ) : null}
+                  {w && linking ? <WorkLinkPicker work={w} onDone={() => setLinking(false)} /> : null}
+                </>
+              )}
+              {w && (w.citedBy.length || w.citedOn.length) ? (
+                <>
+                  <h4 className={clsx(head, 'mt-4')}>{t.workCitedBy}</h4>
+                  <ul className="space-y-0.5">
+                    {w.citedBy.map((c) => (
+                      <li key={c.resource}>
+                        <Link href={`/resources/${encodeURIComponent(c.resource)}`} className="text-accent hover:underline">
+                          {c.title}
+                        </Link>{' '}
+                        <span className="text-ink-3">×{c.count}</span>
+                      </li>
+                    ))}
+                    {w.citedOn.map((c) => (
+                      <li key={`${c.course}-${c.page}`}>
+                        <Link href={c.href} className="text-accent hover:underline">
+                          {c.title}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+              {w && w.similar.length ? (
+                <>
+                  <h4 className={clsx(head, 'mt-4')}>{t.workMenuSimilar}</h4>
+                  <SimilarWorks work={w} similar={w.similar} />
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {editing && w ? <WorkEditDialog work={w} onClose={() => setEditing(false)} /> : null}
+    </section>
   );
 }
 
