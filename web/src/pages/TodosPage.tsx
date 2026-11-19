@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import { ArrowUpToLine, Calendar, Check, ChevronDown, ChevronRight, CircleDot, FolderInput, GripVertical, LayoutGrid, Maximize2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { todoProgress, type Outline, type Todo, type TodoStatus } from '@wb/shared';
+import { formatMinutes, todoProgress, type Outline, type Todo, type TodoStatus } from '@wb/shared';
 import { Link, useLocation, useParams, useSearch } from 'wouter';
 import { TodoDialog, useTodoDialog } from '@/components/TodoDialog';
 import { TodoSegments } from '@/components/TodoSegments';
@@ -52,6 +52,13 @@ function TitleText({ todo, className, onEdit, onOpen }: { todo: Todo; className:
 }
 
 const dayOf = (iso: string) => new Date(`${iso}T12:00:00`);
+
+/** Tooltip with the split, only when the parts add time. */
+function minutesTitle(todo: Todo, t: Strings): string | undefined {
+  const own = todo.minutes ?? 0;
+  const total = todo.minutesTotal ?? 0;
+  return total > own ? t.todosMinutesSplit(formatMinutes(own), formatMinutes(total - own)) : undefined;
+}
 
 function dueText(iso: string, lang: string): string {
   const d = dayOf(iso);
@@ -388,7 +395,7 @@ function Row({ todo, ctx, depth, top, sibs }: RowProps) {
                   <span className="text-[12px] text-ink-3">{t.todosParts(progress.done, progress.total)}</span>
                 </span>
               ) : null}
-              {!done && todo.minutes ? <span className="text-[12px] text-ink-3">{todo.minutes} min</span> : null}
+              {!done && todo.minutesTotal ? <span title={minutesTitle(todo, t)} className="text-[12px] text-ink-3">{formatMinutes(todo.minutesTotal)}</span> : null}
               {!done && todo.due ? <span className="text-[12px] text-ink-3">{t.todosDue(dueText(todo.due, lang))}</span> : null}
               {top?.showAge ? <span className="w-24 text-right text-[12px] text-ink-3">{t.todosAge(ageDays(todo))}</span> : null}
             </span>
@@ -525,6 +532,7 @@ function LaneCard({ todo, ctx, kind, cardId, expanded, bare, onToggleParts, line
           onOpen={() => ctx.open(todo)}
         />
         {todo.children.length ? <TodoSegments todo={todo} /> : null}
+        {!done && todo.minutesTotal ? <span title={minutesTitle(todo, t)} className="shrink-0 text-[11.5px] text-ink-3">{formatMinutes(todo.minutesTotal)}</span> : null}
         {!done && todo.due ? <span className="shrink-0 text-[11.5px] text-ink-3">{t.todosDue(dueText(todo.due, ctx.lang))}</span> : null}
         {bare && todo.children.length ? (
           <button type="button" aria-label={t.todosOpenBoard} title={t.todosOpenBoard} onClick={() => ctx.openBoard(todo)} className="grid size-5 shrink-0 place-items-center rounded text-ink-3 hover:bg-sunk hover:text-ink">

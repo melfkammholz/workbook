@@ -50,6 +50,8 @@ export interface Todo {
   due: string | null;
   /** A rough size in minutes. */
   minutes: number | null;
+  /** Own minutes plus the totals of the parts that are not done; null when there are none. Set by the server on read. */
+  minutesTotal: number | null;
   /** Only top-level todos: a number puts it in "Als Nächstes", in that order; null means "Danach". */
   nextRank: number | null;
   /** Ids of the student's tags on it. */
@@ -60,6 +62,14 @@ export interface Todo {
   doneAt: number | null;
   /** Parts, in order. */
   children: Todo[];
+}
+
+/** "45 min", "1 h 20 min". */
+export function formatMinutes(n: number): string {
+  if (n < 60) return `${n} min`;
+  const h = Math.floor(n / 60);
+  const m = n % 60;
+  return m ? `${h} h ${m} min` : `${h} h`;
 }
 
 export const MAX_TODO_TITLE = 300;

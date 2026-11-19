@@ -14,6 +14,8 @@ type Follower = (t: Todo) => { status: TodoStatus; at: number | null } | null;
 /** A todo with parts that is not manual takes its status from them (all done, all open, or in between), or from its item when it follows one. */
 function derive(t: Todo, follower: Follower): void {
   for (const c of t.children) derive(c, follower);
+  const sum = (t.minutes ?? 0) + t.children.reduce((n, c) => n + (c.status === 'done' ? 0 : c.minutesTotal ?? 0), 0);
+  t.minutesTotal = sum > 0 ? sum : null;
   if (t.manual) return;
   if (t.follow && t.link) {
     const f = follower(t);

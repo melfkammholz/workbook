@@ -19,6 +19,20 @@ describe('todos', () => {
     expect(store.listTodos({ course: 'zzz' })).toEqual([]);
   });
 
+  it('sums minutes upward, skipping done parts', () => {
+    const { store } = make();
+    const a = store.addTodo({ title: 'A', minutes: 20 })!;
+    const b = store.addTodo({ title: 'B', parentId: a.id, minutes: 10 })!;
+    store.addTodo({ title: 'C', parentId: b.id, minutes: 15 });
+    const d = store.addTodo({ title: 'D', parentId: a.id, minutes: 30 })!;
+    expect(store.listTodos()[0]).toMatchObject({ minutes: 20, minutesTotal: 75 });
+    store.updateTodo(d.id, { status: 'done' });
+    const top = store.listTodos()[0]!;
+    expect(top.minutesTotal).toBe(45);
+    expect(top.children[0]!.minutesTotal).toBe(25);
+    expect(store.addTodo({ title: 'E' })!.minutesTotal).toBeNull();
+  });
+
   it('moves, propagates the course, refuses cycles and ranks on parts', () => {
     const { store } = make();
     const a = store.addTodo({ title: 'A' })!;

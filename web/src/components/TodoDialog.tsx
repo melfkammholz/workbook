@@ -3,7 +3,7 @@ import clsx from 'clsx';
 import { ArrowDown, ArrowUp, Check, ChevronRight, Plus, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Todo, TodoStatus } from '@wb/shared';
-import { TODO_STATUSES } from '@wb/shared';
+import { formatMinutes, TODO_STATUSES } from '@wb/shared';
 import { Link, useLocation, useSearch } from 'wouter';
 import { useT } from '@/lib/i18n';
 import { plainTitle } from './Title';
@@ -391,8 +391,9 @@ function Body({ todo, byId, todos, courseTitles, onOpen, onClose, onDelete }: { 
             <input type="date" value={todo.due ?? ''} onChange={(e) => void patchTodo(todo.id, { due: e.target.value || null })} className={clsx(field, 'text-ink-2')} />
           </Label>
 
-          <Label text={t.tdMinutes}>
+          <Label text={todo.children.length ? t.tdMinutesOwn : t.tdMinutes}>
             <input type="number" min={1} max={100000} inputMode="numeric" value={minutes} onChange={(e) => setMinutes(e.target.value)} onKeyDown={key} className={field} />
+            {todo.children.length && todo.minutesTotal ? <span className="mt-1 block text-[12px] text-ink-3">{t.tdMinutesSum(formatMinutes(todo.minutesTotal))}</span> : null}
           </Label>
 
           <div>

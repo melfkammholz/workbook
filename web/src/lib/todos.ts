@@ -47,7 +47,7 @@ export const setTodoTags = (id: string, tags: string[]) =>
 export const addTodo = (a: { title: string; parentId?: string | null; course?: string | null; link?: TodoLink; follow?: boolean; minutes?: number; origin?: Todo['origin']; status?: TodoStatus; tags?: string[] }) => {
   const id = crypto.randomUUID();
   const now = Date.now();
-  const fresh: Todo = { id, parentId: a.parentId ?? null, sort: 1_000_000, title: a.title, body: null, status: a.status ?? 'open', storedStatus: a.status ?? 'open', manual: !!a.status && a.status !== 'open', follow: a.follow ?? false, tags: a.tags ?? [], course: a.course ?? null, link: a.link ?? null, due: null, minutes: a.minutes ?? null, nextRank: null, origin: a.origin ?? 'manual', createdAt: now, updatedAt: now, doneAt: null, children: [] };
+  const fresh: Todo = { id, parentId: a.parentId ?? null, sort: 1_000_000, title: a.title, body: null, status: a.status ?? 'open', storedStatus: a.status ?? 'open', manual: !!a.status && a.status !== 'open', follow: a.follow ?? false, tags: a.tags ?? [], course: a.course ?? null, link: a.link ?? null, due: null, minutes: a.minutes ?? null, minutesTotal: a.minutes ?? null, nextRank: null, origin: a.origin ?? 'manual', createdAt: now, updatedAt: now, doneAt: null, children: [] };
   return optimistic(
     (l) => (a.parentId ? mapTree(l, a.parentId, (p) => ({ ...p, children: [...p.children, { ...fresh, course: p.course }] })) : [fresh, ...l]),
     async () => {

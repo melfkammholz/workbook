@@ -102,6 +102,7 @@ export function rowToTodo(r: Row): Todo {
     link: r.link_kind ? { kind: r.link_kind as TodoLink['kind'], ref: r.link_ref as string, title: (r.link_title as string | null) ?? null } : null,
     due: (r.due as string | null) ?? null,
     minutes: r.minutes === null ? null : Number(r.minutes),
+    minutesTotal: r.minutes === null ? null : Number(r.minutes),
     nextRank: r.next_rank === null ? null : Number(r.next_rank),
     tags: [],
     origin: r.origin as TodoOrigin,
