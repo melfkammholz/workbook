@@ -44,7 +44,6 @@ const COLUMNS = `r.id, r.title, r.type, r.author, r.date, r.series, r.position, 
   (SELECT group_concat(course, char(31)) FROM resource_courses WHERE resource = r.id) AS courses,
   (SELECT group_concat(tag_id, char(31)) FROM tag_links WHERE kind = 'resource' AND ref = r.id) AS labels,
   (SELECT COUNT(*) FROM resource_versions WHERE resource = r.id) AS versions,
-  (SELECT COUNT(*) FROM resource_opens WHERE resource = r.id AND at > CAST(strftime('%s','now') AS INTEGER) * 1000 - 1209600000) AS recent_opens,
   (SELECT COUNT(*) FROM pdf_annotations WHERE resource = r.id AND version <> v.sha256)
     + (SELECT COUNT(*) FROM pdf_pages WHERE resource = r.id AND version <> v.sha256)
     + (SELECT COUNT(*) FROM pdf_toc WHERE resource = r.id AND embedded_key IS NULL AND version <> v.sha256)
@@ -70,7 +69,6 @@ function toResource(r: Row): Resource {
     labels: r.labels ? (r.labels as string).split('\x1f') : [],
     file: { sha256: r.sha256 as string, filename: r.filename as string, mime: r.mime as string, size: Number(r.size), uploadedAt: Number(r.uploaded_at) },
     versions: Number(r.versions),
-    recentOpens: Number(r.recent_opens),
     stale: Number(r.stale),
     unplaced: Number(r.unplaced),
     createdAt: Number(r.created_at),
@@ -334,12 +332,6 @@ export class Resources {
   setLastPage(id: string, page: number): void {
     this.get(id);
     this.sql.run('UPDATE resources SET last_page = ? WHERE id = ?', page, id);
-  }
-
-  /** One open of the material (viewer or file link); feeds the library's "Gerade relevant". */
-  recordOpen(id: string): void {
-    this.get(id);
-    this.sql.run('INSERT INTO resource_opens (resource, at) VALUES (?, ?)', id, this.now());
   }
 
   // ───────────────────────── highlights in PDFs ─────────────────────────
@@ -699,7 +691,7 @@ export class Resources {
     const rb = b.resource as string | null;
     if (keep != null && keep !== ra && keep !== rb) throw new ResourceError('bad-merge');
     const resource = keep ?? rb ?? ra;
-    const rank = (s: unknown) => (s ? (['skip', 'later', 'read', 'know'] as const).indexOf(s as WorkState) + 1 : 0);
+    const rank = (s: unknown) => (s ? (['skip', 'interest', 'later', 'read', 'know'] as const).indexOf(s as WorkState) + 1 : 0);
     const state = rank(a.state) > rank(b.state) ? (a.state as string | null) : (b.state as string | null);
     const fill = (f: string) => ((b[f] === null || b[f] === '' || b[f] === undefined ? a[f] : b[f]) as string | number | null);
     this.sql.tx(() => {

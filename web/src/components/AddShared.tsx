@@ -24,6 +24,7 @@ export function StateRow({ value, onChange }: { value: WorkState | null; onChang
         options={[
           ['', t.addStateNew],
           ['later', t.workStateLater],
+          ['interest', t.workStateInterest],
           ['read', t.workStateRead],
           ['know', t.workStateKnow],
         ]}

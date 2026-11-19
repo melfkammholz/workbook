@@ -1035,6 +1035,26 @@ export const MIGRATIONS: Migration[] = [
       db.prepare("DELETE FROM tag_links WHERE kind = 'resource' AND ref = ?").run(r.id);
     }
   },
+  /* Opens are no longer counted: "Relevant now" is gone, "Next up" is the student's own pick. */
+  'DROP TABLE resource_opens',
+  /*
+   * Every paper has a reference: materials uploaded before the server made references have none (the title-twin
+   * migration only linked the ones that had a twin). Each gets one made from its title, author and date, and its
+   * tags move onto the reference like `linkWork` does.
+   */
+  (db) => {
+    const now = Date.now();
+    const rows = db.prepare("SELECT id, title, author, date FROM resources WHERE type = 'paper' AND id NOT IN (SELECT resource FROM works WHERE resource IS NOT NULL) ORDER BY created_at, id").all() as { id: string; title: string; author: string; date: string }[];
+    for (const r of rows) {
+      const work = randomUUID();
+      const year = /^\d{4}/.test(r.date) ? Number(r.date.slice(0, 4)) : null;
+      const raw = [r.author, year, r.title].filter(Boolean).join('. ').slice(0, 600);
+      db.prepare('INSERT INTO works (id, title, authors, year, raw, resource, confidence, imported, edited, created_at, updated_at) VALUES (?,?,?,?,?,?,1,1,1,?,?)')
+        .run(work, r.title.trim().slice(0, 300), r.author.trim().slice(0, 400), year, raw, r.id, now, now);
+      db.prepare("INSERT OR IGNORE INTO tag_links (tag_id, kind, ref, created_at) SELECT tag_id, 'work', ?, created_at FROM tag_links WHERE kind = 'resource' AND ref = ?").run(work, r.id);
+      db.prepare("DELETE FROM tag_links WHERE kind = 'resource' AND ref = ?").run(r.id);
+    }
+  },
 ];
 
 /** The course a mounted `/content` folder is. */

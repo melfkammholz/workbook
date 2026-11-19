@@ -1,7 +1,5 @@
 import { MIN_CONFIDENCE, type LibraryWork, Resource, WorkState } from '@wb/shared';
 
-/** A material was opened this often in the last 14 days (`Resource.recentOpens`) to count as relevant. */
-export const RELEVANT_OPENS = 3;
 
 /** One line of the library: a work with its linked material, or a material that is no work's (slides, notes). */
 export interface LibraryRow {
@@ -18,7 +16,6 @@ export interface LibraryRow {
   unsorted: boolean;
   hasFile: boolean;
   /** State Later, or opened often lately. */
-  relevant: boolean;
 }
 
 /** Works that were only found in a PDF's list and that the student has not sorted. */
@@ -52,12 +49,11 @@ export function buildRows(works: LibraryWork[], resources: Resource[]): LibraryR
       state: w.state,
       unsorted: isUnsorted(w),
       hasFile: !!r,
-      relevant: w.state === 'later' || (!!r && r.recentOpens >= RELEVANT_OPENS),
     });
   }
   for (const r of resources) {
     if (linked.has(r.id)) continue;
-    rows.push({ key: `r-${r.id}`, kind: 'material', work: null, resource: r, title: r.title, authors: r.author, year: yearOf(r.date), tags: r.labels, state: null, unsorted: false, hasFile: true, relevant: r.recentOpens >= RELEVANT_OPENS });
+    rows.push({ key: `r-${r.id}`, kind: 'material', work: null, resource: r, title: r.title, authors: r.author, year: yearOf(r.date), tags: r.labels, state: null, unsorted: false, hasFile: true });
   }
   return rows;
 }

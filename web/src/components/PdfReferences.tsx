@@ -17,7 +17,6 @@ export function PdfReferences({
   labelOf,
   onGo,
   onFix,
-  onReread,
 }: {
   /** The PDF these entries are of: it is not offered as the material a work in its own list is. */
   resource: string;
@@ -26,7 +25,6 @@ export function PdfReferences({
   labelOf: (n: number) => string;
   onGo: (page: number) => void;
   onFix: (index: number, fix: Fix) => void;
-  onReread: () => void;
 }) {
   const t = useT();
   const [editing, setEditing] = useState<string | null>(null);
@@ -36,11 +34,6 @@ export function PdfReferences({
       defaultOpen
       title={`${t.pdfReferences} · ${t.pdfRefCount(entries.length)}`}
       className="mt-4"
-      actions={
-        <IconButton label={t.pdfRefReread} onClick={onReread} className="size-7">
-          <RefreshCw size={14} />
-        </IconButton>
-      }
     >
       <ul className="space-y-1">
         {entries.map((e, i) => (

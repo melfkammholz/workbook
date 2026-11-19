@@ -120,7 +120,7 @@ export interface WorkFields {
 }
 
 /** The student's sorting of a work; null (not yet sorted) is the Unsorted tray. */
-export const WORK_STATES = ['later', 'read', 'know', 'skip'] as const;
+export const WORK_STATES = ['later', 'interest', 'read', 'know', 'skip'] as const;
 export type WorkState = (typeof WORK_STATES)[number];
 
 /** What the edit dialog changes: the fields of a work. */

@@ -14,75 +14,6 @@ export function useBibliography(resource: string) {
   return useQuery({ queryKey: bibliographyKey(resource), queryFn: () => api.get<BibEntry[]>(`/api/resources/${encodeURIComponent(resource)}/bibliography`), enabled: on, staleTime: 30_000 });
 }
 
-/** How many pages from the end are searched for the references (a bibliography is at the end; the pages before it are not read). */
-const TAIL = 60;
-const tick = () => new Promise<void>((r) => setTimeout(r, 0));
-
-/**
- * Reads the bibliography of an open PDF: the references section from the text, and where the PDF cites each entry from
- * its links (a link whose target is inside the section). Empty when the file has no references section.
- */
-export async function readBibliography(doc: PDFDocumentProxy, isLive: () => boolean = () => true): Promise<BibEntryInput[]> {
-  const from = Math.max(0, doc.numPages - TAIL);
-  const tail: PageLines[] = [];
-  for (let n = from + 1; n <= doc.numPages; n++) {
-    const page = await doc.getPage(n);
-    tail.push(linesOf(textItems((await page.getTextContent()).items, page.getViewport({ scale: 1 }))));
-    if (!isLive()) return [];
-  }
-  let parsed = parseBibliography(tail).map((e) => ({ ...e, pageIndex: e.pageIndex + from }));
-  if (parsed.length < 2) return [];
-  // The citation links: where each one is and where it leads.
-  const first = parsed[0]!.pageIndex;
-  const last = parsed[parsed.length - 1]!.pageIndex;
-  const jumps: { page: number; y: number; target: Target }[] = [];
-  for (let n = 1; n <= first; n++) {
-    await tick();
-    if (!isLive()) return [];
-    const page = await doc.getPage(n);
-    for (const l of await linksOf(page)) {
-      if (!l.dest) continue;
-      const target = await resolveDest(doc, l.dest);
-      if (target) jumps.push({ page: n, y: l.y, target });
-    }
-  }
-  // Each place a citation jumps to in the list also starts an entry (the text rules still find the uncited ones).
-  const dests = new Map<string, Destination>();
-  for (const j of jumps) {
-    const t = j.target;
-    if (t.y === null || t.page - 1 < first || t.page - 1 > last) continue;
-    dests.set(`${t.page}:${Math.round(t.y * 400)}:${Math.round((t.x ?? -1) * 100)}`, { pageIndex: t.page - 1 - from, x: t.x ?? null, y: t.y });
-  }
-  if (dests.size) parsed = parseBibliography(tail, [...dests.values()]).map((e) => ({ ...e, pageIndex: e.pageIndex + from }));
-  const out: BibEntryInput[] = parsed.map((e) => ({ text: e.text, pageIndex: e.pageIndex, y: e.y, citedAt: [] }));
-  const seen = new Set<string>();
-  for (const j of jumps) {
-    const i = entryAt(parsed, j.target.page - 1, j.target.y);
-    if (i < 0) continue;
-    const key = `${i}:${j.page}:${Math.round(j.y * 50)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out[i]!.citedAt.push({ pageIndex: j.page - 1, y: j.y });
-  }
-  return out;
-}
-
-const checkedKey = (sha: string) => `wb-bib-checked-${sha}`;
-function checked(sha: string): boolean {
-  try {
-    return localStorage.getItem(checkedKey(sha)) === '1';
-  } catch {
-    return false;
-  }
-}
-function markChecked(sha: string): void {
-  try {
-    localStorage.setItem(checkedKey(sha), '1');
-  } catch {
-    /* it is just read again next time */
-  }
-}
-
 const queues = new Map<string, Promise<unknown>>();
 /** Saves go out one after the other per PDF, so the last change stays. */
 function enqueue<T>(resource: string, job: () => Promise<T>): Promise<T> {
@@ -224,40 +155,6 @@ export function setWorkTags(qc: QueryClient, work: string, tags: string[]): void
     void qc.invalidateQueries({ queryKey: worksKey });
     reportSaveFailed();
   });
-}
-
-/**
- * Reads the bibliography once per file, in the background after the viewer is up: when nothing is stored for this
- * version of the file (and it was not read before without result). Returns nothing; the list is the query's.
- */
-export function useBibliographyReader(qc: QueryClient, resource: string, version: string, doc: PDFDocumentProxy | null, stored: BibEntry[] | undefined): void {
-  const fresh = stored !== undefined && (stored.length === 0 ? checked(version) : stored.every((e) => e.version === version));
-  useEffect(() => {
-    if (!doc || stored === undefined || fresh) return;
-    let live = true;
-    // Behind everything the viewer does first.
-    const timer = setTimeout(() => {
-      void readBibliography(doc, () => live).then(
-        async (entries) => {
-          if (!live) return;
-          markChecked(version);
-          if (entries.length || stored.length) await saveBibliography(qc, resource, version, entries);
-        },
-        () => undefined,
-      );
-    }, 1500);
-    return () => {
-      live = false;
-      clearTimeout(timer);
-    };
-  }, [doc, stored, fresh, qc, resource, version]);
-}
-
-/** Reads it again now, whatever is stored: the entries keep their works when their text is the same. */
-export async function rereadBibliography(qc: QueryClient, resource: string, version: string, doc: PDFDocumentProxy): Promise<BibEntry[]> {
-  const entries = await readBibliography(doc);
-  markChecked(version);
-  return saveBibliography(qc, resource, version, entries);
 }
 
 /** Adds the works the student chose from a pasted or uploaded BibTeX/Hayagriva text. */

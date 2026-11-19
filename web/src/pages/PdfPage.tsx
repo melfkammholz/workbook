@@ -15,7 +15,7 @@ import { PdfToc, type TocActions } from '@/components/PdfToc';
 import { AddDialog } from '@/components/AddDialog';
 import { useBibImport } from '@/components/BibImport';
 import { PdfReferences } from '@/components/PdfReferences';
-import { fixEntry, rereadBibliography, useBibliography, useBibliographyReader, type Fix } from '@/lib/bibliography';
+import { fixEntry, useBibliography, type Fix } from '@/lib/bibliography';
 import { BibliographyContext, CitationContext } from '@/components/PdfLinks';
 import { NotesView, SlidesView, type Marks, type PdfLayout, type Size } from '@/components/PdfViewer';
 import { IconButton, Segmented, Spinner, Empty } from '@/components/ui';
@@ -28,7 +28,7 @@ import { swatchProps } from '@/lib/annotations';
 import { usePdfAnnotations, usePdfAnnotationsOn } from '@/lib/pdfAnnotations';
 import { pdfPageRefText, savePdfPage, usePdfPages, type PagePatch } from '@/lib/pdfPages';
 import { deleteTocEdit, readOutline, saveTocEdit, usePdfToc } from '@/lib/pdfToc';
-import { fileUrl, formatSize, recordOpen, refreshResources, resourceKeys, updateResource, useResources } from '@/lib/resources';
+import { fileUrl, formatSize, refreshResources, resourceKeys, updateResource, useResources } from '@/lib/resources';
 import { placeStale } from '@/lib/pdfVersions';
 import { NewVersionButton } from '@/components/NewVersionButton';
 import { useTags } from '@/lib/tags';
@@ -202,7 +202,6 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   const pages = usePdfPages(resource.id).data;
   const questions = usePdfTickets(resource);
   const bibliography = useBibliography(resource.id).data;
-  useBibliographyReader(qc, resource.id, resource.file.sha256, doc, bibliography);
   const bibliographyCard = useMemo(() => (bibliography?.length ? { entries: bibliography } : undefined), [bibliography]);
   const [bibText, setBibText] = useState<string | null>(null);
   const bibImport = useBibImport(setBibText);
@@ -216,11 +215,6 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
   useEffect(() => {
     if (doc && resource.stale > 0) void placeStale(qc, resource, doc).catch(() => undefined);
   }, [doc, resource, qc]);
-
-  // One open per visit to the viewer (feeds "Gerade relevant" in the library).
-  useEffect(() => {
-    recordOpen(resource.id);
-  }, [resource.id]);
 
   // The PDF stays open after leaving (`keepPdf`), the last few of them; this only marks it as used when it was open.
   useEffect(() => {
@@ -590,7 +584,7 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
       {bibImport.node}
       {bibText !== null ? <AddDialog initialText={bibText} courses={[]} series={[]} course={null} onClose={() => setBibText(null)} /> : null}
       <div className="flex h-11 shrink-0 flex-wrap items-center gap-1 border-b border-line bg-sheet px-2">
-        <BackLink fallback="/materials" label={t.back} className="mr-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm text-ink-2 hover:bg-sunk hover:text-ink">
+        <BackLink fallback="/library" label={t.back} className="mr-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm text-ink-2 hover:bg-sunk hover:text-ink">
           {t.back}
         </BackLink>
         <h1 className="mr-2 min-w-0 max-w-[40%] truncate text-[15px] font-semibold">{resource.title}</h1>
@@ -718,7 +712,6 @@ function Viewer({ resource, highlight }: { resource: Resource; highlight?: strin
                   labelOf={labelOf}
                   onGo={goto}
                   onFix={(i: number, fix: Fix) => void fixEntry(qc, resource.id, resource.file.sha256, bibliography, i, fix)?.catch(() => undefined)}
-                  onReread={() => void rereadBibliography(qc, resource.id, resource.file.sha256, doc).catch(() => undefined)}
                 />
               ) : null}
               {marksOn && doc && pages ? (

@@ -92,8 +92,21 @@ export function WorkEditDialog({ work, onClose }: { work?: Work; onClose: () => 
     });
   };
   const yearOk = f.year === null || (Number.isInteger(f.year) && f.year >= 0 && f.year <= 3000);
-  const save = () => {
-    if (busy || !yearOk || !f.title.trim()) return;
+  const [askDoi, setAskDoi] = useState(false);
+  const doiChanged = !!work && !!f.doi.trim() && f.doi.trim() !== work.doi.trim();
+  const fetchForDoi = () => {
+    setAskDoi(false);
+    setFetching(true);
+    setFetchMiss(false);
+    void lookupWork(f.doi.trim()).then((found) => {
+      setFetching(false);
+      if (!found) return setFetchMiss(true);
+      setF({ ...f, ...found, doi: f.doi, arxiv: f.arxiv, volume: f.volume, pages: f.pages });
+    });
+  };
+  const save = (skipAsk = false) => {
+    if (busy || fetching || !yearOk || !f.title.trim()) return;
+    if (!skipAsk && lookupOn && doiChanged) return setAskDoi(true);
     setBusy(true);
     void (work ? editWork(qc, work.id, f) : createWork(qc, f)).then(onClose, () => setBusy(false));
   };
@@ -136,6 +149,21 @@ export function WorkEditDialog({ work, onClose }: { work?: Work; onClose: () => 
           </div>
         )}
         <WorkFormFields f={f} setF={setF} autoFocusTitle={!!work} />
+        {askDoi ? (
+          <div className="rounded-md border border-line p-2 text-[13px] text-ink-2">
+            <p>{t.workDoiAsk}</p>
+            <div className="mt-2 flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => save(true)}>
+                {t.workDoiKeep}
+              </Button>
+              <Button type="button" variant="primary" autoFocus onClick={fetchForDoi}>
+                {t.workDoiFetch}
+              </Button>
+            </div>
+          </div>
+        ) : fetchMiss && work ? (
+          <p className="text-[12px] text-ink-3">{t.workFetchMiss}</p>
+        ) : null}
         {work?.raw ? (
           <details className="text-[13px]">
             <summary className="cursor-pointer text-ink-2 hover:text-ink">{t.workAdvanced}</summary>

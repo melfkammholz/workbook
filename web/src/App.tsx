@@ -36,7 +36,6 @@ import {
   KindPage,
   LandingPage,
   LibraryPage,
-  MaterialsPage,
   NotesPage,
   PdfPage,
   TicketsPage,
@@ -296,7 +295,7 @@ function CourseShell() {
     'g n': () => navigate('/notes'),
     'g f': flashcardsOn ? () => navigate('/flashcards') : undefined,
     'g a': annotationsOn ? () => navigate('/highlights') : undefined,
-    'g l': materialsOn ? () => navigate('/materials') : undefined,
+    'g l': materialsOn ? () => navigate('/library') : undefined,
     'g m': achievementsOn ? () => navigate('/achievements') : undefined,
     'g t': () => navigate('/tickets'),
     'g o': () => navigate('/todos'),
@@ -387,10 +386,10 @@ function CourseShell() {
           </div>
           {materialsOn ? (
             <Link
-              href="/materials"
+              href="/library"
               className={clsx('inline-flex size-8 items-center justify-center rounded-md hover:bg-sunk hover:text-ink', location.startsWith('/materials') || location.startsWith('/library') ? 'bg-sunk text-ink' : 'text-ink-2')}
               aria-label={t.materials}
-              aria-current={location.startsWith('/materials') ? 'page' : undefined}
+              aria-current={location.startsWith("/library") ? "page" : undefined}
               title={t.materials}
             >
               <Library size={18} />
@@ -520,7 +519,7 @@ const CoursePages = memo(function CoursePages() {
         <Route path="/inbox">{() => <Redirect to="/tickets" replace />}</Route>
         <Route path="/questions">{() => <Redirect to="/tickets" replace />}</Route>
         <Route path="/highlights">{() => <HighlightsPage />}</Route>
-        <Route path="/materials" component={MaterialsPage} />
+        <Route path="/materials">{() => <Redirect to="/library" replace />}</Route>
         <Route path="/highlights/:filter">{(p) => <HighlightsPage key={p.filter} filter={p.filter} />}</Route>
         {flashcardRoutes()}
         <Route path="/chapter/:id">{(p) => <ChapterPage key={p.id} id={p.id} />}</Route>

@@ -650,9 +650,12 @@ a.wb-friend-met:hover, a.wb-friend-not:hover { border-color: var(--accent); }
   background: var(--sheet); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: 0 10px 26px rgb(20 15 5 / .16);
   font-size: 13px; line-height: 1.45; color: var(--ink-2); pointer-events: none;
 }
-/* A figure in a lesson is one of the blocks, without an icon: the picture framed, its caption left aligned beneath. */
-.wb-lesson figure { margin: 1.4em 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--sheet); }
+/* A figure in a lesson is one of the blocks, without an icon: the picture framed and centered, its caption left aligned beneath. */
+.wb-lesson figure { margin: 1.4em 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--sheet); text-align: center; }
 .wb-lesson figure > :first-child { margin-top: 0; }
+.wb-lesson figure > :is(img, svg, table, pre, .wb-flow) { margin-left: auto; margin-right: auto; }
+.wb-lesson figure .wb-diagram { text-align: center; }
+.wb-lesson figure .wb-diagram svg { margin-inline: auto; }
 .wb-lesson figure figcaption { margin: 6px 4px 0; font-size: 13px; line-height: 1.45; color: var(--ink-3); text-align: left; }
 .prose-task section[role='doc-endnotes'] ol { padding-left: 1.6em !important; }
 .prose-task section[role='doc-endnotes'] sup[role='doc-backlink'] { display: inline-block; width: 1.6em; margin-left: -1.6em; font-size: inherit; vertical-align: baseline; }

@@ -1,6 +1,6 @@
 import { MIN_CONFIDENCE, WORK_STATES, type SimilarWork, type Work, type WorkState } from '@wb/shared';
 import * as Popover from '@radix-ui/react-popover';
-import { Bookmark, Check, EyeOff, Lightbulb, Link2, Pencil, Unlink } from 'lucide-react';
+import { Bookmark, Check, EyeOff, Lightbulb, Link2, Pencil, Star, Unlink } from 'lucide-react';
 import { Fragment, useState, type ReactNode } from 'react';
 import { Link } from 'wouter';
 import { keepWorksSeparate, linkWork, mergeWork, setWorkState, useWorks } from '@/lib/bibliography';
@@ -139,13 +139,13 @@ export function WorkEntry({ work, size = 'md', fallback, extra = [], tail }: { w
   );
 }
 
-const STATE_ICON = { later: Bookmark, read: Check, know: Lightbulb, skip: EyeOff } as const;
+const STATE_ICON = { later: Bookmark, interest: Star, read: Check, know: Lightbulb, skip: EyeOff } as const;
 
 /** One state per work: Later, Read, Know, Skip. Pressing the one that is on puts the work back to Unsorted. */
 export function WorkStateButtons({ work, labels = false, size = 'md' }: { work: Pick<Work, 'id' | 'state'>; labels?: boolean; size?: 'sm' | 'md' }) {
   const t = useT();
   const qc = useQueryClient();
-  const names: Record<WorkState, string> = { later: t.workStateLater, read: t.workStateRead, know: t.workStateKnow, skip: t.workStateSkip };
+  const names: Record<WorkState, string> = { later: t.workStateLater, interest: t.workStateInterest, read: t.workStateRead, know: t.workStateKnow, skip: t.workStateSkip };
   return (
     <span className="inline-flex items-center gap-0.5" role="group" aria-label={t.workStateLater}>
       {WORK_STATES.map((st) => {
@@ -174,7 +174,7 @@ export function WorkStateButtons({ work, labels = false, size = 'md' }: { work: 
 export function WorkSortStrip({ work }: { work: Pick<Work, 'id' | 'state'> }) {
   const t = useT();
   const qc = useQueryClient();
-  const names: Record<WorkState, string> = { later: t.workStateLater, read: t.workStateRead, know: t.workStateKnow, skip: t.workStateSkip };
+  const names: Record<WorkState, string> = { later: t.workStateLater, interest: t.workStateInterest, read: t.workStateRead, know: t.workStateKnow, skip: t.workStateSkip };
   return (
     <span className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label={t.workStateLater}>
       {WORK_STATES.map((st) => {
@@ -193,12 +193,13 @@ export function WorkSortStrip({ work }: { work: Pick<Work, 'id' | 'state'> }) {
 
 const STATE_LOOK: Record<WorkState | 'none', string> = {
   later: 'bg-accent-soft text-accent',
+  interest: 'bg-accent-soft text-accent',
   read: 'bg-done-soft text-done',
   know: 'bg-review-soft text-review',
   skip: 'text-ink-3',
   none: 'border border-dashed border-line-strong text-ink-3',
 };
-const STATE_KEY: Record<WorkState, string> = { later: 'L', read: 'R', know: 'K', skip: 'S' };
+const STATE_KEY: Record<WorkState, string> = { later: 'L', interest: 'I', read: 'R', know: 'K', skip: 'S' };
 
 /**
  * The state of a work as the glyph in the row's first column (a dashed circle while unsorted). Pressing it opens the
@@ -208,7 +209,7 @@ export function WorkStateMenu({ work }: { work: Pick<Work, 'id' | 'state'> }) {
   const t = useT();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const names: Record<WorkState, string> = { later: t.workStateLater, read: t.workStateRead, know: t.workStateKnow, skip: t.workStateSkip };
+  const names: Record<WorkState, string> = { later: t.workStateLater, interest: t.workStateInterest, read: t.workStateRead, know: t.workStateKnow, skip: t.workStateSkip };
   const Glyph = work.state ? STATE_ICON[work.state] : null;
   const set = (st: WorkState) => {
     setWorkState(qc, work.id, work.state === st ? null : st);
@@ -234,7 +235,7 @@ export function WorkStateMenu({ work }: { work: Pick<Work, 'id' | 'state'> }) {
           aria-label={t.workStateLater}
           className="wb-menu w-56 p-1"
           onKeyDown={(e) => {
-            const st = ({ l: 'later', r: 'read', k: 'know', s: 'skip' } as Record<string, WorkState>)[e.key.toLowerCase()];
+            const st = ({ l: 'later', i: 'interest', r: 'read', k: 'know', s: 'skip' } as Record<string, WorkState>)[e.key.toLowerCase()];
             if (!st || e.ctrlKey || e.metaKey || e.altKey) return;
             e.preventDefault();
             set(st);

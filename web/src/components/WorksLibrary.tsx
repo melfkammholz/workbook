@@ -1,5 +1,5 @@
 import { toBibtex, type Resource, type ResourceSeries, type ResourcesResponse, type WorkState } from '@wb/shared';
-import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Bookmark, Check, ChevronDown, ChevronUp, Copy, Download, ExternalLink, FileInput, FileText, Lightbulb, Link2, Merge, Pencil, Plus, Search, Trash2, Unlink, Upload } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Bookmark, Check, ChevronDown, ChevronUp, Copy, Download, ExternalLink, FileInput, FileText, Lightbulb, Link2, Merge, Pencil, Plus, Search, Star, Trash2, Unlink, Upload } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'wouter';
@@ -9,7 +9,7 @@ import { useT } from '@/lib/i18n';
 import { buildRows, type LibraryRow } from '@/lib/libraryRows';
 import { isPdf } from '@/lib/pdf';
 import { usePdfAnnotations } from '@/lib/pdfAnnotations';
-import { fileUrl, recordOpen, refreshResources } from '@/lib/resources';
+import { fileUrl, refreshResources } from '@/lib/resources';
 import { Button, Dialog, Empty, Spinner, clsx } from './ui';
 import { ensureTag, setTagsOn, useTagMap } from '@/lib/tags';
 import { useBibImport } from './BibImport';
@@ -22,7 +22,7 @@ import { SimilarWorks, WorkLinkPicker, WorkStateButtons, sure } from './WorkBits
 import { AddDialog, detect } from './AddDialog';
 import { WorkEditDialog } from './WorkEditDialog';
 
-type View = 'all' | 'relevant' | 'later' | 'read' | 'know' | 'skip' | 'unsorted';
+type View = 'all' | 'later' | 'interest' | 'read' | 'know' | 'skip' | 'unsorted';
 type ColId = 'title' | 'authors' | 'year' | 'tags';
 
 // Every column has a fixed width the student can drag; the ones after it move along, and what is left of the frame stays empty before the actions. Together they never exceed the frame.
@@ -55,7 +55,6 @@ const readWidths = (): Record<ColId, number> => {
 /** What a view shows. Archived (skip) rows only show in their own view; unsorted finds wait in theirs. */
 const inView = (r: LibraryRow, v: View) => {
   if (v === 'all') return r.state !== 'skip' && !r.unsorted;
-  if (v === 'relevant') return r.relevant && r.state !== 'skip';
   if (v === 'unsorted') return r.unsorted;
   return r.state === v;
 };
@@ -65,12 +64,14 @@ function StateDot({ row }: { row: LibraryRow }) {
   const t = useT();
   const st = row.state;
   if (!row.work) return <span aria-hidden className="size-4" />;
-  const label = st === 'later' ? t.workStateLater : st === 'read' ? t.workStateRead : st === 'know' ? t.workStateKnow : st === 'skip' ? t.libViewSkip : t.workStateNone;
+  const label = st === 'later' ? t.workStateLater : st === 'interest' ? t.workStateInterest : st === 'read' ? t.workStateRead : st === 'know' ? t.workStateKnow : st === 'skip' ? t.libViewSkip : t.workStateNone;
   const base = 'relative block size-4 rounded-full border-[1.6px]';
   return (
     <span role="img" aria-label={label} data-tip={label} className="grid place-items-center">
       {st === 'later' ? (
         <i className={clsx(base, 'border-review')} style={{ background: 'conic-gradient(var(--review) 0 25%, transparent 0)' }} />
+      ) : st === 'interest' ? (
+        <i className={clsx(base, 'border-review')} />
       ) : st === 'read' ? (
         <i className={clsx(base, 'border-done bg-done after:absolute after:left-[4px] after:top-[1.5px] after:h-2 after:w-1 after:rotate-[40deg] after:border-b-[1.6px] after:border-r-[1.6px] after:border-sheet after:content-[""]')} />
       ) : st === 'know' ? (
@@ -84,7 +85,7 @@ function StateDot({ row }: { row: LibraryRow }) {
 
 /**
  * The library: works with their material, and materials that are no work's, as one table. A rail on the left filters
- * by workbook, view, tag and file; in the "All" view what is relevant now sits on top. With a workbook open the rail
+ * by workbook, view, tag and file; in the "All" view what is next up sits on top. With a workbook open the rail
  * starts on that workbook's own entries.
  */
 export function WorksLibrary({ resources, courses, series, activeCourse, dropped, onDroppedUsed, onEditResource, onDeleteResource }: { resources: Resource[]; courses: ResourcesResponse['courses']; series: ResourceSeries[]; activeCourse: string | null; dropped: File[] | null; onDroppedUsed: () => void; onEditResource: (r: Resource) => void; onDeleteResource: (r: Resource) => void }) {
@@ -113,6 +114,8 @@ export function WorksLibrary({ resources, courses, series, activeCourse, dropped
   const [exporting, setExporting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [mergingTwo, setMergingTwo] = useState(false);
+  const [removingMany, setRemovingMany] = useState(false);
+  const anchor = useRef<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [widths, setWidths] = useState(readWidths);
   const [active, setActive] = useState<string | null>(null);
@@ -159,10 +162,11 @@ export function WorksLibrary({ resources, courses, series, activeCourse, dropped
   const collator = useMemo(() => new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }), []);
   const sorted = (list: LibraryRow[]) => [...list].sort((a, b) => (descending ? -1 : 1) * collator.compare(a.title, b.title));
   const inThisView = rows.filter((r) => byFilters(r) && inView(r, view));
-  const relevant = view === 'all' ? sorted(inThisView.filter((r) => r.relevant)) : [];
-  const rest = sorted(view === 'all' ? inThisView.filter((r) => !r.relevant) : inThisView);
+  const nextUp = view === 'all' ? sorted(inThisView.filter((r) => r.state === 'later')) : [];
+  const interesting = view === 'all' ? sorted(inThisView.filter((r) => r.state === 'interest')) : [];
+  const rest = sorted(view === 'all' ? inThisView.filter((r) => r.state !== 'later' && r.state !== 'interest') : inThisView);
   const shownCount = inThisView.length;
-  const order = useMemo(() => [...relevant, ...rest], [relevant, rest]);
+  const order = useMemo(() => [...nextUp, ...interesting, ...rest], [nextUp, interesting, rest]);
   const activeRow = order.find((r) => r.key === active);
   const togglePane = () =>
     setPaneOpen((o) => {
@@ -194,10 +198,20 @@ export function WorksLibrary({ resources, courses, series, activeCourse, dropped
     return () => window.removeEventListener('keydown', on);
   }, [order, active, view, exporting]);
 
+  // Esc clears a selection made with ctrl/shift-click.
+  useEffect(() => {
+    if (!selected.size || exporting) return;
+    const on = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isTyping(e.target) && !document.querySelector('[role=dialog]')) setSelected(new Set());
+    };
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  }, [selected.size, exporting]);
+
   // In Unsorted, L, R, K and S sort the selected work and the next one is selected (the page's own l and k must not fire too).
   useEffect(() => {
     if (view !== 'unsorted' || exporting) return;
-    const keys: Record<string, WorkState> = { l: 'later', r: 'read', k: 'know', s: 'skip' };
+    const keys: Record<string, WorkState> = { l: 'later', i: 'interest', r: 'read', k: 'know', s: 'skip' };
     const on = (e: KeyboardEvent) => {
       const st = keys[e.key.toLowerCase()];
       const at = order.findIndex((r) => r.key === active);
@@ -212,13 +226,43 @@ export function WorksLibrary({ resources, courses, series, activeCourse, dropped
     return () => window.removeEventListener('keydown', on, true);
   }, [order, active, view, exporting, qc]);
 
-  const views: [View, string][] = [['all', t.libViewAll], ['relevant', t.libViewRelevant], ['later', t.libViewLater], ['read', t.libViewRead], ['know', t.libViewKnow], ['unsorted', t.libViewUnsorted], ['skip', t.libViewSkip]];
+  const views: [View, string][] = [['all', t.libViewAll], ['later', t.libViewLater], ['interest', t.libViewInterest], ['read', t.libViewRead], ['know', t.libViewKnow], ['unsorted', t.libViewUnsorted], ['skip', t.libViewSkip]];
   // "Relevant now" shows no count: how often something was opened is not for showing.
   const count = (v: View) => rows.filter((r) => inView(r, v)).length;
 
   const toggle = (id: string) => setSelected((s) => (s.has(id) ? new Set([...s].filter((x) => x !== id)) : new Set(s).add(id)));
   const allWorks = works ?? [];
-  const chosen = allWorks.filter((w) => selected.has(w.id));
+  // Outside the export mode only what is shown counts: a selection does not reach rows a filter has hidden.
+  const shownIds = new Set(order.flatMap((r) => (r.work ? [r.work.id] : [])));
+  const chosen = allWorks.filter((w) => selected.has(w.id) && (exporting || shownIds.has(w.id)));
+  const bulk = exporting || chosen.length >= 2;
+  const clearSelection = () => setSelected(new Set());
+  /** Ctrl/cmd-click toggles a row, shift-click selects the range from the last one clicked; a plain click clears. */
+  const pick = (r: LibraryRow, e: React.MouseEvent) => {
+    const modifier = e.ctrlKey || e.metaKey;
+    if (!modifier && !e.shiftKey) {
+      if (selected.size) clearSelection();
+      anchor.current = r.key;
+      setActive(r.key);
+      setPaneOpen(true);
+      return;
+    }
+    if (!r.work) return;
+    if (e.shiftKey) {
+      const from = order.findIndex((x) => x.key === (anchor.current ?? active));
+      const to = order.findIndex((x) => x.key === r.key);
+      const range = order.slice(Math.min(from < 0 ? to : from, to), Math.max(from < 0 ? to : from, to) + 1).flatMap((x) => (x.work ? [x.work.id] : []));
+      setSelected(new Set([...(modifier ? selected : []), ...range]));
+    } else {
+      toggle(r.work.id);
+      anchor.current = r.key;
+    }
+    setActive(r.key);
+  };
+  const eachChosen = (fn: (id: string) => void) => {
+    chosen.forEach((w) => fn(w.id));
+    clearSelection();
+  };
   const copy = () => {
     void navigator.clipboard.writeText(toBibtex(chosen)).then(() => {
       setCopied(true);
@@ -276,7 +320,7 @@ export function WorksLibrary({ resources, courses, series, activeCourse, dropped
   const ops = { archive, remove: askRemove, editResource: onEditResource };
 
   const renderRow = (r: LibraryRow) => (
-    <Row key={r.key} row={r} template={template} exporting={exporting} active={r.key === active} onSelect={() => { setActive(r.key); setPaneOpen(true); }} selected={r.work ? selected.has(r.work.id) : false} onToggle={() => r.work && toggle(r.work.id)} ops={ops} />
+    <Row key={r.key} row={r} template={template} exporting={exporting} active={r.key === active} onSelect={(e) => pick(r, e)} selected={r.work ? selected.has(r.work.id) : false} onToggle={() => r.work && toggle(r.work.id)} ops={ops} />
   );
   const divider = (first: boolean, children: ReactNode) => (
     <div className={clsx('flex items-center gap-2.5 pb-1 text-[12.5px] after:h-px after:flex-1', ROW_PAD, first ? 'pt-2 font-semibold text-accent after:bg-accent/40' : 'pt-3.5 text-ink-3 after:bg-line-strong')}>{children}</div>
@@ -311,6 +355,26 @@ export function WorksLibrary({ resources, courses, series, activeCourse, dropped
       {bib.node}
       {mergingTwo && chosen.length === 2 ? <MergeDialog a={chosen[0]!} b={chosen[1]!} onClose={() => { setMergingTwo(false); stopExport(); }} /> : null}
       {adding !== null ? <AddDialog initialText={adding} initialFiles={addFiles} courses={courses} series={series} course={activeCourse} onClose={() => { setAdding(null); setAddFiles(null); }} /> : null}
+      {removingMany ? (
+        <Dialog open onOpenChange={(o) => !o && setRemovingMany(false)} title={t.libDeleteManyTitle(chosen.length)}>
+          <p className="text-sm text-ink-2">{t.workRemoveAsk}</p>
+          <div className="mt-5 flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setRemovingMany(false)}>
+              {t.cancel}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                setRemovingMany(false);
+                setActive(null);
+                eachChosen((id) => void removeWork(qc, id).catch(() => undefined));
+              }}
+            >
+              {t.libDelete}
+            </Button>
+          </div>
+        </Dialog>
+      ) : null}
       {removing?.work ? (
         <Dialog open onOpenChange={(o) => !o && setRemoving(null)} title={t.libDeleteTitle(removing.title)}>
           <p className="text-sm text-ink-2">{t.workRemoveAsk}</p>
@@ -390,7 +454,6 @@ export function WorksLibrary({ resources, courses, series, activeCourse, dropped
                 <span />
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto">
-                {view === 'unsorted' && shownCount ? <p className={clsx('pb-1 pt-2.5 text-[13px] text-ink-2', ROW_PAD)}>{t.workUnsortedHint}</p> : null}
                 {shownCount === 0 ? (
                   <div className="p-4 text-ink-2">
                     <p>{scope === 'course' && course && !needle && !tagFilter.length && view === 'all' ? t.libNothingIn(course.title) : t.workNoneFilter}</p>
@@ -402,23 +465,57 @@ export function WorksLibrary({ resources, courses, series, activeCourse, dropped
                   </div>
                 ) : (
                   <>
-                    {relevant.length ? (
+                    {nextUp.length ? (
                       <>
-                        {divider(true, <>{t.libRelevantHead} <small className="font-normal text-ink-3">{t.libRelevantSub}</small></>)}
-                        {relevant.map(renderRow)}
-                        {rest.length ? divider(false, <>{t.libOthers} <small>{rest.length}</small></>) : null}
+                        {divider(true, <>{t.libViewLater}</>)}
+                        {nextUp.map(renderRow)}
                       </>
                     ) : null}
+                    {interesting.length ? (
+                      <>
+                        {divider(!nextUp.length, <>{t.libViewInterest}</>)}
+                        {interesting.map(renderRow)}
+                      </>
+                    ) : null}
+                    {(nextUp.length || interesting.length) && rest.length ? divider(false, <>{t.libOthers} <small>{rest.length}</small></>) : null}
                     {rest.map(renderRow)}
                   </>
                 )}
               </div>
             </div>
           </div>
-          {exporting ? (
+          {bulk ? (
             <div role="group" aria-label={t.workSelectionLabel} className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-line-strong bg-sheet py-2 pl-4 pr-2">
               <span className="tabular-nums text-[13px] text-ink-2">{chosen.length ? t.workSelected(chosen.length) : t.workExportHint}</span>
-              <Button size="sm" variant="primary" disabled={!chosen.length} onClick={copy}>
+              {!exporting && chosen.length ? (
+                <>
+                  <Button size="sm" variant="ghost" onClick={() => eachChosen((id) => setWorkState(qc, id, 'later'))}>
+                    <Bookmark size={13} />
+                    {t.workStateLater}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => eachChosen((id) => setWorkState(qc, id, 'interest'))}>
+                    <Star size={13} />
+                    {t.workStateInterest}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => eachChosen((id) => setWorkState(qc, id, 'read'))}>
+                    <Check size={13} />
+                    {t.workStateRead}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => eachChosen((id) => setWorkState(qc, id, 'know'))}>
+                    <Lightbulb size={13} />
+                    {t.workStateKnow}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => eachChosen((id) => setWorkState(qc, id, 'skip'))}>
+                    <Archive size={13} />
+                    {t.libArchive}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setRemovingMany(true)}>
+                    <Trash2 size={13} />
+                    {t.libDelete}
+                  </Button>
+                </>
+              ) : null}
+              <Button size="sm" variant={exporting ? 'primary' : 'ghost'} disabled={!chosen.length} onClick={copy}>
                 <Copy size={13} />
                 {copied ? t.workCopied : t.workCopyBibtex}
               </Button>
@@ -432,8 +529,8 @@ export function WorksLibrary({ resources, courses, series, activeCourse, dropped
                 {t.workSelectShown}
               </button>
               <span className="flex-1" />
-              <Button size="sm" variant="ghost" onClick={stopExport}>
-                {t.cancel}
+              <Button size="sm" variant="ghost" onClick={exporting ? stopExport : clearSelection}>
+                {exporting ? t.cancel : t.libClearSelection}
               </Button>
             </div>
           ) : activeRow ? (
@@ -506,7 +603,7 @@ function Rail({
       ) : null}
       <h3 className={head}>{t.libView}</h3>
       {views.map(([v, label]) => (
-        <div key={v}>{option(view === v, label, v === 'relevant' ? null : count(v), () => onView(v))}</div>
+        <div key={v}>{option(view === v, label, count(v), () => onView(v))}</div>
       ))}
       <h3 className={head}>{t.libTags}</h3>
       {tags.map((g) => (
@@ -540,7 +637,7 @@ function Rail({
 
 const iconBtn = 'inline-flex size-6 shrink-0 items-center justify-center rounded-md text-ink-2 hover:bg-line hover:text-ink';
 
-function Row({ row: r, template, exporting, selected, onToggle, active, onSelect, ops }: { row: LibraryRow; template: string; exporting: boolean; selected: boolean; onToggle: () => void; active: boolean; onSelect: () => void; ops: Ops }) {
+function Row({ row: r, template, exporting, selected, onToggle, active, onSelect, ops }: { row: LibraryRow; template: string; exporting: boolean; selected: boolean; onToggle: () => void; active: boolean; onSelect: (e: React.MouseEvent) => void; ops: Ops }) {
   const t = useT();
   const qc = useQueryClient();
   const w = r.work;
@@ -560,18 +657,18 @@ function Row({ row: r, template, exporting, selected, onToggle, active, onSelect
       if (w) onToggle();
       return;
     }
-    if (!(e.target as HTMLElement).closest('a,button,input,[role=menu],[role=dialog]')) onSelect();
+    if (!(e.target as HTMLElement).closest('a,button,input,[role=menu],[role=dialog]')) onSelect(e);
   };
   const openFile = viewer ? (
     <Link href={viewer} aria-label={t.libOpenFile} data-tip={t.libOpenFile} className={iconBtn}>
       <ExternalLink size={14} />
     </Link>
   ) : plain ? (
-    <a href={plain} target="_blank" rel="noreferrer" onClick={() => res && recordOpen(res.id)} aria-label={t.libOpenFile} data-tip={t.libOpenFile} className={iconBtn}>
+    <a href={plain} target="_blank" rel="noreferrer" aria-label={t.libOpenFile} data-tip={t.libOpenFile} className={iconBtn}>
       <ExternalLink size={14} />
     </a>
   ) : null;
-  const stateBtn = (st: 'later' | 'read', Icon: typeof Bookmark, label: string) =>
+  const stateBtn = (st: 'later' | 'interest' | 'read', Icon: typeof Bookmark, label: string) =>
     w ? (
       <button key={st} type="button" aria-pressed={r.state === st} aria-label={label} data-tip={label} onClick={() => setWorkState(qc, w.id, r.state === st ? null : st)} className={clsx(iconBtn, r.state === st && 'bg-accent-soft text-accent')}>
         <Icon size={14} />
@@ -581,9 +678,10 @@ function Row({ row: r, template, exporting, selected, onToggle, active, onSelect
     <div data-row-key={r.key} className="group/row border-b border-line/60">
       <div
         role="row"
-        aria-selected={active}
+        aria-selected={active || selected}
         onClick={click}
-        className={clsx('grid min-h-[34px] cursor-pointer items-center gap-x-3 py-1.5 text-[13.5px] hover:bg-sunk', ROW_PAD, r.relevant && !active && 'bg-accent-soft/40', active && 'bg-accent-soft shadow-[inset_3px_0_0_var(--accent)] hover:bg-accent-soft')}
+        onMouseDown={(e) => e.shiftKey && e.preventDefault()}
+        className={clsx('grid min-h-[34px] cursor-pointer items-center gap-x-3 py-1.5 text-[13.5px] hover:bg-sunk', ROW_PAD, selected && !exporting && 'bg-accent-soft hover:bg-accent-soft', active && 'bg-accent-soft shadow-[inset_3px_0_0_var(--accent)] hover:bg-accent-soft')}
         style={{ gridTemplateColumns: template }}
       >
         <StateDot row={r} />
@@ -609,6 +707,7 @@ function Row({ row: r, template, exporting, selected, onToggle, active, onSelect
               </span>
               <span role="group" aria-label={t.libQuickActions} className={clsx('absolute inset-y-0 right-0 flex items-center gap-0.5', active ? 'visible' : 'invisible group-hover/row:visible group-focus-within/row:visible')}>
                 {stateBtn('later', Bookmark, t.workStateLater)}
+                {stateBtn('interest', Star, t.workStateInterest)}
                 {stateBtn('read', Check, t.workStateRead)}
                 {w ? (
                   <button type="button" aria-label={r.state === 'skip' ? t.libUnarchive : t.libArchive} data-tip={r.state === 'skip' ? t.libUnarchive : t.libArchive} onClick={() => ops.archive(r)} className={iconBtn}>
@@ -719,7 +818,7 @@ function DetailPane({ row: r, open, onToggle, openRef, ops }: { row: LibraryRow;
         {label}
       </Link>
     ) : plain ? (
-      <a href={plain} ref={(el) => void (openRef.current = el)} target="_blank" rel="noreferrer" onClick={() => res && recordOpen(res.id)} className={cls}>
+      <a href={plain} ref={(el) => void (openRef.current = el)} target="_blank" rel="noreferrer" className={cls}>
         {label}
       </a>
     ) : null;

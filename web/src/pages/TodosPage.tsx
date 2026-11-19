@@ -103,19 +103,21 @@ function Circle({ todo, ctx, size = 18 }: { todo: Todo; ctx: Ctx; size?: number 
 }
 
 /** Title and date while they are being changed. Enter saves, Escape leaves as it was, and leaving the fields saves. */
-function EditFields({ todo, onDone }: { todo: Todo; onDone: () => void }) {
+function EditFields({ todo, onDone, courseTitles }: { todo: Todo; onDone: () => void; courseTitles?: Map<string, string> }) {
   const t = useT();
   const [title, setTitle] = useState(todo.title);
   const [due, setDue] = useState(todo.due ?? '');
+  const [course, setCourse] = useState(todo.course ?? '');
   const box = useRef<HTMLDivElement>(null);
   const finished = useRef(false);
   const save = () => {
     if (finished.current) return;
     finished.current = true;
     const next = title.trim();
-    const patch: { title?: string; due?: string | null } = {};
+    const patch: { title?: string; due?: string | null; course?: string | null } = {};
     if (next && next !== todo.title) patch.title = next;
     if ((due || null) !== todo.due) patch.due = due || null;
+    if (courseTitles && (course || null) !== todo.course) patch.course = course || null;
     if (Object.keys(patch).length) void patchTodo(todo.id, patch);
     onDone();
   };
@@ -139,6 +141,14 @@ function EditFields({ todo, onDone }: { todo: Todo; onDone: () => void }) {
     >
       <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={key} maxLength={300} aria-label={t.todosEdit} className="h-7 min-w-[12rem] flex-1 rounded-md border border-line-strong bg-sheet px-2 text-[14px]" />
       <input type="date" value={due} onChange={(e) => setDue(e.target.value)} onKeyDown={key} aria-label={t.todosDueLabel} className="h-7 rounded-md border border-line-strong bg-sheet px-1.5 text-[13px] text-ink-2" />
+      {courseTitles ? (
+        <select value={course} onChange={(e) => setCourse(e.target.value)} onKeyDown={key} aria-label={t.todosWorkbook} className="h-7 rounded-md border border-line-strong bg-sheet px-1.5 text-[13px] text-ink-2">
+          <option value="">{t.todosOwn}</option>
+          {[...courseTitles].map(([k, title]) => (
+            <option key={k} value={k}>{title}</option>
+          ))}
+        </select>
+      ) : null}
       {due ? (
         <button type="button" onClick={() => setDue('')} title={t.todosDueClear} aria-label={t.todosDueClear} className="rounded p-1 text-ink-3 hover:text-ink">
           <X size={13} />
@@ -239,7 +249,7 @@ function Row({ todo, ctx, depth, top }: RowProps) {
         ) : null}
         <Circle todo={todo} ctx={ctx} size={depth === 0 ? 18 : 15} />
         {editing ? (
-          <EditFields todo={todo} onDone={() => setEditing(false)} />
+          <EditFields todo={todo} onDone={() => setEditing(false)} courseTitles={depth === 0 ? ctx.courseTitles : undefined} />
         ) : (
           <>
             <TitleText todo={todo} className={clsx('min-w-0 truncate', depth === 0 ? 'text-[14.5px]' : 'text-[13.5px]', done ? 'text-ink-3 line-through' : top?.inNext ? 'font-medium' : depth === 0 ? 'text-ink' : 'text-ink-2')} onEdit={() => setEditing(true)} />

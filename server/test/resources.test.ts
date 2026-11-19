@@ -198,18 +198,6 @@ describe('works cited by a page', () => {
     expect(after).toHaveLength(before.length);
     expect(after.find((x) => x.id === w.id)!.citedOn.map((c) => c.page).sort()).toEqual(['p1', 'p2']);
   });
-
-  it('counts opens of the last 14 days and drops them with the material', async () => {
-    const r = (await up({ filename: 'opens.pdf', title: 'Opens', type: 'paper' }, Buffer.from('%PDF-1.4 opens'))).json() as Resource;
-    expect(r.recentOpens).toBe(0);
-    for (let i = 0; i < 3; i++) expect((await app.inject({ method: 'POST', url: `/api/resources/${r.id}/open` })).statusCode).toBe(204);
-    const old = Date.now() - 15 * 86_400_000;
-    courses.active!.store.sql.run('INSERT INTO resource_opens (resource, at) VALUES (?, ?)', r.id, old);
-    const list = (await app.inject('/api/resources')).json() as ResourcesResponse;
-    expect(list.resources.find((x) => x.id === r.id)!.recentOpens).toBe(3);
-    expect((await app.inject({ method: 'POST', url: '/api/resources/r-nope/open' })).statusCode).toBe(404);
-    await app.inject({ method: 'DELETE', url: `/api/resources/${r.id}` });
-  });
 });
 
 describe('a reference for every paper', () => {
