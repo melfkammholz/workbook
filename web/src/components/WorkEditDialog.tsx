@@ -14,6 +14,63 @@ const ARXIV = /(?:arxiv\.org\/(?:abs|pdf)\/|^arxiv:\s*)?(\d{4}\.\d{4,5})(?:v\d+)
  * The fields of a work as a form. The text the PDF gave is behind "Original text" and is not edited. Without `work`
  * it makes a new one: a DOI or arXiv id can fetch the fields (online lookup on), or BibTeX is pasted instead.
  */
+export const yearValid = (f: WorkEdit) => f.year === null || (Number.isInteger(f.year) && f.year >= 0 && f.year <= 3000);
+export const ARXIV_ID = ARXIV;
+
+/** The rows of a work's fields; shared by the edit dialog and the add dialog. */
+export function WorkFormFields({ f, setF, autoFocusTitle }: { f: WorkEdit; setF: (f: WorkEdit) => void; autoFocusTitle?: boolean }) {
+  const t = useT();
+  const set = (k: keyof WorkEdit) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
+  const row = 'block text-[13px] text-ink-2';
+  const yearOk = yearValid(f);
+  return (
+    <>
+        <label className={row}>
+          {t.workFieldTitle}
+          <textarea autoFocus={autoFocusTitle} rows={2} value={f.title} onChange={set('title')} className="wb-field mt-0.5 w-full resize-y p-1.5 text-[14px] text-ink" />
+        </label>
+        <label className={row}>
+          {t.workFieldAuthors}
+          <input value={f.authors} onChange={set('authors')} className="wb-field mt-0.5 w-full p-1.5 text-[14px] text-ink" />
+        </label>
+        <div className="grid grid-cols-[6rem_1fr] gap-3">
+          <label className={row}>
+            {t.workFieldYear}
+            <input inputMode="numeric" value={f.year ?? ''} onChange={(e) => setF({ ...f, year: e.target.value.trim() === '' ? null : Number(e.target.value.trim()) })} aria-invalid={!yearOk} className="wb-field mt-0.5 w-full p-1.5 text-[14px] text-ink" />
+          </label>
+          <label className={row}>
+            {t.workFieldVenue}
+            <input value={f.venue} onChange={set('venue')} className="wb-field mt-0.5 w-full p-1.5 text-[14px] text-ink" />
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className={row}>
+            {t.workFieldVolume}
+            <input value={f.volume} onChange={set('volume')} className="wb-field mt-0.5 w-full p-1.5 text-[14px] text-ink" />
+          </label>
+          <label className={row}>
+            {t.workFieldPages}
+            <input value={f.pages} onChange={set('pages')} className="wb-field mt-0.5 w-full p-1.5 text-[14px] text-ink" />
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className={row}>
+            {t.workFieldDoi}
+            <input value={f.doi} onChange={set('doi')} className="wb-field mt-0.5 w-full p-1.5 text-[14px] text-ink" />
+          </label>
+          <label className={row}>
+            {t.workFieldArxiv}
+            <input value={f.arxiv} onChange={set('arxiv')} className="wb-field mt-0.5 w-full p-1.5 text-[14px] text-ink" />
+          </label>
+        </div>
+        <label className={row}>
+          {t.workFieldUrl}
+          <input value={f.url} onChange={set('url')} className="wb-field mt-0.5 w-full p-1.5 text-[14px] text-ink" />
+        </label>
+    </>
+  );
+}
+
 export function WorkEditDialog({ work, onClose }: { work?: Work; onClose: () => void }) {
   const t = useT();
   const qc = useQueryClient();
@@ -25,7 +82,6 @@ export function WorkEditDialog({ work, onClose }: { work?: Work; onClose: () => 
   const [fetchMiss, setFetchMiss] = useState(false);
   const lookupOn = !!useSettings().data?.lookupReferences;
   const [confirm, setConfirm] = useState(false);
-  const set = (k: keyof WorkEdit) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
   const fetchIt = () => {
     if (!fetchId.trim() || fetching) return;
     setFetching(true);
@@ -85,48 +141,7 @@ export function WorkEditDialog({ work, onClose }: { work?: Work; onClose: () => 
             </button>
           </div>
         )}
-        <label className={row}>
-          {t.workFieldTitle}
-          <textarea autoFocus={!!work} rows={2} value={f.title} onChange={set('title')} className="wb-field mt-0.5 w-full resize-y p-1.5 text-[14px] text-ink" />
-        </label>
-        <label className={row}>
-          {t.workFieldAuthors}
-          <input value={f.authors} onChange={set('authors')} className="wb-field mt-0.5 w-full p-1.5 text-[14px] text-ink" />
-        </label>
-        <div className="grid grid-cols-[6rem_1fr] gap-3">
-          <label className={row}>
-            {t.workFieldYear}
-            <input inputMode="numeric" value={f.year ?? ''} onChange={(e) => setF({ ...f, year: e.target.value.trim() === '' ? null : Number(e.target.value.trim()) })} aria-invalid={!yearOk} className="wb-field mt-0.5 w-full p-1.5 text-[14px] text-ink" />
-          </label>
-          <label className={row}>
-            {t.workFieldVenue}
-            <input value={f.venue} onChange={set('venue')} className="wb-field mt-0.5 w-full p-1.5 text-[14px] text-ink" />
-          </label>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <label className={row}>
-            {t.workFieldVolume}
-            <input value={f.volume} onChange={set('volume')} className="wb-field mt-0.5 w-full p-1.5 text-[14px] text-ink" />
-          </label>
-          <label className={row}>
-            {t.workFieldPages}
-            <input value={f.pages} onChange={set('pages')} className="wb-field mt-0.5 w-full p-1.5 text-[14px] text-ink" />
-          </label>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <label className={row}>
-            {t.workFieldDoi}
-            <input value={f.doi} onChange={set('doi')} className="wb-field mt-0.5 w-full p-1.5 text-[14px] text-ink" />
-          </label>
-          <label className={row}>
-            {t.workFieldArxiv}
-            <input value={f.arxiv} onChange={set('arxiv')} className="wb-field mt-0.5 w-full p-1.5 text-[14px] text-ink" />
-          </label>
-        </div>
-        <label className={row}>
-          {t.workFieldUrl}
-          <input value={f.url} onChange={set('url')} className="wb-field mt-0.5 w-full p-1.5 text-[14px] text-ink" />
-        </label>
+        <WorkFormFields f={f} setF={setF} autoFocusTitle={!!work} />
         {work?.raw ? (
           <details className="text-[13px]">
             <summary className="cursor-pointer text-ink-2 hover:text-ink">{t.workAdvanced}</summary>

@@ -199,9 +199,11 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
         </BackLink>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-[1.75rem] font-semibold tracking-[-0.02em]">{heading}</h1>
-          <Button variant="primary" className="ml-auto" onClick={() => setUploading(true)}>
-            <Plus size={16} /> {t.uploadFiles}
-          </Button>
+          {refs ? null : (
+            <Button variant="primary" className="ml-auto" onClick={() => setUploading(true)}>
+              <Plus size={16} /> {t.uploadFiles}
+            </Button>
+          )}
         </div>
         {intro ? <p className="mt-2 max-w-prose text-ink-2">{intro}</p> : null}
         {otherLink ? (
@@ -209,7 +211,15 @@ function ResourcesView({ course, activeCourse = course, heading, intro, otherLin
             {otherLink.label}
           </Link>
         ) : null}
-        {refs ? <WorksLibrary resources={data.resources} onEditResource={setEditing} onDeleteResource={setDeleting} /> : null}
+        {refs ? <WorksLibrary
+            resources={data.resources}
+            onEditResource={setEditing}
+            onDeleteResource={setDeleting}
+            onFiles={(files) => {
+              setDropped(files);
+              setUploading(true);
+            }}
+          /> : null}
         {!refs && usedLabels.length ? (
           <div className="mt-4 flex flex-wrap items-center gap-1.5" role="group" aria-label={t.resourceLabelFilter}>
             {usedLabels.map((l) => {

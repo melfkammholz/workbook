@@ -18,6 +18,7 @@ import { useNewVersion } from './NewVersionButton';
 import { RowTags } from './RowTags';
 import { TagDot } from './TagPicker';
 import { SimilarWorks, WorkEntry, WorkLinkPicker, WorkSortStrip, WorkStateButtons, WorkStateMenu, WorkEditButton, sure } from './WorkBits';
+import { AddDialog, detect } from './AddDialog';
 import { WorkEditDialog } from './WorkEditDialog';
 
 type View = 'all' | 'relevant' | 'later' | 'read' | 'know' | 'skip' | 'unsorted';
@@ -58,13 +59,13 @@ const inView = (r: LibraryRow, v: View) => {
  * The library: works with their material, and materials that are no work's, as one table. A rail on the left filters
  * by view, tag and file; in the "All" view what is relevant now sits on top.
  */
-export function WorksLibrary({ resources, onEditResource, onDeleteResource }: { resources: Resource[]; onEditResource: (r: Resource) => void; onDeleteResource: (r: Resource) => void }) {
+export function WorksLibrary({ resources, onEditResource, onDeleteResource, onFiles }: { resources: Resource[]; onEditResource: (r: Resource) => void; onDeleteResource: (r: Resource) => void; onFiles: (files: File[]) => void }) {
   const t = useT();
   const qc = useQueryClient();
   const works = useWorks().data;
   const bib = useBibImport();
   const tagMap = useTagMap();
-  const [newWork, setNewWork] = useState(false);
+  const [adding, setAdding] = useState<string | null>(null);
   const [view, setView] = useState<View>('all');
   const [fileHave, setFileHave] = useState(false);
   const [fileMissing, setFileMissing] = useState(false);
@@ -83,6 +84,20 @@ export function WorksLibrary({ resources, onEditResource, onDeleteResource }: { 
     }
   });
   const openRef = useRef<HTMLElement | null>(null);
+
+  // Pasting a DOI or arXiv id outside a text field opens the add dialog on it.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      if (isTyping(e.target) || document.querySelector('[role=dialog]')) return;
+      const pasted = e.clipboardData?.getData('text/plain') ?? '';
+      const d = detect(pasted);
+      if (d?.kind !== 'doi' && d?.kind !== 'arxiv') return;
+      e.preventDefault();
+      setAdding(pasted.trim());
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, []);
 
   const rows = useMemo(() => (works ? buildRows(works, resources) : []), [works, resources]);
   const usedTags = [...tagMap.values()].filter((g) => rows.some((r) => r.tags.includes(g.id)));
@@ -164,8 +179,8 @@ export function WorksLibrary({ resources, onEditResource, onDeleteResource }: { 
   return (
     <>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="primary" onClick={() => setNewWork(true)}>
-          {t.workNew}
+        <Button size="sm" variant="primary" onClick={() => setAdding('')}>
+          <Plus size={14} /> {t.workAdd}
         </Button>
         <MoreMenu label={t.moreActions} pinned width="w-72">
           <MenuItem icon={<FileInput size={15} />} onSelect={bib.pickFile}>
@@ -179,7 +194,7 @@ export function WorksLibrary({ resources, onEditResource, onDeleteResource }: { 
         </MoreMenu>
       </div>
       {bib.node}
-      {newWork ? <WorkEditDialog onClose={() => setNewWork(false)} /> : null}
+      {adding !== null ? <AddDialog initialText={adding} onFiles={onFiles} onClose={() => setAdding(null)} /> : null}
       {!works ? (
         <div className="mt-10 grid place-items-center">
           <Spinner />
