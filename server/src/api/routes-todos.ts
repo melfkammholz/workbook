@@ -40,6 +40,7 @@ const bodies = {
       course: z.string().max(200).nullable(),
       nextRank: z.number().int().min(0).max(1_000_000).nullable(),
       sort: z.number().int().min(0).max(1_000_000),
+      nextIds: z.array(z.string().max(100)).max(100),
     })
     .partial(),
   tree: z.object({
@@ -99,6 +100,7 @@ export function todoRoutes(app: FastifyInstance, d: Deps): void {
     const out = d.store.updateTodo(req.params.id, r.data as Parameters<typeof d.store.updateTodo>[1]);
     if (out === 'unknown') return reply.code(404).send({ error: 'unknown todo' });
     if (out === 'cycle') return reply.code(409).send({ error: 'a todo cannot go under its own part' });
+    if (out === 'next') return reply.code(400).send({ error: 'nextIds must be distinct, existing todos other than this one' });
     if (out === 'child') return reply.code(400).send({ error: 'only top-level todos have a workbook or a rank' });
     return withTargets(d, [out])[0];
   });

@@ -56,6 +56,8 @@ export interface Todo {
   nextRank: number | null;
   /** Ids of the student's tags on it. */
   tags: string[];
+  /** Todos that naturally come after this one, in the student's order (offered when it is completed). */
+  nextIds: string[];
   origin: TodoOrigin;
   createdAt: number;
   updatedAt: number;

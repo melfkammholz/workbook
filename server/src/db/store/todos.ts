@@ -92,8 +92,10 @@ export class TodosPart {
     const byId = new Map<string, Todo>(rows.map((r) => [r.id as string, rowToTodo(r)]));
     const top: Todo[] = [];
     const tags = this.tagLinks('todo');
+    const next = this.nextLinks();
     for (const t of byId.values()) {
       t.tags = tags.get(t.id) ?? [];
+      t.nextIds = (next.get(t.id) ?? []).filter((n) => byId.has(n));
       const parent = t.parentId ? byId.get(t.parentId) : undefined;
       if (parent) parent.children.push(t);
       else if (!t.parentId) top.push(t);
@@ -105,12 +107,24 @@ export class TodosPart {
     return top.filter((t) => (filter.status === undefined || t.status === filter.status) && (filter.course === undefined || t.course === filter.course));
   }
 
+  /** `todo_id` -> the ids that come after it, in order (deleted todos are filtered by the caller). */
+  private nextLinks(this: Store): Map<string, string[]> {
+    const m = new Map<string, string[]>();
+    for (const r of this.all('SELECT todo_id, next_id FROM todo_next ORDER BY todo_id, sort')) {
+      const l = m.get(r.todo_id as string) ?? [];
+      l.push(r.next_id as string);
+      m.set(r.todo_id as string, l);
+    }
+    return m;
+  }
+
   getTodo(this: Store, id: string): Todo | null {
     const r = this.get('SELECT * FROM todos WHERE id = ? AND deleted_at IS NULL', id);
     if (!r) return null;
     const build = (row: Row): Todo => {
       const t = rowToTodo(row);
       t.tags = this.tagsOf('todo', t.id);
+      t.nextIds = (this.nextLinks().get(t.id) ?? []).filter((n) => this.get('SELECT 1 FROM todos WHERE id = ? AND deleted_at IS NULL', n));
       t.children = this.all('SELECT * FROM todos WHERE parent_id = ? AND deleted_at IS NULL ORDER BY sort, rowid', t.id).map(build);
       return t;
     };
@@ -141,12 +155,17 @@ export class TodosPart {
    */
   updateTodo(this: Store, 
     id: string,
-    p: { title?: string; body?: string | null; status?: TodoStatus; manual?: boolean; follow?: boolean; due?: string | null; minutes?: number | null; parentId?: string | null; before?: string; after?: string; course?: string | null; nextRank?: number | null; sort?: number },
-  ): Todo | 'unknown' | 'cycle' | 'child' {
+    p: { title?: string; body?: string | null; status?: TodoStatus; manual?: boolean; follow?: boolean; due?: string | null; minutes?: number | null; parentId?: string | null; before?: string; after?: string; course?: string | null; nextRank?: number | null; sort?: number; nextIds?: string[] },
+  ): Todo | 'unknown' | 'cycle' | 'child' | 'next' {
     const cur = this.get('SELECT * FROM todos WHERE id = ? AND deleted_at IS NULL', id);
     if (!cur) return 'unknown';
+    if (p.nextIds && (new Set(p.nextIds).size !== p.nextIds.length || p.nextIds.some((n) => n === id || !this.get('SELECT 1 FROM todos WHERE id = ? AND deleted_at IS NULL', n)))) return 'next';
     return this.tx(() => {
       const t = this.now();
+      if (p.nextIds) {
+        this.run('DELETE FROM todo_next WHERE todo_id = ?', id);
+        p.nextIds.forEach((n, i) => this.run('INSERT INTO todo_next (todo_id, next_id, sort) VALUES (?, ?, ?)', id, n, i));
+      }
       let parentId = (cur.parent_id as string | null) ?? null;
       const place = p.before ?? p.after;
       if (p.parentId !== undefined && (p.parentId !== parentId || place)) {

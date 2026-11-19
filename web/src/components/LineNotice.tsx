@@ -15,11 +15,16 @@ export function LineNotice() {
   }, [note]);
   if (!note) return null;
   return (
-    <div role="status" className="settle fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-line-strong bg-sheet px-3.5 py-2 text-sm shadow-[var(--shadow)]">
+    <div role="status" className={`settle fixed ${note.kind === 'next' ? 'bottom-16' : 'bottom-4'} left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-line-strong bg-sheet px-3.5 py-2 text-sm shadow-[var(--shadow)]`}>
       {note.kind === 'todo' ? (
         <>
           <span>{t.lineTodoAdded}</span>
           <Link href="/todos" onClick={dismissLineNote} className="font-medium text-accent hover:underline">{t.lineOpenTodos}</Link>
+        </>
+      ) : note.kind === 'next' ? (
+        <>
+          <span>{t.todoNextToast(note.titles)}</span>
+          <button type="button" onClick={() => { note.accept(); dismissLineNote(); }} className="font-medium text-accent hover:underline">{t.todoNextAccept}</button>
         </>
       ) : (
         <span>{t.lineUnknown(note.cmd)}</span>

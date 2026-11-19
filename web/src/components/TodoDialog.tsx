@@ -387,6 +387,39 @@ function Body({ todo, byId, todos, courseTitles, onOpen, onClose, onDelete }: { 
             </select>
           </Label>
 
+          <div>
+            <span className="mb-1 block text-[12.5px] text-ink-3">{t.tdAfter}</span>
+            <div className="flex flex-wrap gap-1.5">
+              {todo.nextIds.map((nid, i) => {
+                const n = byId.get(nid);
+                if (!n) return null;
+                const set = (ids: string[]) => void patchTodo(todo.id, { nextIds: ids });
+                return (
+                  <span key={nid} className="inline-flex items-center gap-0.5 rounded-full border border-line bg-sunk/60 py-0.5 pl-2.5 pr-1 text-[12.5px]">
+                    <span className="max-w-[16rem] truncate">{n.title}</span>
+                    <button type="button" disabled={i === 0} aria-label="←" onClick={() => { const a = [...todo.nextIds]; [a[i - 1], a[i]] = [a[i]!, a[i - 1]!]; set(a); }} className="rounded px-0.5 text-ink-3 hover:text-ink disabled:opacity-30">←</button>
+                    <button type="button" disabled={i === todo.nextIds.length - 1} aria-label="→" onClick={() => { const a = [...todo.nextIds]; [a[i + 1], a[i]] = [a[i]!, a[i + 1]!]; set(a); }} className="rounded px-0.5 text-ink-3 hover:text-ink disabled:opacity-30">→</button>
+                    <button type="button" aria-label={t.tdAfterRemove} title={t.tdAfterRemove} onClick={() => set(todo.nextIds.filter((x) => x !== nid))} className="rounded px-1 text-ink-3 hover:text-ink">×</button>
+                  </span>
+                );
+              })}
+            </div>
+            <select
+              value=""
+              onChange={(e) => e.target.value && void patchTodo(todo.id, { nextIds: [...todo.nextIds, e.target.value] })}
+              className={clsx(field, todo.nextIds.length && 'mt-1.5')}
+            >
+              <option value="">{t.tdAfterAdd}</option>
+              {[...byId.values()].filter((x) => x.id !== todo.id && !todo.nextIds.includes(x.id)).map((x) => (
+                <option key={x.id} value={x.id}>{x.title}</option>
+              ))}
+            </select>
+            {(() => {
+              const before = [...byId.values()].filter((x) => x.nextIds.includes(todo.id));
+              return before.length ? <span className="mt-1 block text-[12px] text-ink-3">{t.tdFollowsOn(before.map((x) => x.title))}</span> : null;
+            })()}
+          </div>
+
           <Label text={t.tdDue}>
             <input type="date" value={todo.due ?? ''} onChange={(e) => void patchTodo(todo.id, { due: e.target.value || null })} className={clsx(field, 'text-ink-2')} />
           </Label>

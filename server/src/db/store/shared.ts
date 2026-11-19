@@ -105,6 +105,7 @@ export function rowToTodo(r: Row): Todo {
     minutesTotal: r.minutes === null ? null : Number(r.minutes),
     nextRank: r.next_rank === null ? null : Number(r.next_rank),
     tags: [],
+    nextIds: [],
     origin: r.origin as TodoOrigin,
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),

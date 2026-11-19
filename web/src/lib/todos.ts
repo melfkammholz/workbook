@@ -29,13 +29,49 @@ async function optimistic<T>(show: ((list: Todo[]) => Todo[]) | null, send: () =
   }
 }
 
-export type TodoPatch = Partial<Pick<Todo, 'title' | 'body' | 'status' | 'due' | 'minutes' | 'nextRank' | 'parentId' | 'course' | 'sort'>> & { manual?: boolean; before?: string; after?: string };
+export type TodoPatch = Partial<Pick<Todo, 'title' | 'body' | 'status' | 'due' | 'minutes' | 'nextRank' | 'parentId' | 'course' | 'sort' | 'nextIds'>> & { manual?: boolean; before?: string; after?: string };
 
-export const patchTodo = (id: string, patch: TodoPatch) =>
-  optimistic(
+/** The todos a completed todo points at that are still to do, with what to lift: a part is never lifted out of its parent, its top-level ancestor is offered instead. */
+function offerNext(done: Todo) {
+  const all = queryClient.getQueryData<Todo[]>(todosKey) ?? [];
+  const byId = new Map<string, Todo>();
+  const parentOf = new Map<string, Todo>();
+  const walk = (x: Todo, p?: Todo) => {
+    byId.set(x.id, x);
+    if (p) parentOf.set(x.id, p);
+    x.children.forEach((c) => walk(c, x));
+  };
+  all.forEach((x) => walk(x));
+  const picks: Todo[] = [];
+  for (const nid of done.nextIds) {
+    const n = byId.get(nid);
+    if (!n || n.status === 'done') continue;
+    let target = n;
+    while (parentOf.has(target.id)) target = parentOf.get(target.id)!;
+    if (target.status !== 'done' && !picks.includes(target)) picks.push(target);
+  }
+  if (!picks.length) return;
+  showLineNote({
+    kind: 'next',
+    titles: picks.map((x) => x.title),
+    accept: () => {
+      const ranked = (queryClient.getQueryData<Todo[]>(todosKey) ?? []).filter((x) => x.nextRank !== null && x.status !== 'done').sort((a, b) => a.nextRank! - b.nextRank!).map((x) => x.id);
+      const ids = picks.map((x) => x.id);
+      void reorderNext([...ids, ...ranked.filter((x) => !ids.includes(x))]);
+    },
+  });
+}
+
+export const patchTodo = (id: string, patch: TodoPatch) => {
+  if (patch.status === 'done') {
+    const cur = (queryClient.getQueryData<Todo[]>(todosKey) ?? []).flatMap(function f(x: Todo): Todo[] { return [x, ...x.children.flatMap(f)]; }).find((x) => x.id === id);
+    if (cur && cur.status !== 'done' && cur.nextIds.length) offerNext(cur);
+  }
+  return optimistic(
     (l) => mapTree(l, id, (t) => ({ ...t, ...patch, ...(patch.status ? { manual: true } : {}), ...(patch.status ? { doneAt: patch.status === 'done' ? Date.now() : null } : {}) })),
     () => api.patch<Todo>(`/api/todos/${encodeURIComponent(id)}`, patch),
   );
+};
 
 /** Puts exactly these tags on a todo. */
 export const setTodoTags = (id: string, tags: string[]) =>
@@ -47,7 +83,7 @@ export const setTodoTags = (id: string, tags: string[]) =>
 export const addTodo = (a: { title: string; parentId?: string | null; course?: string | null; link?: TodoLink; follow?: boolean; minutes?: number; origin?: Todo['origin']; status?: TodoStatus; tags?: string[] }) => {
   const id = crypto.randomUUID();
   const now = Date.now();
-  const fresh: Todo = { id, parentId: a.parentId ?? null, sort: 1_000_000, title: a.title, body: null, status: a.status ?? 'open', storedStatus: a.status ?? 'open', manual: !!a.status && a.status !== 'open', follow: a.follow ?? false, tags: a.tags ?? [], course: a.course ?? null, link: a.link ?? null, due: null, minutes: a.minutes ?? null, minutesTotal: a.minutes ?? null, nextRank: null, origin: a.origin ?? 'manual', createdAt: now, updatedAt: now, doneAt: null, children: [] };
+  const fresh: Todo = { id, parentId: a.parentId ?? null, sort: 1_000_000, title: a.title, body: null, status: a.status ?? 'open', storedStatus: a.status ?? 'open', manual: !!a.status && a.status !== 'open', follow: a.follow ?? false, tags: a.tags ?? [], course: a.course ?? null, link: a.link ?? null, due: null, minutes: a.minutes ?? null, minutesTotal: a.minutes ?? null, nextRank: null, nextIds: [], origin: a.origin ?? 'manual', createdAt: now, updatedAt: now, doneAt: null, children: [] };
   return optimistic(
     (l) => (a.parentId ? mapTree(l, a.parentId, (p) => ({ ...p, children: [...p.children, { ...fresh, course: p.course }] })) : [fresh, ...l]),
     async () => {

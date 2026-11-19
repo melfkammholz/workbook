@@ -1,13 +1,13 @@
 import { useSyncExternalStore } from 'react';
 
 /** What the ticket line just did with a `!command`: the toast says it. */
-export type LineNote = { kind: 'todo'; id: number } | { kind: 'unknown'; id: number; cmd: string };
+export type LineNote = { kind: 'todo'; id: number } | { kind: 'unknown'; id: number; cmd: string } | { kind: 'next'; id: number; titles: string[]; accept: () => void };
 
 let current: LineNote | null = null;
 let seq = 0;
 const listeners = new Set<() => void>();
 
-export function showLineNote(n: { kind: 'todo' } | { kind: 'unknown'; cmd: string }) {
+export function showLineNote(n: { kind: 'todo' } | { kind: 'unknown'; cmd: string } | { kind: 'next'; titles: string[]; accept: () => void }) {
   current = { ...n, id: ++seq };
   listeners.forEach((l) => l());
 }

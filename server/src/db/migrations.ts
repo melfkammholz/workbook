@@ -1065,6 +1065,16 @@ export const MIGRATIONS: Migration[] = [
   ALTER TABLE todos ADD COLUMN follow INTEGER NOT NULL DEFAULT 0;
   UPDATE todos SET manual = 1;
   `,
+  /* Todos that naturally come after a todo (`todo_next`), offered when it is completed. Nothing moves by itself. */
+  `
+  CREATE TABLE todo_next (
+    todo_id TEXT NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
+    next_id TEXT NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
+    sort    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (todo_id, next_id)
+  );
+  CREATE INDEX todo_next_next ON todo_next(next_id);
+  `,
 ];
 
 /** The course a mounted `/content` folder is. */

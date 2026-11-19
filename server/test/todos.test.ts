@@ -104,6 +104,26 @@ describe('todos', () => {
     expect(store.reorderTodoNext([a.id, a.id])).toBe(false);
   });
 
+  it('keeps what comes after a todo in order, refuses itself, drops deleted ones and brings them back', () => {
+    const { store } = make();
+    const a = store.addTodo({ title: 'A' })!;
+    const b = store.addTodo({ title: 'B' })!;
+    const c = store.addTodo({ title: 'C' })!;
+    expect(store.updateTodo(a.id, { nextIds: [a.id] })).toBe('next');
+    expect(store.updateTodo(a.id, { nextIds: [b.id, b.id] })).toBe('next');
+    expect(store.updateTodo(a.id, { nextIds: ['nope'] })).toBe('next');
+    expect((store.updateTodo(a.id, { nextIds: [c.id, b.id] }) as { nextIds: string[] }).nextIds).toEqual([c.id, b.id]);
+    expect(store.listTodos().find((t) => t.id === a.id)!.nextIds).toEqual([c.id, b.id]);
+    // A done follower stays in the list (the client skips it); a deleted one vanishes and returns on restore.
+    store.deleteTodo(c.id);
+    expect(store.getTodo(a.id)!.nextIds).toEqual([b.id]);
+    store.restoreTodo(c.id);
+    expect(store.getTodo(a.id)!.nextIds).toEqual([c.id, b.id]);
+    store.updateTodo(b.id, { status: 'done' });
+    expect(store.getTodo(a.id)!.nextIds).toEqual([c.id, b.id]);
+    expect((store.updateTodo(a.id, { nextIds: [] }) as { nextIds: string[] }).nextIds).toEqual([]);
+  });
+
   it('deletes the subtree', () => {
     const { store } = make();
     const a = store.addTodo({ title: 'A' })!;
