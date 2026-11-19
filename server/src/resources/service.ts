@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { WorkEdit, WorkState, WorkFields, ImportCandidate, ImportChoice, ImportPreview, BibEntry, BibEntryInput, LibraryWork, SimilarWork, Work, Anchor, Placed, Reanchored, StaleItems, UnplacedItems, AnnotationColor, AnnotationReview, NewPdfAnnotation, PageRect, PdfAnnotation, PdfPageFields, PdfPageItem, Resource, TocEdit, TocEditFields, ResourceFields, ResourceSeries, ResourcesResponse, ResourceType } from '@wb/shared';
-import { WORK_STATES, MIN_CONFIDENCE, MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_ENTRY_TEXT, normalizeTitle, workFields, fieldsConfidence, workKeys } from '@wb/shared';
+import { WORK_STATES, MIN_CONFIDENCE, MAX_TOC_LEVEL, MAX_TOC_TITLE, MAX_ENTRY_TEXT, normalizeTitle, workFields, fieldsConfidence, workKeys, normalizeDoi } from '@wb/shared';
 import type { Store } from '../db/store.js';
 import { crossrefByDoi, crossrefLookup, LOOKUP_PAUSE_MS, type FetchFn } from './crossref.js';
 import { parseBibText, type ImportedWork } from './bibimport.js';
@@ -867,6 +867,26 @@ export class Resources {
       id, c(f.title, 300), c(f.authors, 400), f.year, c(f.venue, 300), c(f.doi, 200), c(f.url, 500), c(f.volume, 50), c(f.pages, 50), c(f.arxiv, 50), raw, t, t,
     );
     return toWork(this.sql.get('SELECT * FROM works WHERE id = ?', id)!);
+  }
+
+  /**
+   * The reference of a paper material: the one without a file that has the same DOI, then the same title (8+ letters
+   * and digits), else a new one made from what is known. Nothing in an existing reference is overwritten. Other
+   * works that look like a new one (`similarWorks`) are not linked; the library shows them as similar.
+   */
+  ensureReference(resource: string, found: Partial<WorkEdit> = {}): Work {
+    const res = this.get(resource);
+    const open = this.sql.all('SELECT * FROM works WHERE resource IS NULL ORDER BY created_at, id') as Row[];
+    const doi = normalizeDoi(found.doi ?? '');
+    const key = normalizeTitle(res.title);
+    const sure = (w: Row) => w.title !== '' && (w.confidence === null || w.confidence === undefined || Number(w.confidence) >= MIN_CONFIDENCE);
+    const twin =
+      (doi ? open.find((w) => normalizeDoi(w.doi as string) === doi) : undefined) ??
+      (key.length >= 8 ? open.find((w) => sure(w) && normalizeTitle(w.title as string) === key) : undefined);
+    if (twin) return this.linkWork(twin.id as string, resource);
+    const year = found.year ?? (/^\d{4}/.test(res.date) ? Number(res.date.slice(0, 4)) : null);
+    const w = this.createWork({ title: res.title, authors: found.authors || res.author, year, venue: found.venue ?? '', doi: found.doi ?? '', url: found.url ?? '', volume: '', pages: '', arxiv: '' });
+    return this.linkWork(w.id, resource);
   }
 
   /** The fields of a DOI or arXiv id from Crossref. Needs the online lookup setting; null: not found or offline. */

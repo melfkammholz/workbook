@@ -2,7 +2,7 @@ import { RESOURCE_TYPES, type ResourceSeries, type ResourceType, type ResourcesR
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useSettings } from '@/lib/api';
-import { createWork, linkWork, lookupWork, sortNewWorks, useWorks } from '@/lib/bibliography';
+import { lookupWork, sortNewWorks } from '@/lib/bibliography';
 import { useT } from '@/lib/i18n';
 import { isPdf, pdfMetadata } from '@/lib/pdf';
 import { MAX_FILE_BYTES, formatSize, naturalCompare, refreshResources, titleFromFilename, uploadResource } from '@/lib/resources';
@@ -32,7 +32,6 @@ const guess = (name: string, doi: string): ResourceType => (doi ? 'paper' : SLID
 export function AddFiles({ files, courses, series, course, onBack, onClose }: { files: File[]; courses: Course[]; series: ResourceSeries[]; course: string | null; onBack: () => void; onClose: () => void }) {
   const t = useT();
   const qc = useQueryClient();
-  const works = useWorks().data;
   const lookupOn = !!useSettings().data?.lookupReferences;
   const [rows, setRows] = useState<FileRow[]>(() =>
     [...files].sort((a, b) => naturalCompare(a.name, b.name)).map((file) => ({ file, on: file.size <= MAX_FILE_BYTES, title: titleFromFilename(file.name), type: guess(file.name, ''), found: null })),
@@ -90,24 +89,15 @@ export function AddFiles({ files, courses, series, course, onBack, onClose }: { 
       for (; i < chosen.length; i++) {
         setProgress(i);
         const r = chosen[i]!;
-        const res = await uploadResource(r.file, { title: r.title.trim(), type: r.type, author: author || r.found?.author || '', date, courses: inCourses, labels: tags, series: sid, newSeries: fresh });
+        const f = r.found?.fields;
+        const year = f?.year ?? (/^\d{4}/.test(date) ? Number(date.slice(0, 4)) : null);
+        const res = await uploadResource(r.file, { title: r.title.trim(), type: r.type, author: author || r.found?.author || '', date, courses: inCourses, labels: tags, series: sid, newSeries: fresh }, { doi: f?.doi || r.found?.doi || '', authors: f?.authors ?? '', year, venue: f?.venue ?? '', url: f?.url ?? '' });
         if (fresh) {
           sid = res.series;
           fresh = undefined;
         }
-        if (r.type !== 'paper') continue;
-        // The paper is a work of the library too: the one it already is, or a new one made from what the PDF said.
-        const doi = r.found?.doi ?? '';
-        const there = doi ? works?.find((w) => w.doi.toLowerCase() === doi.toLowerCase() && !w.resource) : undefined;
-        let id = there?.id;
-        if (!id) {
-          const f = r.found?.fields;
-          const year = f?.year ?? (/^\d{4}/.test(date) ? Number(date.slice(0, 4)) : null);
-          const w = await createWork(qc, { title: r.title.trim(), authors: f?.authors || author || r.found?.author || '', year, venue: f?.venue ?? '', doi: f?.doi || doi, url: f?.url ?? '', volume: '', pages: '', arxiv: '' });
-          id = w.id;
-        }
-        await linkWork(qc, id, res.id);
-        await sortNewWorks(qc, [id], state, tags);
+        // The server made or found the paper's reference; it gets the state and the tags.
+        if (res.work) await sortNewWorks(qc, [res.work], state, tags);
       }
       void refreshResources(qc);
       onClose();

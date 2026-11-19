@@ -211,3 +211,26 @@ describe('works cited by a page', () => {
     await app.inject({ method: 'DELETE', url: `/api/resources/${r.id}` });
   });
 });
+
+describe('a reference for every paper', () => {
+  const work = (b: Record<string, unknown>) => app.inject({ method: 'POST', url: '/api/works', payload: { title: '', authors: '', year: null, venue: '', doi: '', url: '', volume: '', pages: '', arxiv: '', ...b } });
+  const worksList = async () => ((await app.inject({ method: 'GET', url: '/api/works' })).json() as { id: string; resource: string | null; title: string }[]);
+
+  it('links an existing reference by DOI, then by title, else makes one; the same title twice gives one row', async () => {
+    const byDoi = (await work({ title: 'Doi paper that differs', doi: '10.1/ref-doi' })).json() as { id: string };
+    const byTitle = (await work({ title: 'Monads for functional programming' })).json() as { id: string };
+    const a = (await up({ filename: 'a.pdf', title: 'Some other name', type: 'paper', refDoi: 'https://doi.org/10.1/REF-DOI' }, Buffer.from('%PDF a1'))).json() as Resource & { work: string };
+    expect(a.work).toBe(byDoi.id);
+    const b = (await up({ filename: 'b.pdf', title: 'Monads for Functional Programming!', type: 'paper' }, Buffer.from('%PDF b1'))).json() as Resource & { work: string };
+    expect(b.work).toBe(byTitle.id);
+    const c = (await up({ filename: 'c.pdf', title: 'Brand new paper title', type: 'paper', refAuthors: 'Ada', refYear: '1999' }, Buffer.from('%PDF c1'))).json() as Resource & { work: string };
+    expect([byDoi.id, byTitle.id]).not.toContain(c.work);
+    const all = await worksList();
+    expect(all.find((w) => w.id === c.work)).toMatchObject({ title: 'Brand new paper title', resource: c.id });
+    // The same title again: the first one has its file, so a second reference is made (flagged as similar), not a link.
+    const d = (await up({ filename: 'd.pdf', title: 'Brand new paper title', type: 'paper' }, Buffer.from('%PDF d1'))).json() as Resource & { work: string };
+    expect(d.work).not.toBe(c.work);
+    const notes = (await up({ filename: 'n.txt', title: 'Notes', type: 'notes' }, Buffer.from('x'))).json() as { work: string | null };
+    expect(notes.work).toBeNull();
+  });
+});

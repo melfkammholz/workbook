@@ -30,6 +30,12 @@ const upload = z.object({
   courses: z.string().max(5000).default('').transform((s) => s.split(',').map((c) => c.trim()).filter(Boolean)),
   labels: z.string().max(5000).default('').transform((s) => s.split(',').map((c) => c.trim()).filter(Boolean)),
   series: z.string().max(100).optional().transform((s) => s || null),
+  /** What the browser read from a paper (PDF or lookup): the fields of its reference. */
+  refDoi: z.string().max(200).default(''),
+  refAuthors: z.string().max(400).default(''),
+  refYear: z.coerce.number().int().min(0).max(3000).optional(),
+  refVenue: z.string().max(300).default(''),
+  refUrl: z.string().max(500).default(''),
 });
 
 const color = z.string().transform((c) => c.toLowerCase()).refine(isAnnotationColor, 'a palette color or #rrggbb');
@@ -459,8 +465,11 @@ export function resourceRoutes(app: FastifyInstance, d: Deps): void {
       const got = await receive(req, reply);
       if (!got) return;
       try {
-        const { filename, ...rest } = q;
-        return r().create(rest, { sha256: got.sha256, filename, size: got.size });
+        const { filename, refDoi, refAuthors, refYear, refVenue, refUrl, ...rest } = q;
+        const res = r().create(rest, { sha256: got.sha256, filename, size: got.size });
+        // A paper always has its reference; the answer names it so the browser can sort it.
+        const work = res.type === 'paper' ? r().ensureReference(res.id, { doi: refDoi, authors: refAuthors, year: refYear ?? null, venue: refVenue, url: refUrl }).id : null;
+        return { ...res, work };
       } catch (e) {
         r().removeIfUnused(got.sha256);
         return fail(e, reply);

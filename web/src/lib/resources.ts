@@ -1,5 +1,5 @@
 import { useQuery, type QueryClient } from '@tanstack/react-query';
-import type { Resource, ResourceFields, ResourcesResponse } from '@wb/shared';
+import type { Resource, ResourceFields, ResourcesResponse, WorkEdit } from '@wb/shared';
 import { ApiError, api } from './api';
 import { forgetPdf } from './pdf';
 
@@ -26,8 +26,14 @@ export const recordOpen = (id: string) => void api.post(`/api/resources/${encode
 export const MAX_FILE_BYTES = 500 * 1024 * 1024;
 
 /** Uploads one file as the raw body; its details go in the query. */
-export async function uploadResource(file: File, f: ResourceFields): Promise<Resource> {
+/** `ref` is what is known of a paper's reference; the answer's `work` is the id of the reference the server made or found. */
+export async function uploadResource(file: File, f: ResourceFields, ref?: Partial<WorkEdit>): Promise<Resource & { work: string | null }> {
   const q = new URLSearchParams({ filename: file.name, title: f.title, type: f.type, author: f.author, date: f.date, courses: f.courses.join(','), labels: f.labels.join(',') });
+  if (ref?.doi) q.set('refDoi', ref.doi);
+  if (ref?.authors) q.set('refAuthors', ref.authors);
+  if (ref?.year) q.set('refYear', String(ref.year));
+  if (ref?.venue) q.set('refVenue', ref.venue);
+  if (ref?.url) q.set('refUrl', ref.url);
   if (f.newSeries) q.set('newSeries', f.newSeries);
   else if (f.series) q.set('series', f.series);
   const res = await fetch(`/api/resources/upload?${q}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: file });
@@ -40,7 +46,7 @@ export async function uploadResource(file: File, f: ResourceFields): Promise<Res
     }
     throw new ApiError(msg, res.status);
   }
-  return (await res.json()) as Resource;
+  return (await res.json()) as Resource & { work: string | null };
 }
 
 export const updateResource = (id: string, f: ResourceFields) => api.put<Resource>(`/api/resources/${encodeURIComponent(id)}`, f);

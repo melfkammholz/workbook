@@ -1009,6 +1009,32 @@ export const MIGRATIONS: Migration[] = [
   );
   CREATE INDEX resource_opens_resource_at ON resource_opens(resource, at);
   `,
+  /*
+   * One reference per paper: the library used to match an unlinked material to a reference without a file by title
+   * on every render. That guess is saved here once (same normalized title of 8+ letters and digits, the first twin
+   * wins), and the material's tags move onto the reference like `linkWork` does.
+   */
+  (db) => {
+    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '');
+    const open = new Map<string, string>();
+    for (const w of db.prepare('SELECT id, title FROM works WHERE resource IS NULL AND title != \'\' AND confidence >= 0.6 ORDER BY created_at, id').all() as { id: string; title: string }[]) {
+      const k = norm(w.title);
+      if (k.length >= 8 && !open.has(k)) open.set(k, w.id);
+    }
+    if (!open.size) return;
+    const linked = new Set((db.prepare('SELECT resource FROM works WHERE resource IS NOT NULL').all() as { resource: string }[]).map((r) => r.resource));
+    const now = Date.now();
+    for (const r of db.prepare('SELECT id, title FROM resources ORDER BY created_at, id').all() as { id: string; title: string }[]) {
+      if (linked.has(r.id)) continue;
+      const k = norm(r.title);
+      const work = k.length >= 8 ? open.get(k) : undefined;
+      if (!work) continue;
+      open.delete(k);
+      db.prepare('UPDATE works SET resource = ?, updated_at = ? WHERE id = ?').run(r.id, now, work);
+      db.prepare("INSERT OR IGNORE INTO tag_links (tag_id, kind, ref, created_at) SELECT tag_id, 'work', ?, created_at FROM tag_links WHERE kind = 'resource' AND ref = ?").run(work, r.id);
+      db.prepare("DELETE FROM tag_links WHERE kind = 'resource' AND ref = ?").run(r.id);
+    }
+  },
 ];
 
 /** The course a mounted `/content` folder is. */
