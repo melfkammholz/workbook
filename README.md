@@ -109,11 +109,11 @@ added by address must be public repositories.
 
 Put workbooks (plain folders or git repositories) in one folder on your computer, for example `~/workbooks`, and remove
 the `#` in front of the `/workbooks` line in `compose.yaml`. Run `docker compose up -d` again. The add dialog then lists
-that folder. Adding one gives the app its own copy; when you change the original the workbook shows an update, which you
-apply when you want.
+that folder. The app reads an added workbook in place, so every change in its folder (committed or not) shows up within a
+second; there is nothing to update.
 
 * A private repository: clone it into that folder with your own credentials. The app never sees or stores a password or
-  key. To get newer changes, run `git pull` on your computer, then press *update* in the app.
+  key. To get newer changes, run `git pull` on your computer; they show up by themselves.
 * For a git repository only what is committed counts. For a plain folder, whatever is on disk counts.
 * Renaming the folder makes a new workbook. The same workbook added from GitHub and from the folder are two workbooks.
 

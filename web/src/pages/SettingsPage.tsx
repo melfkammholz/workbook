@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { ANNOTATION_COLORS, DUSK_COLORS, isCustomColor, normalizeColor, type AnnotationColor, type Settings, type SnapshotInfo, type UiLanguage } from '@wb/shared';
+import { ANNOTATION_COLORS, CALM_COLORS, DUSK_COLORS, isCustomColor, normalizeColor, type AnnotationColor, type Settings, type SnapshotInfo, type UiLanguage } from '@wb/shared';
 import { Plus, X } from 'lucide-react';
 import { api, keys, useAssistant, useSaveSettings, useSettings } from '@/lib/api';
 import { useTagActions, useTags } from '@/lib/tags';
@@ -429,9 +429,9 @@ export function SettingsPage({ section }: { section?: string }) {
             <legend className="mb-1 text-sm font-medium">{t.theme}</legend>
             <Segmented
               value={settings.theme}
-              options={(['system', 'light', 'dusk', 'dark'] as const).map((th) => [th, t.themes[th]])}
+              options={(['system', 'light', 'calm', 'dusk', 'dark'] as const).map((th) => [th, t.themes[th]])}
               onChange={(th) => {
-                applyTheme(th, settings.duskColor, settings.warmPaper);
+                applyTheme(th, settings.duskColor, settings.warmPaper, settings.calmColor);
                 set({ theme: th });
               }}
             />
@@ -447,7 +447,7 @@ export function SettingsPage({ section }: { section?: string }) {
                     role="radio"
                     aria-checked={settings.duskColor === c}
                     onClick={() => {
-                      applyTheme('dusk', c, settings.warmPaper);
+                      applyTheme('dusk', c, settings.warmPaper, settings.calmColor);
                       set({ duskColor: c });
                     }}
                     data-dusk={c}
@@ -463,7 +463,34 @@ export function SettingsPage({ section }: { section?: string }) {
               </div>
             </fieldset>
           ) : null}
-          <Toggle checked={settings.warmPaper} onChange={(v) => set({ warmPaper: v })} title={t.warmPaper} body={t.warmPaperBody} />
+          {settings.theme === 'calm' ? (
+            <fieldset>
+              <legend className="mb-1 text-sm font-medium">{t.calmColor}</legend>
+              <div className="flex flex-wrap gap-2" role="radiogroup">
+                {CALM_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    role="radio"
+                    aria-checked={settings.calmColor === c}
+                    onClick={() => {
+                      applyTheme('calm', settings.duskColor, settings.warmPaper, c);
+                      set({ calmColor: c });
+                    }}
+                    data-calm={c}
+                    className={clsx(
+                      'wb-calm-swatch inline-flex h-8 items-center gap-2 rounded-md border px-2.5 text-sm',
+                      settings.calmColor === c ? 'border-accent bg-accent-soft text-ink' : 'border-line bg-sheet text-ink-2 hover:text-ink',
+                    )}
+                  >
+                    <span aria-hidden className="size-3.5 rounded-full border border-black/10" style={{ background: 'var(--calm-swatch)' }} />
+                    {t.calmColors[c]}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
+          {settings.theme === 'calm' ? null : <Toggle checked={settings.warmPaper} onChange={(v) => set({ warmPaper: v })} title={t.warmPaper} body={t.warmPaperBody} />}
           <Toggle checked={settings.safeColors} onChange={(v) => set({ safeColors: v })} title={t.safeColors} body={t.safeColorsBody} />
           <Toggle checked={settings.showLessonOutline} onChange={(v) => set({ showLessonOutline: v })} title={t.showLessonOutline} body={t.showLessonOutlineBody} />
         </div>

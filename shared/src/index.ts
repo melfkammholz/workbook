@@ -328,12 +328,18 @@ export type UiLanguage = 'auto' | 'de' | 'en';
 export const DUSK_COLORS = ['indigo', 'teal', 'plum', 'forest'] as const;
 export type DuskColor = (typeof DUSK_COLORS)[number];
 
+/** Colors of the calm theme's navigation (the bar and the sidebar); the page stays lightly tinted. */
+export const CALM_COLORS = ['cream', 'sage', 'blue', 'rose', 'lilac', 'clay', 'ochre', 'wine', 'cocoa', 'olive', 'apricot'] as const;
+export type CalmColor = (typeof CALM_COLORS)[number];
+
 export interface Settings {
   displayName: string;
-  /** `dusk`: light text, coloured bar and outline. */
-  theme: 'system' | 'light' | 'dusk' | 'dark';
+  /** `dusk`: light text, coloured bar and outline. `calm`: tinted paper, serif text, a solid navigation color, lessons in a narrower column. */
+  theme: 'system' | 'light' | 'calm' | 'dusk' | 'dark';
   /** The colour of the dusk theme's bar, outline and buttons. */
   duskColor: DuskColor;
+  /** The color of the calm theme's bar and sidebar. */
+  calmColor: CalmColor;
   /** A dimmer, warmer background with lessons and tasks on white pages. Works with every theme. */
   warmPaper: boolean;
   /** Colours that work with colour vision deficiency (orange and blue) and patterns wherever colour carries meaning. */
@@ -388,6 +394,7 @@ export const DEFAULT_SETTINGS: Settings = {
   displayName: '',
   theme: 'system',
   duskColor: 'indigo',
+  calmColor: 'sage',
   warmPaper: true,
   safeColors: false,
   uiLanguage: 'auto',

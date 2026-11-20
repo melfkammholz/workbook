@@ -1,4 +1,4 @@
-import type { DuskColor, ItemMeta, Status, UiLanguage } from '@wb/shared';
+import type { CalmColor, DuskColor, ItemMeta, Status, UiLanguage } from '@wb/shared';
 
 export const en = {
   // shell
@@ -220,9 +220,11 @@ export const en = {
   yourName: 'Your name',
   namePlaceholder: 'Used to greet you on the start page',
   theme: 'Theme',
-  themes: { system: 'System', light: 'Light', dusk: 'Dusk', dark: 'Dark' },
+  themes: { system: 'System', light: 'Light', calm: 'Calm', dusk: 'Dusk', dark: 'Dark' },
   duskColor: 'Color of dusk',
   duskColors: { indigo: 'Indigo', teal: 'Teal', plum: 'Plum', forest: 'Forest' } satisfies Record<DuskColor, string>,
+  calmColor: 'Color of the navigation',
+  calmColors: { cream: 'Cream', sage: 'Sage', blue: 'Mist', rose: 'Rose', lilac: 'Lilac', clay: 'Clay', ochre: 'Ochre', wine: 'Wine', cocoa: 'Cocoa', olive: 'Olive', apricot: 'Apricot' } satisfies Record<CalmColor, string>,
   language: 'Language of the app',
   languages: { auto: 'Same as the workbook', de: 'Deutsch', en: 'English' } as Record<UiLanguage, string>,
   languageNote: 'Exercises stay in the language they were written in.',
@@ -451,9 +453,11 @@ export const de: typeof en = {
   yourName: 'Dein Name',
   namePlaceholder: 'Für die Begrüßung auf der Startseite',
   theme: 'Design',
-  themes: { system: 'System', light: 'Hell', dusk: 'Dämmerung', dark: 'Dunkel' },
+  themes: { system: 'System', light: 'Hell', calm: 'Ruhig', dusk: 'Dämmerung', dark: 'Dunkel' },
   duskColor: 'Farbe der Dämmerung',
   duskColors: { indigo: 'Indigo', teal: 'Petrol', plum: 'Pflaume', forest: 'Wald' },
+  calmColor: 'Farbe der Navigation',
+  calmColors: { cream: 'Creme', sage: 'Salbei', blue: 'Nebel', rose: 'Rose', lilac: 'Flieder', clay: 'Ton', ochre: 'Ocker', wine: 'Wein', cocoa: 'Kakao', olive: 'Olive', apricot: 'Aprikose' },
   language: 'Sprache der App',
   languages: { auto: 'Wie das Workbook', de: 'Deutsch', en: 'English' },
   languageNote: 'Aufgaben bleiben in der Sprache, in der sie geschrieben wurden.',

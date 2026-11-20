@@ -1,5 +1,6 @@
 @import '@fontsource-variable/schibsted-grotesk';
 @import '@fontsource-variable/fira-code';
+@import '@fontsource-variable/literata';
 @import 'tailwindcss';
 
 /*
@@ -153,6 +154,64 @@
   --ink-3: oklch(0.5 calc(0.035 * var(--dusk-c)) var(--dusk-h));
   --accent-soft: oklch(0.9 calc(0.045 * var(--dusk-c)) var(--dusk-h));
 }
+
+/* Calm: tinted paper, serif text, a solid navigation color (`data-calm`), lessons in a narrower column. The pages are
+   the lightest and most raised things on screen, so the eye stays on what is being read. Light only. */
+:root, [data-calm] {
+  --calm-paper: #eee8d9; --calm-nav: #e6dfcd; --calm-nav-line: #d8cfb8; --calm-nav-ink: #5a5446; --calm-strong: #262320;
+  --calm-hover: rgb(70 55 25 / 0.08); --calm-active: rgb(70 55 25 / 0.13); --calm-swatch: #e6dfcd;
+}
+[data-calm='sage'] { --calm-paper: #e9eee0; --calm-nav: #4d6a4a; --calm-nav-line: #405a3e; --calm-nav-ink: #d3e0cc; --calm-strong: #fff; --calm-hover: rgb(255 255 255 / 0.1); --calm-active: rgb(255 255 255 / 0.16); --calm-swatch: #4d6a4a; }
+[data-calm='blue'] { --calm-paper: #e5edf1; --calm-nav: #47657b; --calm-nav-line: #3a566a; --calm-nav-ink: #d2e0ea; --calm-strong: #fff; --calm-hover: rgb(255 255 255 / 0.1); --calm-active: rgb(255 255 255 / 0.16); --calm-swatch: #47657b; }
+[data-calm='rose'] { --calm-paper: #f2e6e0; --calm-nav: #8a5a58; --calm-nav-line: #774a49; --calm-nav-ink: #f0d9d4; --calm-strong: #fff; --calm-hover: rgb(255 255 255 / 0.1); --calm-active: rgb(255 255 255 / 0.16); --calm-swatch: #8a5a58; }
+[data-calm='lilac'] { --calm-paper: #e9e7f3; --calm-nav: #5a5190; --calm-nav-line: #4a4379; --calm-nav-ink: #dad6f0; --calm-strong: #fff; --calm-hover: rgb(255 255 255 / 0.1); --calm-active: rgb(255 255 255 / 0.16); --calm-swatch: #5a5190; }
+[data-calm='clay'] { --calm-paper: #f1e4d9; --calm-nav: #9a5b3c; --calm-nav-line: #854c30; --calm-nav-ink: #f3dccd; --calm-strong: #fff; --calm-hover: rgb(255 255 255 / 0.1); --calm-active: rgb(255 255 255 / 0.16); --calm-swatch: #9a5b3c; }
+[data-calm='ochre'] { --calm-paper: #efe8d0; --calm-nav: #8a6a1c; --calm-nav-line: #74590f; --calm-nav-ink: #f1e5bd; --calm-strong: #fff; --calm-hover: rgb(255 255 255 / 0.1); --calm-active: rgb(255 255 255 / 0.16); --calm-swatch: #8a6a1c; }
+[data-calm='wine'] { --calm-paper: #f0e1e3; --calm-nav: #7a3b4c; --calm-nav-line: #672f3f; --calm-nav-ink: #efd2d9; --calm-strong: #fff; --calm-hover: rgb(255 255 255 / 0.1); --calm-active: rgb(255 255 255 / 0.16); --calm-swatch: #7a3b4c; }
+[data-calm='cocoa'] { --calm-paper: #ebe2da; --calm-nav: #6b4f3f; --calm-nav-line: #594133; --calm-nav-ink: #e6d5ca; --calm-strong: #fff; --calm-hover: rgb(255 255 255 / 0.1); --calm-active: rgb(255 255 255 / 0.16); --calm-swatch: #6b4f3f; }
+[data-calm='olive'] { --calm-paper: #ecebd3; --calm-nav: #6e6b2c; --calm-nav-line: #5b5822; --calm-nav-ink: #e8e5b8; --calm-strong: #fff; --calm-hover: rgb(255 255 255 / 0.1); --calm-active: rgb(255 255 255 / 0.16); --calm-swatch: #6e6b2c; }
+[data-calm='apricot'] { --calm-paper: #f6e6d3; --calm-nav: #b2692a; --calm-nav-line: #9b5920; --calm-nav-ink: #f8dcc0; --calm-strong: #fff; --calm-hover: rgb(255 255 255 / 0.1); --calm-active: rgb(255 255 255 / 0.16); --calm-swatch: #b2692a; }
+[data-calm='cream'] { --calm-swatch: #e6dfcd; }
+:root[data-theme='calm'] {
+  --paper: var(--calm-paper);
+  --sheet: #fbf6ea;
+  --sunk: #f1e9d5;
+  --ink: #262320;
+  --ink-2: #4d483f;
+  --ink-3: #6b6558;
+  --line: #e0d6c0;
+  --line-strong: #cbbf9f;
+  --accent: #5b45c4;
+  --accent-soft: #e9e1f7;
+  --page-shadow: 0 1px 2px rgb(70 55 25 / 0.07), 0 8px 22px -8px rgb(70 55 25 / 0.18);
+  --font-serif: 'Literata Variable', Literata, 'Source Serif 4', Georgia, serif;
+  color-scheme: light;
+}
+/* The bar and the sidebar are one solid color; the tokens inside them follow it. */
+:root[data-theme='calm'] :is(.wb-chrome-bar, .wb-chrome-side) {
+  /* Steps of one hue: the parts' bands are deeper than the chapters, the rows a touch lighter, the quiet text dimmer. */
+  --paper: color-mix(in srgb, var(--calm-nav) var(--calm-depth, 90%), #000);
+  --sheet: var(--calm-nav);
+  --sunk: var(--calm-hover);
+  --ink: var(--calm-strong);
+  --ink-2: var(--calm-nav-ink);
+  --ink-3: color-mix(in srgb, var(--calm-nav-ink) 68%, var(--calm-nav));
+  --line: var(--calm-nav-line);
+  --line-strong: color-mix(in srgb, var(--calm-nav-line) 70%, var(--calm-strong));
+  --accent: var(--calm-strong);
+  --accent-ink: var(--calm-nav);
+  --accent-soft: var(--calm-active);
+}
+:root[data-theme='calm'] .wb-chrome-bar { --sheet: color-mix(in srgb, var(--calm-nav) var(--calm-bar, 84%), #000); }
+:root[data-theme='calm'][data-calm='cream'] .wb-chrome-bar { --calm-bar: 94%; }
+:root[data-theme='calm'] .wb-chrome-side ol { background: color-mix(in srgb, var(--calm-nav) 90%, #fff); }
+:root[data-theme='calm'][data-calm='cream'] :is(.wb-chrome-bar, .wb-chrome-side) { --calm-depth: 97%; --accent: #5b45c4; --accent-ink: #fff; }
+:root[data-theme='calm'] .wb-chrome-side { --done: #6fe0bd; --review: #f0bf5c; --danger: #ff98a8; }
+:root[data-theme='calm'][data-calm='cream'] .wb-chrome-side { --done: #1d7f62; --review: #a8700b; --danger: #c2374a; }
+/* Serif for what is read; paragraphs stop at 46em while the page, widgets and code keep the full width. */
+:root[data-theme='calm'] .prose-task { font-family: var(--font-serif); font-size: 17px; line-height: 1.7; }
+:root[data-theme='calm'] .prose-task.wb-reading > :is(p, ul, ol, blockquote, h1, h2, h3, h4) { max-width: 46em; }
+:root[data-theme='calm'] .prose-task :is(h1, h2, h3, h4) { font-weight: 600; }
 
 @theme inline {
   --font-sans: 'Schibsted Grotesk Variable', ui-sans-serif, system-ui, sans-serif;

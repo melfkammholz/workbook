@@ -82,8 +82,8 @@ function Shell() {
   const settings = useSettings().data;
 
   useEffect(() => {
-    if (settings) applyTheme(settings.theme, settings.duskColor, settings.warmPaper);
-  }, [settings?.theme, settings?.duskColor, settings?.warmPaper]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (settings) applyTheme(settings.theme, settings.duskColor, settings.warmPaper, settings.calmColor);
+  }, [settings?.theme, settings?.duskColor, settings?.warmPaper, settings?.calmColor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (settings) document.documentElement.dataset.colors = settings.safeColors ? 'safe' : 'default';

@@ -61,9 +61,9 @@ export function QuickSettings() {
               <div className="mx-2 mb-1">
                 <Segmented
                   value={settings.theme}
-                  options={(['light', 'dark', 'dusk', 'system'] as const).map((th) => [th, t.themes[th]])}
+                  options={(['light', 'calm', 'dark', 'dusk', 'system'] as const).map((th) => [th, t.themes[th]])}
                   onChange={(th) => {
-                    applyTheme(th, settings.duskColor, settings.warmPaper);
+                    applyTheme(th, settings.duskColor, settings.warmPaper, settings.calmColor);
                     set({ theme: th });
                   }}
                 />
@@ -71,7 +71,7 @@ export function QuickSettings() {
               <MenuSwitch
                 checked={settings.warmPaper}
                 onChange={(v) => {
-                  applyTheme(settings.theme, settings.duskColor, v);
+                  applyTheme(settings.theme, settings.duskColor, v, settings.calmColor);
                   set({ warmPaper: v });
                 }}
                 title={t.warmPaper}

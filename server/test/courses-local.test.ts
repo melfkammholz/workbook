@@ -50,40 +50,29 @@ describe.skipIf(!hasBinary('git'))('workbooks from the workbooks folder', () => 
     await expect(courses.add({ local: name })).rejects.toThrow(CourseError);
   });
 
-  it('adds a plain folder, notices a change and updates on request', async () => {
+  it('shows every change in a plain folder at once, with nothing to update', async () => {
     const data = await courses.add({ local: 'plain' });
     const c = data.courses[0]!;
     expect(c).toMatchObject({ source: 'local', url: null, folder: 'plain', update: 'current' });
     expect(courses.listLocal().find((w) => w.name === 'plain')!.added).toBe(true);
 
-    await courses.checkUpdates();
-    expect(courses.list().courses[0]!.update).toBe('current');
     setTitle(path.join(workbooks, 'plain'), 'Geändert');
-    await courses.checkUpdates();
-    expect(courses.list().courses[0]!.update).toBe('available');
-    expect(courses.list().courses[0]!.title).toBe('Deklarative Programmierung');
-
-    const after = await courses.update(c.id);
-    expect(after.courses[0]).toMatchObject({ title: 'Geändert', update: 'current' });
+    await new Promise((r) => setTimeout(r, 1100)); // the content is re-scanned at most once a second
+    expect(courses.courseRefs().find((x) => x.id === courses.active!.content.current.outline.id)!.title).toBe('Geändert');
     await courses.checkUpdates();
     expect(courses.list().courses[0]!.update).toBe('current');
   });
 
-  it('adds a git repo, sees only committed changes and updates on request', async () => {
+  it('shows uncommitted changes in a git repo too', async () => {
     const repo = path.join(workbooks, 'repo');
-    const data = await courses.add({ local: 'repo' });
-    const c = data.courses.find((x) => x.folder === 'repo')!;
+    const c = (await courses.add({ local: 'repo' })).courses.find((x) => x.folder === 'repo')!;
     expect(c.update).toBe('current');
 
     setTitle(repo, 'Nur auf der Platte');
+    await new Promise((r) => setTimeout(r, 1100));
+    expect(courses.active!.content.current.outline.title).toBe('Nur auf der Platte');
     await courses.checkUpdates();
     expect(courses.list().courses.find((x) => x.id === c.id)!.update).toBe('current');
-
-    git(repo, 'commit', '-qam', 'new title');
-    await courses.checkUpdates();
-    expect(courses.list().courses.find((x) => x.id === c.id)!.update).toBe('available');
-    const after = await courses.update(c.id);
-    expect(after.courses.find((x) => x.id === c.id)).toMatchObject({ title: 'Nur auf der Platte', update: 'current' });
   });
 
   it('adding the same folder again opens it, and a removed one comes back', async () => {
