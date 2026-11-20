@@ -412,6 +412,10 @@ export const en = {
       done: (v: string) => `Normal form reached: \`${v}\`.`,
       doneFree: 'Every path ends in the same value.',
       reset: 'From the start',
+      strategies: { innermost: 'Innermost', outermost: 'Outermost', outermostShared: 'Outermost, shared' },
+      mapLabel: 'Map of all evaluation paths',
+      mapNote: 'Shown: only the leftmost of equally outer parts is worked out. Hover an arrow to see which part it works out.',
+      showLead: 'Switch the strategies on to see their paths through the map.',
       bad: (msg: string) => `This example cannot be read: ${msg}`,
     },
     foldSteps: {
@@ -870,6 +874,10 @@ export const de: typeof en = {
       done: (v: string) => `Normalform erreicht: \`${v}\`.`,
       doneFree: 'Alle Wege enden im selben Wert.',
       reset: 'Von vorn',
+      strategies: { innermost: 'Innerste zuerst', outermost: 'Äußerste zuerst', outermostShared: 'Äußerste, geteilt' },
+      mapLabel: 'Karte aller Auswertungswege',
+      mapNote: 'Gezeigt wird nur der jeweils linkeste von gleich weit außen stehenden Teilen. Zeige auf einen Pfeil, um zu sehen, welcher Teil dabei ausgerechnet wird.',
+      showLead: 'Schalte die Strategien ein, um ihre Wege durch die Karte zu sehen.',
       bad: (msg: string) => `Dieses Beispiel ist nicht lesbar: ${msg}`,
     },
     foldSteps: {

@@ -174,9 +174,9 @@
 /// (`"double x = x + x"`), `start` the term. For the `rule` the student clicks the redex that comes next:
 /// `"innermost"`, `"outermost"`, `"outermostShared"` (arguments shared as `let` bindings) or `"free"` (any redex).
 /// `explain` may replace the texts for a wrong click: `(inner: [..], outer: [..], left: [..], done: [..])` as strings.
-#let eval-path(defs, start, rule: "free", explain: (:)) = _widget(
+#let eval-path(defs, start, rule: "free", map: false, explain: (:)) = _widget(
   "eval-path",
-  attrs: (data-defs: defs, data-start: start, data-config: _config(rule: rule, explain: explain)),
+  attrs: (data-defs: defs, data-start: start, data-config: _config(rule: rule, map: map, explain: explain)),
   raw(defs + "\n" + start, lang: "haskell", block: true),
 )
 

@@ -113,7 +113,7 @@ export function printState(s: State): string {
   return [p.main, ...p.bindings.map((b) => `${b.name} = ${b.text}`)].join(', ');
 }
 
-const stateKey = (s: State): string => `${printTerm(s.body)} | ${[...s.binds].sort((a, b) => (a.name < b.name ? -1 : 1)).map((b) => `${b.name}=${printTerm(b.term)}`).join(';')}`;
+export const stateKey = (s: State): string => `${printTerm(s.body)} | ${[...s.binds].sort((a, b) => (a.name < b.name ? -1 : 1)).map((b) => `${b.name}=${printTerm(b.term)}`).join(';')}`;
 
 export function termAt(s: State, pos: Pos): Term {
   let t = pos.bind === null ? s.body : s.binds[pos.bind]!.term;

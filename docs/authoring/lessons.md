@@ -56,7 +56,7 @@ the interpreter works out what comes out. You write the choices, never the answe
 // The evaluation of a small program, one reduction at a time. The student clicks the part that comes next
 // under the `rule` ("innermost", "outermost", "outermostShared" = arguments shared as `let` bindings, "free" =
 // any part). Definitions are one equation per line (no pattern matching, no `if`); the term has numbers,
-// calls, + - * and `let`. A wrong click names why and costs nothing; nothing is counted. `lint` reads the spec.
+// calls, + - * and `let`. A wrong click names why and costs nothing; nothing is counted. `map: true` adds the map of all paths (the student's own path is drawn as they go, strategy chips show the three strategies' paths); `rule: "show"` is the map alone, without clicking. `lint` reads the spec.
 #eval-path("inc n = n + 1\ndouble x = x + x", "double (inc 3)", rule: "outermost",
   explain: (outer: "Außen kommt zuerst: double wird vor dem Argument aufgelöst."))  // explain is optional:
                                       // keys inner, outer, left (wrong clicks) and done (the end message)

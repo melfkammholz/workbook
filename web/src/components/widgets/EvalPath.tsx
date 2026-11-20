@@ -1,6 +1,7 @@
 import { RotateCcw } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import {
+  buildMap,
   EvalPathError,
   findRedexes,
   loadSpec,
@@ -9,6 +10,7 @@ import {
   printTerm,
   reduce,
   termLevel,
+  type EvalMap,
   type Model,
   type Pos,
   type Program,
@@ -19,10 +21,12 @@ import {
 } from '@wb/shared';
 import { useT } from '@/lib/i18n';
 import { clsx } from '../ui';
+import { EvalMapView } from './EvalMap';
 import { Choice, Frame, Message, shake } from './index';
 
 interface Config {
-  rule: StrategyId | 'free';
+  rule: StrategyId | 'free' | 'show';
+  map?: boolean;
   explain?: { inner?: string; outer?: string; left?: string; done?: string };
 }
 
@@ -49,10 +53,39 @@ export function EvalPath({ defs, start, config }: { defs: string; start: string;
         <p className="text-sm text-danger">{t.bad(spec)}</p>
       </Frame>
     );
+  if (cfg.rule === 'show' || cfg.map) return <WithMap prog={spec.prog} first={spec.start} cfg={cfg} />;
   return <Walk prog={spec.prog} first={spec.start} cfg={cfg} />;
 }
 
-function Walk({ prog, first, cfg }: { prog: Program; first: State; cfg: Config }) {
+function WithMap({ prog, first, cfg }: { prog: Program; first: State; cfg: Config }) {
+  const t = useT().widget.evalPath;
+  const map = useMemo(() => {
+    try {
+      return buildMap(prog, first);
+    } catch (e) {
+      if (e instanceof EvalPathError) return e.message;
+      throw e;
+    }
+  }, [prog, first]);
+  const [walked, setWalked] = useState<State[]>([first]);
+  if (typeof map === 'string')
+    return (
+      <Frame>
+        <p className="text-sm text-danger">{t.bad(map)}</p>
+      </Frame>
+    );
+  if (cfg.rule === 'show')
+    return (
+      <Frame>
+        <p className="font-mono text-[17px]">{printTerm(first.body)}</p>
+        <p className="text-[13px] text-ink-3">{t.showLead}</p>
+        <EvalMapView map={map} walked={[]} />
+      </Frame>
+    );
+  return <Walk prog={prog} first={first} cfg={cfg} map={map} onWalk={setWalked} walked={walked} />;
+}
+
+function Walk({ prog, first, cfg, map, walked, onWalk }: { prog: Program; first: State; cfg: Config; map?: EvalMap; walked?: State[]; onWalk?: (w: State[]) => void }) {
   const t = useT().widget.evalPath;
   const [cur, setCur] = useState(first);
   const [history, setHistory] = useState<State[]>([]);
@@ -84,8 +117,10 @@ function Walk({ prog, first, cfg }: { prog: Program; first: State; cfg: Config }
         return;
       }
     }
+    const next = reduce(prog, cur, r.pos, model);
     setHistory([...history, cur]);
-    setCur(reduce(prog, cur, r.pos, model));
+    setCur(next);
+    onWalk?.([...history, cur, next]);
     setMsg(null);
     setHover(null);
   };
@@ -94,6 +129,7 @@ function Walk({ prog, first, cfg }: { prog: Program; first: State; cfg: Config }
     setCur(first);
     setHistory([]);
     setMsg(null);
+    onWalk?.([first]);
   };
 
   const view = (term: Term, bind: number | null, path: number[], need: number): ReactNode => {
@@ -167,7 +203,7 @@ function Walk({ prog, first, cfg }: { prog: Program; first: State; cfg: Config }
 
   return (
     <Frame>
-      <p className="text-[13px] text-ink-3">{t.rules[cfg.rule]}</p>
+      <p className="text-[13px] text-ink-3">{t.rules[cfg.rule as Exclude<Config["rule"], "show">]}</p>
       <div className="font-mono text-[17px] leading-9" aria-live="polite">
         <div>{view(cur.body, null, [], 0)}</div>
         {cur.binds.length > 0 && (
@@ -194,6 +230,7 @@ function Walk({ prog, first, cfg }: { prog: Program; first: State; cfg: Config }
           <RotateCcw size={14} /> {t.reset}
         </button>
       </div>
+      {map && <EvalMapView map={map} walked={walked ?? []} />}
     </Frame>
   );
 }
