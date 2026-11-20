@@ -170,6 +170,16 @@
   raw(value, lang: "haskell", block: true),
 )
 
+/// The evaluation of a small program, one reduction at a time: `defs` are equations, one per line
+/// (`"double x = x + x"`), `start` the term. For the `rule` the student clicks the redex that comes next:
+/// `"innermost"`, `"outermost"`, `"outermostShared"` (arguments shared as `let` bindings) or `"free"` (any redex).
+/// `explain` may replace the texts for a wrong click: `(inner: [..], outer: [..], left: [..], done: [..])` as strings.
+#let eval-path(defs, start, rule: "free", explain: (:)) = _widget(
+  "eval-path",
+  attrs: (data-defs: defs, data-start: start, data-config: _config(rule: rule, explain: explain)),
+  raw(defs + "\n" + start, lang: "haskell", block: true),
+)
+
 /// Two pieces of code side by side, with what corresponds marked in both: `[[id|text]]` in the code.
 /// `pairs` names each mark in order (`(nil: "Die leere Liste", …)`), `notes` explains it.
 #let compare(pairs: (:), notes: (:), left, right) = _widget("compare", attrs: (data-config: _config(pairs: pairs)), {

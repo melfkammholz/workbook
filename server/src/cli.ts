@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { EvalPathError, loadSpec, buildMap } from '@wb/shared';
 import { loadConfig } from './config.js';
 import { hasTests, loadContent } from './content/loader.js';
 import { TypstRenderer } from './content/typst.js';
@@ -51,6 +52,16 @@ try {
       for (const item of texts) {
         const r = await renderer.renderItem(item);
         for (const d of r.diagnostics) report(d.severity, `${item.typstRel}${d.line ? ':' + d.line : ''}`, d.message);
+        for (const m of JSON.stringify(r).matchAll(/data-widget=\\"eval-path\\"[^>]*?data-defs=\\"(.*?)\\"[^>]*?data-start=\\"(.*?)\\"/g)) {
+          const un = (x: string) => (JSON.parse(`"${x}"`) as string).replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+          try {
+            const spec = loadSpec(un(m[1]!), un(m[2]!));
+            buildMap(spec.prog, spec.start);
+          } catch (e) {
+            if (!(e instanceof EvalPathError)) throw e;
+            report('error', item.typstRel, `eval-path "${un(m[2]!)}": ${e.message}`);
+          }
+        }
       }
       console.log(`rendered ${texts.length} texts with ${await renderer.version()}`);
     }

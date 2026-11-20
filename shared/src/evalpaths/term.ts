@@ -194,7 +194,7 @@ export function checkTerm(prog: Program, t: Term, bound: Set<string>, where: str
 // ───────────────────────── printing ─────────────────────────
 
 /** Precedence levels: let and negative numbers 0, + and - 1, * 2, application 3, atoms 4. */
-const level = (t: Term): number => (t.k === 'let' || (t.k === 'num' && t.n < 0) ? 0 : t.k === 'op' ? (t.op === '*' ? 2 : 1) : t.k === 'app' ? 3 : 4);
+export const termLevel = (t: Term): number => (t.k === 'let' || (t.k === 'num' && t.n < 0) ? 0 : t.k === 'op' ? (t.op === '*' ? 2 : 1) : t.k === 'app' ? 3 : 4);
 
 /** Parentheses around every nested operation (the structure is the point when reducing); `need` is the lowest level the surrounding position accepts without them. */
 export function printTerm(t: Term, need = 0): string {
@@ -212,5 +212,5 @@ export function printTerm(t: Term, need = 0): string {
         return `let ${t.name} = ${printTerm(t.bound)} in ${printTerm(t.body)}`;
     }
   })();
-  return level(t) < need ? `(${s})` : s;
+  return termLevel(t) < need ? `(${s})` : s;
 }

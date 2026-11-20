@@ -13,6 +13,7 @@ import { Compare } from './Compare';
 import { FoldExplorer } from './FoldExplorer';
 import { FoldSignature } from './FoldSignature';
 import { Flow } from './Flow';
+import { EvalPath } from './EvalPath';
 import { FoldSteps } from './FoldSteps';
 import { FoldTree } from './FoldTree';
 import { Bracketing, ExprTrees, FoldList } from './Folds';
@@ -57,6 +58,8 @@ export function Widget({ host }: { host: WidgetHost }) {
       return <Compare parts={host.parts} config={host.attrs.config ?? '{}'} />;
     case 'fold-steps':
       return <FoldSteps decl={host.attrs.decl ?? ''} config={host.attrs.config ?? '{}'} />;
+    case 'eval-path':
+      return <EvalPath defs={host.attrs.defs ?? ''} start={host.attrs.start ?? ''} config={host.attrs.config ?? '{}'} />;
     case 'fold-tree':
       return <FoldTree decl={host.attrs.decl ?? ''} config={host.attrs.config ?? '{}'} />;
     default:

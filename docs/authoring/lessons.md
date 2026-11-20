@@ -53,6 +53,14 @@ the interpreter works out what comes out. You write the choices, never the answe
   folds: ((name: "Summe", functions: ("(:)": "(+)", "[]": "0")),
           (name: "Erstes Element", functions: ("(:)": "const", "[]": "error \"empty list\""))))
 
+// The evaluation of a small program, one reduction at a time. The student clicks the part that comes next
+// under the `rule` ("innermost", "outermost", "outermostShared" = arguments shared as `let` bindings, "free" =
+// any part). Definitions are one equation per line (no pattern matching, no `if`); the term has numbers,
+// calls, + - * and `let`. A wrong click names why and costs nothing; nothing is counted. `lint` reads the spec.
+#eval-path("inc n = n + 1\ndouble x = x + x", "double (inc 3)", rule: "outermost",
+  explain: (outer: "Außen kommt zuerst: double wird vor dem Argument aufgelöst."))  // explain is optional:
+                                      // keys inner, outer, left (wrong clicks) and done (the end message)
+
 // Two pieces of code side by side; what corresponds is marked [[id|text]] in both.
 #compare(pairs: (nil: "Die leere Liste", rec: "Der rekursive Aufruf"),
   notes: (nil: [Der Fall `[]` wird zu `fnil`.], rec: [Rechts ist nur noch das Ergebnis da.]),
